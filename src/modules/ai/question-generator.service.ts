@@ -1,0 +1,39 @@
+import { aiService } from "./ai.service";
+import { buildQuestionGeneratorPrompt } from "../interview/prompts/question-generator.prompt";
+import { logger } from "../../shared/logger";
+import { AppError } from "../../shared/utils";
+import { QUESTION_DISTRIBUTION } from "../../shared/constants";
+import type { ResumeAnalysis, JDAnalysis, RawQuestion } from "../interview/interview.types";
+
+interface GenerateQuestionsParams {
+  resumeAnalysis: ResumeAnalysis;
+  jdAnalysis: JDAnalysis;
+  role: string;
+  experience: string;
+}
+
+export const generateQuestions = async (params: GenerateQuestionsParams): Promise<RawQuestion[]> => {
+  logger.info("[question-generator] generating questions", { role: params.role });
+
+  const prompt = buildQuestionGeneratorPrompt(params);
+  const questions = await aiService.generateJSON<RawQuestion[]>(prompt);
+
+  if (!Array.isArray(questions) || questions.length === 0) {
+    throw new AppError(500, "AI failed to generate questions. Please try again.");
+  }
+
+  const valid = questions.filter(
+    (q) =>
+      typeof q.question === "string" &&
+      q.question.length > 0 &&
+      typeof q.difficulty === "string" &&
+      typeof q.category === "string"
+  );
+
+  if (valid.length < QUESTION_DISTRIBUTION.TOTAL) {
+    logger.warn(`[question-generator] only ${valid.length}/${QUESTION_DISTRIBUTION.TOTAL} valid questions generated`);
+  }
+
+  logger.info(`[question-generator] generated ${valid.length} questions`);
+  return valid.slice(0, QUESTION_DISTRIBUTION.TOTAL);
+};

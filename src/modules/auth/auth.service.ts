@@ -1,21 +1,21 @@
-import { auth, db } from "../config/firebase";
 import { FieldValue } from "firebase-admin/firestore";
-import {
+import { auth, db } from "../../config/firebase";
+import { COLLECTIONS } from "../../shared/constants";
+import { AppError } from "../../shared/utils";
+import { logger } from "../../shared/logger";
+import type {
   AuthProvider,
-  LoginInput,
   LoginResult,
   OAuthResult,
-  OAuthTokenInput,
-  RegisterInput,
   RegisterResult,
   User,
-} from "../models/user.model";
+} from "./auth.types";
 
-const upsertUserDocument = async (
+const upsertUser = async (
   uid: string,
   fields: Partial<Omit<User, "isActive" | "createdAt" | "updatedAt">>
 ): Promise<User> => {
-  const ref = db.collection("users").doc(uid);
+  const ref = db.collection(COLLECTIONS.USERS).doc(uid);
   const snapshot = await ref.get();
 
   if (!snapshot.exists) {
@@ -35,18 +35,17 @@ const upsertUserDocument = async (
   return (await ref.get()).data() as User;
 };
 
-export const register = async ({
-  name,
-  email,
-  password,
-}: RegisterInput): Promise<RegisterResult> => {
-  if (!name || !email || !password) {
-    throw new Error("name, email, and password are required");
-  }
+export const register = async (input: {
+  name: string;
+  email: string;
+  password: string;
+}): Promise<RegisterResult> => {
+  const { name, email, password } = input;
+  logger.info(`[auth.service] register attempt: ${email}`);
 
   const userRecord = await auth.createUser({ email, password, displayName: name });
 
-  const user = await upsertUserDocument(userRecord.uid, {
+  const user = await upsertUser(userRecord.uid, {
     uid: userRecord.uid,
     name,
     email,
@@ -54,17 +53,20 @@ export const register = async ({
   });
 
   const customToken = await auth.createCustomToken(userRecord.uid);
+  logger.info(`[auth.service] registered uid=${userRecord.uid}`);
 
   return { user, customToken };
 };
 
-export const login = async ({ email, password }: LoginInput): Promise<LoginResult> => {
-  if (!email || !password) {
-    throw new Error("email and password are required");
-  }
+export const login = async (input: {
+  email: string;
+  password: string;
+}): Promise<LoginResult> => {
+  const { email, password } = input;
+  logger.info(`[auth.service] login attempt: ${email}`);
 
   const apiKey = process.env.FIREBASE_API_KEY;
-  if (!apiKey) throw new Error("FIREBASE_API_KEY is not configured");
+  if (!apiKey) throw new AppError(500, "FIREBASE_API_KEY is not configured");
 
   const response = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
@@ -82,30 +84,29 @@ export const login = async ({ email, password }: LoginInput): Promise<LoginResul
   };
 
   if (!response.ok) {
-    throw new Error(data?.error?.message ?? "Invalid email or password");
+    throw new AppError(401, data?.error?.message ?? "Invalid email or password");
   }
 
   const uid = data.localId!;
   const idToken = data.idToken!;
   const userRecord = await auth.getUser(uid);
 
-  const user = await upsertUserDocument(uid, {
+  const user = await upsertUser(uid, {
     uid,
     name: userRecord.displayName ?? "",
     email,
     provider: "email" as AuthProvider,
   });
 
+  logger.info(`[auth.service] login success uid=${uid}`);
   return { user, idToken };
 };
 
-export const googleLogin = async ({ idToken }: OAuthTokenInput): Promise<OAuthResult> => {
-  if (!idToken) throw new Error("idToken is required");
-
-  const decoded = await auth.verifyIdToken(idToken);
+export const googleLogin = async (input: { idToken: string }): Promise<OAuthResult> => {
+  const decoded = await auth.verifyIdToken(input.idToken);
   const { uid, name, email, picture } = decoded;
 
-  const user = await upsertUserDocument(uid, {
+  const user = await upsertUser(uid, {
     uid,
     name: name ?? "",
     email: email ?? "",
@@ -113,16 +114,15 @@ export const googleLogin = async ({ idToken }: OAuthTokenInput): Promise<OAuthRe
     provider: "google" as AuthProvider,
   });
 
+  logger.info(`[auth.service] google login uid=${uid}`);
   return { user };
 };
 
-export const githubLogin = async ({ idToken }: OAuthTokenInput): Promise<OAuthResult> => {
-  if (!idToken) throw new Error("idToken is required");
-
-  const decoded = await auth.verifyIdToken(idToken);
+export const githubLogin = async (input: { idToken: string }): Promise<OAuthResult> => {
+  const decoded = await auth.verifyIdToken(input.idToken);
   const { uid, name, email, picture } = decoded;
 
-  const user = await upsertUserDocument(uid, {
+  const user = await upsertUser(uid, {
     uid,
     name: name ?? "",
     email: email ?? "",
@@ -130,16 +130,15 @@ export const githubLogin = async ({ idToken }: OAuthTokenInput): Promise<OAuthRe
     provider: "github" as AuthProvider,
   });
 
+  logger.info(`[auth.service] github login uid=${uid}`);
   return { user };
 };
 
-export const phoneLogin = async ({ idToken }: OAuthTokenInput): Promise<OAuthResult> => {
-  if (!idToken) throw new Error("idToken is required");
-
-  const decoded = await auth.verifyIdToken(idToken);
+export const phoneLogin = async (input: { idToken: string }): Promise<OAuthResult> => {
+  const decoded = await auth.verifyIdToken(input.idToken);
   const { uid, phone_number, name, picture } = decoded;
 
-  const user = await upsertUserDocument(uid, {
+  const user = await upsertUser(uid, {
     uid,
     name: name ?? "",
     phoneNumber: phone_number ?? "",
@@ -147,18 +146,17 @@ export const phoneLogin = async ({ idToken }: OAuthTokenInput): Promise<OAuthRes
     provider: "phone" as AuthProvider,
   });
 
+  logger.info(`[auth.service] phone login uid=${uid}`);
   return { user };
 };
 
 export const getCurrentUser = async (uid: string): Promise<User> => {
-  const snapshot = await db.collection("users").doc(uid).get();
-
-  if (!snapshot.exists) throw new Error("User not found");
-
+  const snapshot = await db.collection(COLLECTIONS.USERS).doc(uid).get();
+  if (!snapshot.exists) throw new AppError(404, "User not found");
   return snapshot.data() as User;
 };
 
-export const logout = async (uid: string): Promise<{ message: string }> => {
+export const logout = async (uid: string): Promise<void> => {
   await auth.revokeRefreshTokens(uid);
-  return { message: "Successfully logged out" };
+  logger.info(`[auth.service] logout uid=${uid}`);
 };
