@@ -14,6 +14,16 @@ export interface User {
   updatedAt: Timestamp;
 }
 
+export interface UserResponse {
+  uid: string;
+  name: string;
+  email?: string;
+  phoneNumber?: string;
+  photoURL?: string;
+  provider: AuthProvider;
+  isActive: boolean;
+}
+
 export interface RegisterInput {
   name: string;
   email: string;
@@ -27,16 +37,6 @@ export interface LoginInput {
 
 export interface OAuthTokenInput {
   idToken: string;
-}
-
-export interface UserResponse {
-  uid: string;
-  name: string;
-  email?: string;
-  phoneNumber?: string;
-  photoURL?: string;
-  provider: AuthProvider;
-  isActive: boolean;
 }
 
 export interface RegisterResult {

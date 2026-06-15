@@ -5,8 +5,8 @@ node_modules/
 dist/
 
 # Environment & secrets
-# .env
-# firebase-service-account.json
+.env
+firebase-service-account.json
 
 # Logs
 logs/

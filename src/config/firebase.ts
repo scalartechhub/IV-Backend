@@ -1,10 +1,26 @@
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import { initializeApp, cert, ServiceAccount } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 
-const serviceAccount = require("../../firebase-service-account.json") as ServiceAccount;
+const serviceAccountPath =
+  process.env.GOOGLE_APPLICATION_CREDENTIALS ??
+  resolve(__dirname, "../../firebase-service-account.json");
 
-const adminApp = initializeApp({ credential: cert(serviceAccount) });
+const serviceAccount = JSON.parse(
+  readFileSync(serviceAccountPath, "utf-8")
+) as ServiceAccount & { project_id: string };
+
+const storageBucket = process.env.FIREBASE_STORAGE_BUCKET;
+
+const adminApp = initializeApp({
+  credential: cert(serviceAccount),
+  projectId: serviceAccount.project_id,
+  ...(storageBucket && { storageBucket }),
+});
+
+export const isStorageConfigured = (): boolean => Boolean(storageBucket);
 
 export const db = getFirestore(adminApp);
 export const auth = getAuth(adminApp);
