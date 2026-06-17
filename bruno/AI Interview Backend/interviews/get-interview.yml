@@ -10,11 +10,15 @@ http:
     type: bearer
     token: "{{token}}"
 
+runtime:
+  variables:
+    - name: interviewId
+      value: NrAXkcPxbvcY0fHR539a
+
 settings:
   encodeUrl: true
   timeout: 0
   followRedirects: true
   maxRedirects: 5
 
-docs: |-
-  Get interview details by ID. Uses `interviewId` from environment.
+docs: Get interview details by ID. Uses `interviewId` from environment.

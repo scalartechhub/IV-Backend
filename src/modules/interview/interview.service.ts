@@ -50,10 +50,17 @@ export const uploadResume = async (
   await repo.updateInterview(interviewId, { status: InterviewStatus.PROCESSING });
 
   try {
-    const [resumeURL, resumeAnalysis] = await Promise.all([
-      uploadFile(interviewId, "resume", fileBuffer),
-      parseResume(fileBuffer),
-    ]);
+    const resumeAnalysis = await parseResume(fileBuffer);
+
+    let resumeURL: string | undefined;
+    try {
+      resumeURL = await uploadFile(interviewId, "resume", fileBuffer);
+    } catch (storageError) {
+      logger.warn(
+        `[interview.service] resume storage upload failed interviewId=${interviewId}`,
+        storageError
+      );
+    }
 
     const status = interview.jdAnalysis ? InterviewStatus.READY : InterviewStatus.DRAFT;
 
@@ -80,10 +87,17 @@ export const uploadJD = async (
   await repo.updateInterview(interviewId, { status: InterviewStatus.PROCESSING });
 
   try {
-    const [jdURL, jdAnalysis] = await Promise.all([
-      uploadFile(interviewId, "jd", fileBuffer),
-      parseJD(fileBuffer),
-    ]);
+    const jdAnalysis = await parseJD(fileBuffer);
+
+    let jdURL: string | undefined;
+    try {
+      jdURL = await uploadFile(interviewId, "jd", fileBuffer);
+    } catch (storageError) {
+      logger.warn(
+        `[interview.service] JD storage upload failed interviewId=${interviewId}`,
+        storageError
+      );
+    }
 
     const status = interview.resumeAnalysis ? InterviewStatus.READY : InterviewStatus.DRAFT;
 

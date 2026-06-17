@@ -1,6 +1,6 @@
 {
-  "watch": ["src", ".env"],
-  "ext": "ts,env",
-  "exec": "ts-node src/server.ts",
-  "stdin": false
+  "watch": ["src"],
+  "ext": "ts",
+  "exec": "node -r ts-node/register src/server.ts",
+  "delay": 500
 }

@@ -16,7 +16,6 @@ const server = app.listen(PORT, () => {
 
 process.on("unhandledRejection", (reason) => {
   logger.error("Unhandled Promise Rejection:", reason);
-  server.close(() => process.exit(1));
 });
 
 process.on("SIGTERM", () => {
