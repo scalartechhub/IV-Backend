@@ -1,0 +1,18 @@
+info:
+  name: Interview details
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: http://localhost:5000/api/interviews
+  headers:
+    - name: Authorization
+      value: Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6ImVlOTA0NmVhZDJlMDUwMDAxMGVkNTA0M2I0ODNkODRiMGM1MmM3YzQiLCJ0eXAiOiJKV1QifQ.eyJuYW1lIjoiU2h1YmhhbSBDaGF1ZGhhcmkiLCJpc3MiOiJodHRwczovL3NlY3VyZXRva2VuLmdvb2dsZS5jb20vaW50ZXJ2aWV3LTg5ZTA5IiwiYXVkIjoiaW50ZXJ2aWV3LTg5ZTA5IiwiYXV0aF90aW1lIjoxNzgxNjczMDc3LCJ1c2VyX2lkIjoiZUlyR1VIR2psUmVoNWRzbXlnaTJYOGczeXgyMyIsInN1YiI6ImVJckdVSEdqbFJlaDVkc215Z2kyWDhnM3l4MjMiLCJpYXQiOjE3ODE2NzMwNzcsImV4cCI6MTc4MTY3NjY3NywiZW1haWwiOiJ0ZXN0QGdtYWlsLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwiZmlyZWJhc2UiOnsiaWRlbnRpdGllcyI6eyJlbWFpbCI6WyJ0ZXN0QGdtYWlsLmNvbSJdfSwic2lnbl9pbl9wcm92aWRlciI6InBhc3N3b3JkIn19.Md1CcxhE6NaL0aVqeeUDBeZIsaYZNtdTE1FIHj22YZ8PnSvFOwiFOxifecP43SzoYX0APA6ez17aGwV3ruEAh51u05uYsTuXDol9mRXkmAUcZntQQ8zjEMC27FyJBPypImRVByHsxiLuXzlMivMMPghRmP5on7hOxM-po_WYmMedA3nElK_dKZrHOPL6VRIwZaC7oP-T0h-Klgyb0urSU8_NqulOBcQa5UaMPM-V9C0pbT12NeNwkMhd6myYsqVX_Sv6KMAs3ytZwO8Nuo8kVhowqq4pU_Zwipqmd9gtRGXTpwq2r174mYhX-RPYkNcfKKTRpAcUhEi-eydQcxqpxg
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
