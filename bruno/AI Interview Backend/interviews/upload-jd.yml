@@ -11,10 +11,16 @@ http:
     data:
       - name: file
         type: file
-        value: D:/tushar/IV-Backend/test-fixtures/demo-jd.pdf
+        value:
+          - C:\Users\ASUS\Downloads\job-description-React-JS-min-compressed.pdf
   auth:
     type: bearer
     token: "{{token}}"
+
+runtime:
+  variables:
+    - name: interviewId
+      value: NrAXkcPxbvcY0fHR539a
 
 settings:
   encodeUrl: true

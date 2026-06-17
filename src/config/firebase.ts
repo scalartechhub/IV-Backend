@@ -12,7 +12,8 @@ const serviceAccount = JSON.parse(
   readFileSync(serviceAccountPath, "utf-8")
 ) as ServiceAccount & { project_id: string };
 
-const storageBucket = process.env.FIREBASE_STORAGE_BUCKET;
+const rawBucket = process.env.FIREBASE_STORAGE_BUCKET;
+const storageBucket = rawBucket?.replace(/^gs:\/\//, "");
 
 const adminApp = initializeApp({
   credential: cert(serviceAccount),
