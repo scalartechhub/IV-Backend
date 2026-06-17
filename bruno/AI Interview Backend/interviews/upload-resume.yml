@@ -1,0 +1,27 @@
+info:
+  name: Upload Resume
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{baseUrl}}/interviews/{{interviewId}}/resume"
+  body:
+    type: multipart-form
+    data:
+      - name: file
+        type: file
+        value: D:/tushar/IV-Backend/test-fixtures/demo-resume.pdf
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Upload resume PDF (multipart field: `file`).
+  Update the file path or pick a PDF in Bruno before sending.

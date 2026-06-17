@@ -1,0 +1,27 @@
+info:
+  name: Upload Job Description
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: "{{baseUrl}}/interviews/{{interviewId}}/jd"
+  body:
+    type: multipart-form
+    data:
+      - name: file
+        type: file
+        value: D:/tushar/IV-Backend/test-fixtures/demo-jd.pdf
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Upload job description PDF (multipart field: `file`).
+  Update the file path or pick a PDF in Bruno before sending.

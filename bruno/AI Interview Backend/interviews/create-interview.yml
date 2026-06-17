@@ -1,0 +1,41 @@
+info:
+  name: Create Interview
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/interviews/create"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "role": "Frontend Developer",
+        "experience": "2 years",
+        "type": "technical"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body?.data?.id) {
+          bru.setEnvVar("interviewId", body.data.id);
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Create a new interview. Type: technical | behavioral | mixed.
+  Auto-saves `interviewId` to environment.

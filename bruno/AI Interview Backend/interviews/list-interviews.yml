@@ -1,0 +1,29 @@
+info:
+  name: List Interviews
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{baseUrl}}/interviews"
+  params:
+    - name: page
+      value: "1"
+      type: query
+    - name: limit
+      value: "10"
+      type: query
+    - name: status
+      value: draft
+      type: query
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: "List interviews with pagination. Optional status: draft | processing | ready | in_progress | completed | failed."

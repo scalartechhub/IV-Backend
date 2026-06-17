@@ -1,0 +1,27 @@
+info:
+  name: Login with Phone
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: "{{baseUrl}}/auth/phone"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "idToken": "YOUR_FIREBASE_PHONE_ID_TOKEN"
+      }
+  auth: none
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Login with phone OAuth. Replace idToken with Firebase client idToken.
