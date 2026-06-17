@@ -1,0 +1,27 @@
+info:
+  name: Login with Google
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{baseUrl}}/auth/google"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "idToken": "YOUR_FIREBASE_GOOGLE_ID_TOKEN"
+      }
+  auth: none
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Login with Google OAuth. Replace idToken with Firebase client idToken.

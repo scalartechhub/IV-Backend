@@ -1,0 +1,21 @@
+info:
+  name: Finish Interview
+  type: http
+  seq: 9
+
+http:
+  method: POST
+  url: "{{baseUrl}}/interviews/{{interviewId}}/finish"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 120000
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Finish the interview and trigger final evaluation/report generation.
+  May take 30–60 seconds (Gemini AI).

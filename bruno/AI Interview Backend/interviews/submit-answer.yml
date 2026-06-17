@@ -1,0 +1,31 @@
+info:
+  name: Submit Answer
+  type: http
+  seq: 8
+
+http:
+  method: POST
+  url: "{{baseUrl}}/interviews/{{interviewId}}/answer"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "questionId": "{{questionId}}",
+        "answer": "React is a JavaScript library for building UIs using components and hooks."
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 120000
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Submit an answer for a question. Uses `questionId` from environment.
+  Repeat for each question before finishing.

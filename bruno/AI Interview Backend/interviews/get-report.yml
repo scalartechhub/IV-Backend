@@ -1,0 +1,20 @@
+info:
+  name: Get Report
+  type: http
+  seq: 10
+
+http:
+  method: GET
+  url: "{{baseUrl}}/interviews/{{interviewId}}/report"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Get the interview evaluation report. Call after finishing the interview.

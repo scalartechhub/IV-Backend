@@ -1,0 +1,21 @@
+info:
+  name: Generate Questions
+  type: http
+  seq: 6
+
+http:
+  method: POST
+  url: "{{baseUrl}}/interviews/{{interviewId}}/generate-questions"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 120000
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Generate interview questions from resume and JD. Requires both uploads first.
+  May take 30–60 seconds (Gemini AI).

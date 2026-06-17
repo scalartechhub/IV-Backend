@@ -1,0 +1,27 @@
+info:
+  name: Login with GitHub
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{baseUrl}}/auth/github"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "idToken": "YOUR_FIREBASE_GITHUB_ID_TOKEN"
+      }
+  auth: none
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Login with GitHub OAuth. Replace idToken with Firebase client idToken.
