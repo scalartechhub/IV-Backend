@@ -1,4 +1,5 @@
-import { getStorage } from "firebase-admin/storage";
+import { randomUUID } from "crypto";
+import { getStorage, getDownloadURL } from "firebase-admin/storage";
 import { isStorageConfigured } from "../../config/firebase";
 import { STORAGE_PATHS } from "../../shared/constants";
 import { AppError } from "../../shared/utils";
@@ -23,20 +24,25 @@ export const uploadFile = async (
   const bucket = getStorage().bucket();
   const filePath = getFilePath(interviewId, type);
   const file = bucket.file(filePath);
+  const downloadToken = randomUUID();
 
   logger.info(`[storage] uploading ${type} for interview ${interviewId}`);
 
   try {
     await file.save(buffer, {
       contentType,
-      public: true,
+      gzip: false,
       metadata: {
         cacheControl: "public, max-age=31536000",
-        metadata: { interviewId, fileType: type },
+        metadata: {
+          interviewId,
+          fileType: type,
+          firebaseStorageDownloadTokens: downloadToken,
+        },
       },
     });
 
-    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+    const publicUrl = await getDownloadURL(file);
     logger.info(`[storage] upload success: ${publicUrl}`);
     return publicUrl;
   } catch (error) {
