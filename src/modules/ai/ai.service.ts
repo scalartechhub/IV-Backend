@@ -9,19 +9,28 @@ const BASE_RETRY_MS = 2000;
 const RETRYABLE_PATTERN =
   /503|429|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded|temporarily unavailable/i;
 
+const BILLING_QUOTA_PATTERN =
+  /prepayment credits|billing|quota exceeded|insufficient quota|payment required/i;
+
 const trimPrompt = (prompt: string): string =>
   prompt.length > MAX_PROMPT_CHARS ? prompt.slice(0, MAX_PROMPT_CHARS) : prompt;
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
+const errorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+const isBillingQuotaError = (error: unknown): boolean =>
+  BILLING_QUOTA_PATTERN.test(errorMessage(error));
+
 const isRetryableError = (error: unknown): boolean => {
-  const message = error instanceof Error ? error.message : String(error);
-  return RETRYABLE_PATTERN.test(message);
+  if (isBillingQuotaError(error)) return false;
+  return RETRYABLE_PATTERN.test(errorMessage(error));
 };
 
 const isHighDemandError = (error: unknown): boolean => {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorMessage(error);
   return /503|UNAVAILABLE|high demand/i.test(message);
 };
 
@@ -55,6 +64,13 @@ export class AIService {
         } catch (error) {
           lastError = error;
           if (error instanceof AppError) throw error;
+
+          if (isBillingQuotaError(error)) {
+            throw new AppError(
+              402,
+              "Gemini API credits are depleted. Add billing or top up credits in Google AI Studio: https://ai.studio/projects"
+            );
+          }
 
           const retryable = isRetryableError(error);
           logger.warn(

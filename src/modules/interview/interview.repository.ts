@@ -176,6 +176,20 @@ export const getAnswersByInterview = async (interviewId: string): Promise<Answer
   return snap.docs.map((d) => d.data() as Answer);
 };
 
+export const hasAnswerForQuestion = async (
+  interviewId: string,
+  questionId: string
+): Promise<boolean> => {
+  const snap = await db
+    .collection(COLLECTIONS.ANSWERS)
+    .where("interviewId", "==", interviewId)
+    .where("questionId", "==", questionId)
+    .limit(1)
+    .get();
+
+  return !snap.empty;
+};
+
 export const saveEvaluation = async (
   interviewId: string,
   questionId: string,

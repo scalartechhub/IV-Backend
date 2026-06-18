@@ -49,6 +49,8 @@ export interface Interview {
   jdAnalysis?: JDAnalysis;
   totalQuestions: number;
   answeredQuestions: number;
+  /** Aggregate score out of 100 (10 per question; 0 if not attempted). */
+  overallPerformance?: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
