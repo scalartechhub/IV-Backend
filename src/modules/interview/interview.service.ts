@@ -18,6 +18,7 @@ import type {
   SubmitAnswerResult,
 } from "./interview.types";
 import { InterviewStatus } from "./interview.types";
+import { calculateInterviewOverallPerformance } from "./interview.scoring";
 
 export const createInterview = async (
   userId: string,
@@ -187,6 +188,11 @@ export const submitAnswer = async (
     `[interview.service] submitting answer interviewId=${interviewId} questionId=${input.questionId}`
   );
 
+  const isFirstAnswer = !(await repo.hasAnswerForQuestion(
+    interviewId,
+    input.questionId
+  ));
+
   const answer = await repo.saveAnswer(interviewId, input.questionId, userId, input.answer);
 
   const rawEvaluation = await evaluateAnswer({
@@ -205,8 +211,20 @@ export const submitAnswer = async (
     rawEvaluation
   );
 
+  const [questions, evaluations] = await Promise.all([
+    repo.getQuestionsByInterview(interviewId),
+    repo.getEvaluationsByInterview(interviewId),
+  ]);
+  const overallPerformance = calculateInterviewOverallPerformance(
+    questions,
+    evaluations
+  );
+
   await repo.updateInterview(interviewId, {
-    answeredQuestions: interview.answeredQuestions + 1,
+    ...(isFirstAnswer && {
+      answeredQuestions: interview.answeredQuestions + 1,
+    }),
+    overallPerformance,
     status: InterviewStatus.IN_PROGRESS,
   });
 
@@ -243,6 +261,11 @@ export const finishInterview = async (
     throw new AppError(400, "No answers submitted yet. Answer at least one question before finishing.");
   }
 
+  const overallPerformance = calculateInterviewOverallPerformance(
+    questions,
+    evaluations
+  );
+
   const rawReport = await generateReport({
     role: interview.role,
     experience: interview.experience,
@@ -253,9 +276,13 @@ export const finishInterview = async (
 
   const report = await repo.saveReport(interviewId, userId, rawReport);
 
-  await repo.updateInterview(interviewId, { status: InterviewStatus.COMPLETED });
+  await repo.updateInterview(interviewId, {
+    status: InterviewStatus.COMPLETED,
+    overallPerformance,
+  });
 
   logger.info(`[interview.service] interview completed interviewId=${interviewId}`, {
+    overallPerformance,
     overallScore: report.overallScore,
   });
 

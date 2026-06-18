@@ -6,7 +6,6 @@ export const GEMINI_MODEL = "gemini-2.5-flash";
 export const GEMINI_FALLBACK_MODELS = [
   "gemini-2.5-flash",
   "gemini-2.0-flash",
-  "gemini-1.5-flash",
 ] as const;
 
 let _genai: GoogleGenAI | null = null;
