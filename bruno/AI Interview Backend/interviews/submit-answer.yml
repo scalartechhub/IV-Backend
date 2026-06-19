@@ -15,8 +15,12 @@ http:
       {
         "answers": [
           {
-            "questionId": "{{questionId}}",
-            "answer": "undefined means a variable is declared but has not been assigned a value yet. null is an intentionally assigned empty value."
+            "questionId": "{{questionId1}}",
+            "answer": "React is a JavaScript library for building UIs using components and hooks."
+          },
+          {
+            "questionId": "{{questionId2}}",
+            "answer": "useState lets you add local state to functional components."
           }
         ]
       }
@@ -31,19 +35,6 @@ settings:
   maxRedirects: 5
 
 docs: |-
-  Submit interview answers in one batch request (1–10 items).
-
-  **Before sending:**
-  1. Run **Generate Questions** or **Get Questions**
-  2. Copy `id` values from `data.questions[]` into each `questionId`
-     (first ID is auto-saved as `{{questionId}}`; full list in `questionIds` env var)
-
-  Response fields:
-  - `results[]` — per-question `score`, `feedback`, `answeredAt`
-  - `overallScore` — aggregate out of 100
-  - `answeredCount`
-
-  Unanswered questions score 0 in `overallScore`.
-
-  **Tip:** Duplicate the answer object in the body for each question,
-  replacing `questionId` with IDs from the questions response.
+  Submit all interview answers in one request.
+  All answers are evaluated in a single Gemini API call.
+  Include every attempted question in the `answers` array (1–10 items).

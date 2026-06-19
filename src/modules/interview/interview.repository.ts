@@ -8,26 +8,9 @@ import type {
   Interview,
   InterviewQuestion,
   InterviewReport,
-  InterviewSummary,
-  ListInterviewsQuery,
-  PaginatedResult,
   RawQuestion,
 } from "./interview.types";
 import { InterviewStatus, QuestionDifficulty } from "./interview.types";
-
-const toInterviewSummary = (interview: Interview): InterviewSummary => ({
-  id: interview.id,
-  userId: interview.userId,
-  technology: interview.technology,
-  experienceLevel: interview.experienceLevel,
-  interviewType: interview.interviewType,
-  status: interview.status,
-  overallScore: interview.overallScore,
-  questionCount: interview.questionCount,
-  answeredCount: interview.questions.filter((q) => Boolean(q.answer)).length,
-  createdAt: interview.createdAt,
-  completedAt: interview.completedAt,
-});
 
 export const createInterview = async (
   userId: string,
@@ -86,41 +69,6 @@ export const updateInterview = async (
   const ref = db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId);
   await ref.update({ ...fields, updatedAt: FieldValue.serverTimestamp() });
   return (await ref.get()).data() as Interview;
-};
-
-export const listInterviewsByUser = async (
-  userId: string,
-  params: ListInterviewsQuery
-): Promise<PaginatedResult<InterviewSummary>> => {
-  const { page, limit, status } = params;
-  const offset = (page - 1) * limit;
-
-  let query = db
-    .collection(COLLECTIONS.INTERVIEWS)
-    .where("userId", "==", userId)
-    .where("isDeleted", "==", false) as FirebaseFirestore.Query;
-
-  if (status) {
-    query = query.where("status", "==", status);
-  }
-
-  query = query.orderBy("createdAt", "desc");
-
-  const [countSnap, pageSnap] = await Promise.all([
-    query.count().get(),
-    query.offset(offset).limit(limit).get(),
-  ]);
-
-  const total = countSnap.data().count;
-  const data = pageSnap.docs.map((d) => toInterviewSummary(d.data() as Interview));
-
-  return {
-    data,
-    total,
-    page,
-    limit,
-    totalPages: total > 0 ? Math.ceil(total / limit) : 0,
-  };
 };
 
 export const setInterviewQuestions = async (

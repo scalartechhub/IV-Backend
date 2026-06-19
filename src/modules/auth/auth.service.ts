@@ -69,10 +69,6 @@ export const login = async (input: {
   return { user, idToken };
 };
 
-export const getCurrentUser = async (uid: string): Promise<User> => {
-  return userRepo.requireUserById(uid);
-};
-
 export const logout = async (uid: string): Promise<void> => {
   await auth.revokeRefreshTokens(uid);
   logger.info(`[auth.service] logout uid=${uid}`);

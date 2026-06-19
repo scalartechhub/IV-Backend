@@ -15,9 +15,6 @@ import type {
   Interview,
   InterviewQuestion,
   InterviewReport,
-  InterviewSummary,
-  ListInterviewsQuery,
-  PaginatedResult,
   SubmitAnswersInput,
   SubmitAnswersResult,
 } from "./interview.types";
@@ -40,18 +37,6 @@ export const createInterview = async (
   await userStatsService.onInterviewCreated(userId);
 
   return interview;
-};
-
-export const listInterviews = async (
-  userId: string,
-  query: ListInterviewsQuery
-): Promise<PaginatedResult<InterviewSummary>> => {
-  return repo.listInterviewsByUser(userId, query);
-};
-
-/** Single Firestore read — returns full embedded interview document. */
-export const getInterview = async (userId: string, interviewId: string): Promise<Interview> => {
-  return repo.requireOwnedInterview(interviewId, userId);
 };
 
 export const uploadResume = async (
@@ -155,14 +140,6 @@ export const generateInterviewQuestions = async (
   return questions;
 };
 
-export const getQuestions = async (
-  userId: string,
-  interviewId: string
-): Promise<InterviewQuestion[]> => {
-  const interview = await repo.requireOwnedInterview(interviewId, userId);
-  return interview.questions;
-};
-
 export const submitAnswers = async (
   userId: string,
   interviewId: string,
@@ -199,7 +176,7 @@ export const submitAnswers = async (
       question: question.question,
       answer: item.answer,
       difficulty: question.difficulty,
-      category: "General",
+      category: interview.technology,
     };
   });
 
@@ -311,17 +288,4 @@ export const finishInterview = async (
     await repo.releaseReportGeneration(interviewId);
     throw error;
   }
-};
-
-export const getReport = async (
-  userId: string,
-  interviewId: string
-): Promise<InterviewReport> => {
-  const interview = await repo.requireOwnedInterview(interviewId, userId);
-
-  if (!interview.report) {
-    throw new AppError(404, "Report not found. Please finish the interview first.");
-  }
-
-  return interview.report;
 };

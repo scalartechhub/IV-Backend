@@ -30,11 +30,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   sendSuccess(res, { ...toUserResponse(user), idToken }, "Login successful");
 };
 
-export const getCurrentUser = async (req: Request, res: Response): Promise<void> => {
-  const user = await authService.getCurrentUser(req.user!.uid);
-  sendSuccess(res, toUserResponse(user));
-};
-
 export const logout = async (req: Request, res: Response): Promise<void> => {
   await authService.logout(req.user!.uid);
   sendSuccess(res, null, "Successfully logged out");

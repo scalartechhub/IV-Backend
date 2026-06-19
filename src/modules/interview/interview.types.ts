@@ -109,35 +109,6 @@ export interface SubmitAnswersResult {
   answeredCount: number;
 }
 
-export interface ListInterviewsQuery {
-  page: number;
-  limit: number;
-  status?: InterviewStatus;
-}
-
-export interface PaginatedResult<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
-
-/** Slim list item for dashboard — no embedded Q&A payload */
-export interface InterviewSummary {
-  id: string;
-  userId: string;
-  technology: string;
-  experienceLevel: string;
-  interviewType: InterviewType;
-  status: InterviewStatus;
-  overallScore?: number;
-  questionCount: number;
-  answeredCount: number;
-  createdAt: Timestamp;
-  completedAt?: Timestamp;
-}
-
 // ─── AI Raw Outputs ───────────────────────────────────────────────────────────
 
 export interface RawQuestion {

@@ -72,7 +72,7 @@ export class AIService {
               config: {
                 responseMimeType: "application/json",
                 temperature: 0.3,
-                maxOutputTokens: 4096,
+                maxOutputTokens,
               },
             }),
             GEMINI_REQUEST_TIMEOUT_MS
