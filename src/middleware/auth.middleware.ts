@@ -1,12 +1,13 @@
 import { Request, Response, NextFunction } from "express";
 import { auth } from "../config/firebase";
+import { AppError } from "../shared/utils";
 import { logger } from "../shared/logger";
 
-const verifyToken = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+const verifyToken = async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
   const token = req.headers.authorization?.split(" ")[1];
 
   if (!token) {
-    res.status(401).json({ success: false, message: "Authorization token missing" });
+    next(new AppError(401, "Authorization token missing"));
     return;
   }
 
@@ -16,7 +17,7 @@ const verifyToken = async (req: Request, res: Response, next: NextFunction): Pro
     next();
   } catch {
     logger.warn("[auth.middleware] invalid or expired token");
-    res.status(401).json({ success: false, message: "Invalid or expired token" });
+    next(new AppError(401, "Invalid or expired token"));
   }
 };
 

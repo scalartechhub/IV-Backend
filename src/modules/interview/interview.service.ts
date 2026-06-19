@@ -5,7 +5,7 @@ import { generateQuestions } from "../ai/question-generator.service";
 import { evaluateAnswersBatch } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
 import { uploadFile } from "../storage/storage.service";
-import { getUserProfile } from "../auth/auth.service";
+import { getUserProfile } from "../auth/auth.repository";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
 import type {
@@ -144,10 +144,13 @@ export const generateInterviewQuestions = async (
     interviewType: interview.type,
   });
 
+  await repo.deleteQuestionsByInterview(interviewId);
+
   const questions = await repo.saveQuestions(interviewId, userId, rawQuestions);
 
   await repo.updateInterview(interviewId, {
     totalQuestions: questions.length,
+    answeredQuestions: 0,
     status: InterviewStatus.READY,
   });
 
@@ -273,11 +276,6 @@ export const finishInterview = async (
 ): Promise<Report> => {
   const interview = await repo.requireOwnedInterview(interviewId, userId);
 
-  if (interview.status === InterviewStatus.COMPLETED) {
-    const existing = await repo.getReportByInterview(interviewId);
-    if (existing) return existing;
-  }
-
   if (
     interview.status === InterviewStatus.DRAFT ||
     interview.status === InterviewStatus.FAILED
@@ -285,44 +283,54 @@ export const finishInterview = async (
     throw new AppError(400, "Interview has no answers to generate a report from.");
   }
 
-  logger.info(`[interview.service] finishing interview interviewId=${interviewId}`);
-
-  const [questions, answers, evaluations] = await Promise.all([
-    repo.getQuestionsByInterview(interviewId),
-    repo.getAnswersByInterview(interviewId),
-    repo.getEvaluationsByInterview(interviewId),
-  ]);
-
-  if (answers.length === 0) {
-    throw new AppError(400, "No answers submitted yet. Answer at least one question before finishing.");
+  const claim = await repo.claimReportGeneration(interviewId, userId);
+  if (claim !== "proceed") {
+    return claim;
   }
 
-  const overallPerformance = calculateInterviewOverallPerformance(
-    questions,
-    evaluations
-  );
+  logger.info(`[interview.service] finishing interview interviewId=${interviewId}`);
 
-  const rawReport = await generateReport({
-    role: interview.role,
-    experience: interview.experience,
-    questions,
-    answers,
-    evaluations,
-  });
+  try {
+    const [questions, answers, evaluations] = await Promise.all([
+      repo.getQuestionsByInterview(interviewId),
+      repo.getAnswersByInterview(interviewId),
+      repo.getEvaluationsByInterview(interviewId),
+    ]);
 
-  const report = await repo.saveReport(interviewId, userId, rawReport);
+    if (answers.length === 0) {
+      throw new AppError(
+        400,
+        "No answers submitted yet. Answer at least one question before finishing."
+      );
+    }
 
-  await repo.updateInterview(interviewId, {
-    status: InterviewStatus.COMPLETED,
-    overallPerformance,
-  });
+    const overallPerformance = calculateInterviewOverallPerformance(questions, evaluations);
 
-  logger.info(`[interview.service] interview completed interviewId=${interviewId}`, {
-    overallPerformance,
-    overallScore: report.overallScore,
-  });
+    const rawReport = await generateReport({
+      role: interview.role,
+      experience: interview.experience,
+      questions,
+      answers,
+      evaluations,
+    });
 
-  return report;
+    const report = await repo.completeReport(
+      interviewId,
+      userId,
+      rawReport,
+      overallPerformance
+    );
+
+    logger.info(`[interview.service] interview completed interviewId=${interviewId}`, {
+      overallPerformance,
+      overallScore: report.overallScore,
+    });
+
+    return report;
+  } catch (error) {
+    await repo.releaseReportGeneration(interviewId);
+    throw error;
+  }
 };
 
 export const getReport = async (userId: string, interviewId: string): Promise<Report> => {

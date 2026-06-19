@@ -61,6 +61,11 @@ http:
     type: bearer
     token: "{{token}}"
 
+runtime:
+  variables:
+    - name: questionId
+      value: 9FGLL4S8KiygNguqCjrC
+
 settings:
   encodeUrl: true
   timeout: 300000

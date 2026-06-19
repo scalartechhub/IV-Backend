@@ -1,11 +1,14 @@
-const isDev = process.env.NODE_ENV !== "production";
+import { appConfig } from "../../config/app.config";
+import { maskSensitiveText, maskSensitiveValue } from "../security/mask-secrets";
 
 type LogLevel = "INFO" | "WARN" | "ERROR" | "DEBUG";
 
 const format = (level: LogLevel, message: string, meta?: unknown): string => {
   const ts = new Date().toISOString();
-  const metaPart = meta !== undefined ? ` ${JSON.stringify(meta)}` : "";
-  return `[${ts}] [${level}] ${message}${metaPart}`;
+  const safeMessage = maskSensitiveText(message);
+  const metaPart =
+    meta !== undefined ? ` ${JSON.stringify(maskSensitiveValue(meta))}` : "";
+  return `[${ts}] [${level}] ${safeMessage}${metaPart}`;
 };
 
 export const logger = {
@@ -19,6 +22,8 @@ export const logger = {
     console.error(format("ERROR", message, meta));
   },
   debug: (message: string, meta?: unknown): void => {
-    if (isDev) console.log(format("DEBUG", message, meta));
+    if (appConfig.isDevelopment) {
+      console.log(format("DEBUG", message, meta));
+    }
   },
 };

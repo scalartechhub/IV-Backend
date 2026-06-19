@@ -1,27 +1,35 @@
-import { readFileSync } from "fs";
-import { resolve } from "path";
-import { initializeApp, cert, ServiceAccount } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
-import { getAuth } from "firebase-admin/auth";
+import { initializeApp, cert, App } from "firebase-admin/app";
+import { getFirestore, Firestore } from "firebase-admin/firestore";
+import { getAuth, Auth } from "firebase-admin/auth";
+import { appConfig } from "./app.config";
+import { secretService } from "./secrets";
 
-const serviceAccountPath =
-  process.env.GOOGLE_APPLICATION_CREDENTIALS ??
-  resolve(__dirname, "../../firebase-service-account.json");
+export let db: Firestore;
+export let auth: Auth;
 
-const serviceAccount = JSON.parse(
-  readFileSync(serviceAccountPath, "utf-8")
-) as ServiceAccount & { project_id: string };
+let _storageBucket: string | undefined;
+let _initialized = false;
 
-const rawBucket = process.env.FIREBASE_STORAGE_BUCKET;
-const storageBucket = rawBucket?.replace(/^gs:\/\//, "");
+export const initializeFirebase = (): void => {
+  if (_initialized) return;
 
-const adminApp = initializeApp({
-  credential: cert(serviceAccount),
-  projectId: serviceAccount.project_id,
-  ...(storageBucket && { storageBucket }),
-});
+  const credentials = secretService.getFirebaseCredentials();
+  const rawBucket = appConfig.firebaseStorageBucket;
+  _storageBucket = rawBucket?.replace(/^gs:\/\//, "");
 
-export const isStorageConfigured = (): boolean => Boolean(storageBucket);
+  const adminApp: App = initializeApp({
+    credential: cert({
+      projectId: credentials.projectId,
+      clientEmail: credentials.clientEmail,
+      privateKey: credentials.privateKey,
+    }),
+    projectId: credentials.projectId,
+    ...(_storageBucket && { storageBucket: _storageBucket }),
+  });
 
-export const db = getFirestore(adminApp);
-export const auth = getAuth(adminApp);
+  db = getFirestore(adminApp);
+  auth = getAuth(adminApp);
+  _initialized = true;
+};
+
+export const isStorageConfigured = (): boolean => Boolean(_storageBucket);
