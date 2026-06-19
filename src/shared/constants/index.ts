@@ -9,6 +9,8 @@ export const LEGACY_COLLECTIONS = {
   ANSWERS: "answers",
   EVALUATIONS: "evaluations",
   REPORTS: "reports",
+  CHAT_CONVERSATIONS: "chatConversations",
+  CHAT_MESSAGES: "messages",
 } as const;
 
 export const STORAGE_PATHS = {
