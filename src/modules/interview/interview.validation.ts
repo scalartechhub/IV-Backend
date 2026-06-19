@@ -1,6 +1,15 @@
 import { z } from "zod";
 import { InterviewType, InterviewStatus } from "./interview.types";
-import { PAGINATION } from "../../shared/constants";
+import { PAGINATION, QUESTION_DISTRIBUTION } from "../../shared/constants";
+
+const answerItemSchema = z.object({
+  questionId: z.string().min(1, "questionId is required"),
+  answer: z
+    .string()
+    .min(1, "Answer cannot be empty")
+    .max(5000, "Answer is too long (max 5000 characters)")
+    .trim(),
+});
 
 export const createInterviewSchema = z.object({
   role: z
@@ -19,12 +28,17 @@ export const createInterviewSchema = z.object({
 });
 
 export const submitAnswerSchema = z.object({
-  questionId: z.string().min(1, "questionId is required"),
-  answer: z
-    .string()
-    .min(1, "Answer cannot be empty")
-    .max(5000, "Answer is too long (max 5000 characters)")
-    .trim(),
+  answers: z
+    .array(answerItemSchema)
+    .min(1, "At least one answer is required")
+    .max(
+      QUESTION_DISTRIBUTION.TOTAL,
+      `Cannot submit more than ${QUESTION_DISTRIBUTION.TOTAL} answers at once`
+    )
+    .refine(
+      (answers) => new Set(answers.map((a) => a.questionId)).size === answers.length,
+      { message: "Each questionId must appear only once in answers" }
+    ),
 });
 
 export const listInterviewsQuerySchema = z.object({

@@ -35,7 +35,7 @@ const isHighDemandError = (error: unknown): boolean => {
 };
 
 export class AIService {
-  async generateJSON<T>(prompt: string): Promise<T> {
+  async generateJSON<T>(prompt: string, maxOutputTokens = 4096): Promise<T> {
     const trimmedPrompt = trimPrompt(prompt);
     let lastError: unknown;
 
@@ -49,7 +49,7 @@ export class AIService {
             config: {
               responseMimeType: "application/json",
               temperature: 0.3,
-              maxOutputTokens: 4096,
+              maxOutputTokens,
             },
           });
 

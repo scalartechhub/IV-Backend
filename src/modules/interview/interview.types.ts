@@ -108,14 +108,24 @@ export interface CreateInterviewInput {
   type: InterviewType;
 }
 
-export interface SubmitAnswerInput {
+export interface SubmitAnswerItem {
   questionId: string;
   answer: string;
+}
+
+export interface SubmitAnswersInput {
+  answers: SubmitAnswerItem[];
 }
 
 export interface SubmitAnswerResult {
   answer: Answer;
   evaluation: Evaluation;
+}
+
+export interface SubmitAnswersResult {
+  results: SubmitAnswerResult[];
+  overallPerformance: number;
+  answeredQuestions: number;
 }
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
@@ -148,6 +158,10 @@ export interface RawEvaluation {
   completeness: number;
   confidence: number;
   feedback: string;
+}
+
+export interface RawBatchEvaluation extends RawEvaluation {
+  questionId: string;
 }
 
 export interface RawReport {

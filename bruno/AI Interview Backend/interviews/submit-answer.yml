@@ -1,5 +1,5 @@
 info:
-  name: Submit Answer
+  name: Submit Answers
   type: http
   seq: 8
 
@@ -13,8 +13,49 @@ http:
     type: json
     data: |-
       {
-        "questionId": "{{questionId}}",
-        "answer": "React is a JavaScript library for building UIs using components and hooks."
+        "answers": [
+          {
+            "questionId": "89XIa9IZNiHVeuBQ2s5f",
+            "answer": "undefined means a variable is declared but has not been assigned a value yet. JavaScript sets it automatically.null means an empty value that is intentionally assigned by the developer.We usually get undefined when accessing missing variables/properties, and null when we intentionally want to represent no value."
+          },
+          {
+            "questionId": "4fM5VQIKO4zv2SJckpM2",
+            "answer": "The **CSS Box Model** defines how an HTML element is structured using **content, padding, border, and margin**. By default, CSS uses `box-sizing: content-box`, where the given width and height apply only to the content, and padding and border increase the total size of the element. When we use `box-sizing: border-box`, the padding and border are included inside the specified width and height, so the total size remains fixed, which makes layout design easier and more predictable."
+          },
+          {
+            "questionId": "SMuaKNhHJDyiitWpT6rn",
+            "answer": "**Event delegation** in JavaScript is a technique where instead of adding event listeners to multiple child elements, we attach a single event listener to the parent element and use **event bubbling** to detect which child triggered the event. It is considered a good practice because it improves performance by reducing the number of event listeners, uses less memory, and works well for dynamically added elements that are created after the page has loaded."
+          },
+          {
+            "questionId": "wXfMiqXLgF0oMMQ6gPyw",
+            "answer": "Callbacks are functions passed as arguments that execute after an asynchronous task is completed, while Promises are objects that represent the eventual success or failure of an asynchronous operation. Callbacks can lead to callback hell when multiple async operations are nested, making code harder to read and maintain, whereas Promises use .then(), .catch(), and .finally() which make code cleaner and easier to manage. In modern JavaScript, Promises are generally preferred, especially with async/await, while callbacks are mainly used in simple cases or older APIs."
+          },
+          {
+            "questionId": "yOXztl3GFHsekXxx7For",
+            "answer": "I use CSS Flexbox when working with one-dimensional layouts, meaning arranging items in a single row or column, such as a navbar, buttons, or card alignment, because it makes spacing and alignment easy. I use CSS Grid when working with two-dimensional layouts, where both rows and columns need control, such as a dashboard, gallery, or full webpage layout, because it provides better structure for complex designs. In short, Flexbox is best for small component alignment, while Grid is best for overall page layouts and complex responsive designs."
+          },
+          {
+            "questionId": "Ndy0bxqZlJzfdUgxee3e",
+            "answer": "If a web application loads slowly, I would first use browser DevTools and the Network tab to identify what is taking time, such as large images, JavaScript bundles, API calls, or unused files. Then I would optimize by reducing bundle size using code splitting and lazy loading, compressing images, minifying CSS and JavaScript, enabling browser caching, and reducing unnecessary API requests. I would also check backend response time, use a CDN for static assets, and analyze performance using tools like Google Lighthouse and Chrome DevTools to improve the initial loading speed and overall user experience."
+          },
+          {
+            "questionId": "x27jw5qKi5C3OaQsf285",
+            "answer": "localStorage, sessionStorage, and Cookies are all used to store data on the client side, but they differ in scope and usage. localStorage stores data permanently until manually cleared and is useful for saving user preferences like theme or settings. sessionStorage stores data only for the current browser tab and gets cleared when the tab is closed, so it is useful for temporary data like multi-step form progress. Cookies store small amounts of data and are automatically sent with every HTTP request, making them useful for authentication, session management, and tracking. In short, I use localStorage for persistent data, sessionStorage for temporary session data, and Cookies for authentication or server-related data."
+          },
+          {
+            "questionId": "DUCQE9RTqsQ8nqPBvYpI",
+            "answer": "For a moderately complex frontend application without a dedicated state management library, I would use component state and props for local data, and for shared state I would create a global state using Context API with custom hooks (or a centralized service in frameworks like React). I would separate state by features such as user, authentication, and UI state, and keep API logic in separate service files for better maintainability. The main challenges are prop drilling, unnecessary re-renders, and managing shared data across many components, so my solution is to organize state in reusable contexts, use memoization where needed, and keep the code modular so the application remains scalable and easy to maintain."
+          },
+          {
+            "questionId": "nnmG1NLTTHGsl4dRbd6S",
+            "answer": "useState lets you add local state to functional components."
+          }
+          ,
+          {
+            "questionId": "mNKjmSM79YHpujpTBq7Z",
+            "answer": "cvv dv"
+          }
+        ]
       }
   auth:
     type: bearer
@@ -22,10 +63,11 @@ http:
 
 settings:
   encodeUrl: true
-  timeout: 120000
+  timeout: 300000
   followRedirects: true
   maxRedirects: 5
 
 docs: |-
-  Submit an answer for a question. Uses `questionId` from environment.
-  Repeat for each question before finishing.
+  Submit all interview answers in one request.
+  Include every attempted question in the `answers` array (1–10 items).
+  Unanswered questions are scored as 0 in overallPerformance.

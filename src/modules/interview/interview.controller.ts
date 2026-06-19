@@ -105,16 +105,16 @@ export const getQuestions = async (req: Request, res: Response): Promise<void> =
   }
 };
 
-export const submitAnswer = async (req: Request, res: Response): Promise<void> => {
+export const submitAnswers = async (req: Request, res: Response): Promise<void> => {
   try {
-    const result = await interviewService.submitAnswer(
+    const result = await interviewService.submitAnswers(
       req.user!.uid,
       param(req, "id"),
       req.body
     );
-    sendSuccess(res, result, "Answer submitted and evaluated");
+    sendSuccess(res, result, "Answers submitted and evaluated");
   } catch (error) {
-    handleError(res, error, "submitAnswer");
+    handleError(res, error, "submitAnswers");
   }
 };
 
