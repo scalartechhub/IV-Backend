@@ -16,6 +16,7 @@ const appConfigSchema = z.object({
     .transform((v) => parseInt(v, 10))
     .pipe(z.number().int().min(5000).max(300_000)),
   CORS_ORIGIN: z.string().optional(),
+  GEMINI_CHAT_MODEL: z.string().min(1).default("gemini-2.5-flash"),
 });
 
 const parsed = appConfigSchema.safeParse(process.env);

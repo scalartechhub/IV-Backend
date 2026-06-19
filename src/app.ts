@@ -52,6 +52,7 @@ app.use("/api/interviews/:id/jd", aiLimiter);
 app.use("/api/interviews/:id/generate-questions", aiLimiter);
 app.use("/api/interviews/:id/answer", aiLimiter);
 app.use("/api/interviews/:id/finish", aiLimiter);
+app.use("/api/chat", aiLimiter);
 
 app.use((req, _res, next) => {
   logger.info(`→ ${req.method} ${req.path}`);
