@@ -17,5 +17,14 @@ settings:
   maxRedirects: 5
 
 docs: |-
-  Finish the interview and trigger final evaluation/report generation.
+  Finish the interview and generate the embedded report.
+
+  Response (`data`):
+  - `overallScore`
+  - `strengths`, `weaknesses`, `recommendations`
+  - `summary`
+  - `generatedAt`
+
+  Also updates user stats: `completedInterviews`, `averageScore`, `bestScore`.
+
   May take 30–60 seconds (Gemini AI).

@@ -10,6 +10,20 @@ http:
     type: bearer
     token: "{{token}}"
 
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        const questions = body?.data?.questions;
+        if (Array.isArray(questions) && questions.length > 0) {
+          bru.setEnvVar("questionId", questions[0].id);
+          bru.setEnvVar(
+            "questionIds",
+            JSON.stringify(questions.map((q) => q.id))
+          );
+        }
+
 settings:
   encodeUrl: true
   timeout: 120000
@@ -17,5 +31,9 @@ settings:
   maxRedirects: 5
 
 docs: |-
-  Generate interview questions from resume and JD. Requires both uploads first.
+  Generate interview questions and embed them in the interview document.
+
+  Optional: upload resume/JD first for tailored questions.
   May take 30–60 seconds (Gemini AI).
+
+  Auto-saves `questionId` (first) and `questionIds` (JSON array) to environment.

@@ -12,18 +12,18 @@ const answerItemSchema = z.object({
 });
 
 export const createInterviewSchema = z.object({
-  role: z
+  technology: z
     .string()
-    .min(2, "Role must be at least 2 characters")
-    .max(100, "Role is too long")
+    .min(2, "Technology must be at least 2 characters")
+    .max(100, "Technology is too long")
     .trim(),
-  experience: z
+  experienceLevel: z
     .string()
-    .min(1, "Experience is required")
-    .max(50, "Experience value is too long")
+    .min(1, "Experience level is required")
+    .max(50, "Experience level is too long")
     .trim(),
-  type: z.nativeEnum(InterviewType, {
-    message: "Type must be one of: technical, behavioral, mixed",
+  interviewType: z.nativeEnum(InterviewType, {
+    message: "interviewType must be one of: technical, hr, mixed",
   }),
 });
 
@@ -61,6 +61,11 @@ export const listInterviewsQuerySchema = z.object({
   status: z.nativeEnum(InterviewStatus).optional(),
 });
 
+export const interviewIdParamSchema = z.object({
+  id: z.string().min(1, "Interview ID is required"),
+});
+
 export type CreateInterviewInput = z.infer<typeof createInterviewSchema>;
 export type SubmitAnswerInput = z.infer<typeof submitAnswerSchema>;
 export type ListInterviewsQuery = z.infer<typeof listInterviewsQuerySchema>;
+export type InterviewIdParams = z.infer<typeof interviewIdParamSchema>;

@@ -1,27 +1,45 @@
 import { Timestamp } from "firebase-admin/firestore";
 
-export type AuthProvider = "email" | "google" | "github" | "phone";
+export type AuthProvider = "email";
 
 export interface User {
   uid: string;
-  name: string;
   email?: string;
-  phoneNumber?: string;
+  displayName: string;
   photoURL?: string;
-  provider: AuthProvider;
-  isActive: boolean;
+  currentRole?: string;
+  experience?: number;
+  technologies?: string[];
+  resumeUrl?: string;
+  totalInterviews: number;
+  completedInterviews: number;
+  averageScore: number;
+  bestScore: number;
+  /** @deprecated Use displayName — kept for auth backward compatibility */
+  name?: string;
+  phoneNumber?: string;
+  provider?: AuthProvider;
+  isActive?: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
 export interface UserResponse {
   uid: string;
-  name: string;
+  displayName: string;
   email?: string;
   phoneNumber?: string;
   photoURL?: string;
-  provider: AuthProvider;
-  isActive: boolean;
+  currentRole?: string;
+  experience?: number;
+  technologies?: string[];
+  resumeUrl?: string;
+  totalInterviews: number;
+  completedInterviews: number;
+  averageScore: number;
+  bestScore: number;
+  provider?: AuthProvider;
+  isActive?: boolean;
 }
 
 export interface RegisterInput {
@@ -35,22 +53,13 @@ export interface LoginInput {
   password: string;
 }
 
-export interface OAuthTokenInput {
-  idToken: string;
-}
-
 export interface RegisterResult {
   user: User;
-  customToken: string;
 }
 
 export interface LoginResult {
   user: User;
   idToken: string;
-}
-
-export interface OAuthResult {
-  user: User;
 }
 
 // ─── Extended Firestore user profile (candidate app) ─────────────────────────
@@ -89,8 +98,12 @@ export interface ProfessionalDetails {
 
 export interface UserProfile {
   uid: string;
+  displayName?: string;
   name?: string;
   email?: string;
+  currentRole?: string;
+  experience?: number;
+  technologies?: string[];
   skills?: UserSkill[];
   experiences?: UserExperienceEntry[];
   interviewPreferences?: InterviewPreferences;
@@ -99,3 +112,10 @@ export interface UserProfile {
   provider?: AuthProvider;
   role?: string;
 }
+
+export const DEFAULT_USER_STATS = {
+  totalInterviews: 0,
+  completedInterviews: 0,
+  averageScore: 0,
+  bestScore: 0,
+} as const;

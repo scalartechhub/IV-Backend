@@ -1,3 +1,4 @@
+import { Timestamp } from "firebase-admin/firestore";
 import * as repo from "./interview.repository";
 import { parseResume } from "../ai/resume-parser.service";
 import { parseJD } from "../ai/jd-parser.service";
@@ -5,38 +6,50 @@ import { generateQuestions } from "../ai/question-generator.service";
 import { evaluateAnswersBatch } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
 import { uploadFile } from "../storage/storage.service";
-import { getUserProfile } from "../auth/auth.service";
+import { getUserProfile } from "../auth/auth.repository";
+import { userStatsService } from "../auth/user-stats.service";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
 import type {
   CreateInterviewInput,
   Interview,
+  InterviewQuestion,
+  InterviewReport,
+  InterviewSummary,
   ListInterviewsQuery,
   PaginatedResult,
-  Question,
-  Report,
   SubmitAnswersInput,
   SubmitAnswersResult,
-  Answer,
 } from "./interview.types";
 import { InterviewStatus } from "./interview.types";
-import { calculateInterviewOverallPerformance } from "./interview.scoring";
+import {
+  calculateInterviewOverallScore,
+  countAnsweredQuestions,
+  getRawEvaluationScore,
+} from "./interview.scoring";
 
 export const createInterview = async (
   userId: string,
   input: CreateInterviewInput
 ): Promise<Interview> => {
-  logger.info(`[interview.service] create interview userId=${userId}`, { role: input.role });
-  return repo.createInterview(userId, input);
+  logger.info(`[interview.service] create interview userId=${userId}`, {
+    technology: input.technology,
+  });
+
+  const interview = await repo.createInterview(userId, input);
+  await userStatsService.onInterviewCreated(userId);
+
+  return interview;
 };
 
 export const listInterviews = async (
   userId: string,
   query: ListInterviewsQuery
-): Promise<PaginatedResult<Interview>> => {
+): Promise<PaginatedResult<InterviewSummary>> => {
   return repo.listInterviewsByUser(userId, query);
 };
 
+/** Single Firestore read — returns full embedded interview document. */
 export const getInterview = async (userId: string, interviewId: string): Promise<Interview> => {
   return repo.requireOwnedInterview(interviewId, userId);
 };
@@ -50,14 +63,12 @@ export const uploadResume = async (
 
   logger.info(`[interview.service] uploading resume interviewId=${interviewId}`);
 
-  await repo.updateInterview(interviewId, { status: InterviewStatus.PROCESSING });
-
   try {
     const resumeAnalysis = await parseResume(fileBuffer);
 
-    let resumeURL: string | undefined;
+    let resumeUrl: string | undefined;
     try {
-      resumeURL = await uploadFile(interviewId, "resume", fileBuffer);
+      resumeUrl = await uploadFile(interviewId, "resume", fileBuffer);
     } catch (storageError) {
       logger.warn(
         `[interview.service] resume storage upload failed interviewId=${interviewId}`,
@@ -65,15 +76,12 @@ export const uploadResume = async (
       );
     }
 
-    const status = interview.jdAnalysis ? InterviewStatus.READY : InterviewStatus.DRAFT;
-
     return repo.updateInterview(interviewId, {
-      ...(resumeURL && { resumeURL }),
+      ...(resumeUrl && { resumeUrl }),
       resumeAnalysis,
-      status,
     });
   } catch (error) {
-    await repo.updateInterview(interviewId, { status: InterviewStatus.FAILED });
+    await repo.updateInterview(interviewId, { status: InterviewStatus.CANCELLED });
     throw error;
   }
 };
@@ -87,14 +95,12 @@ export const uploadJD = async (
 
   logger.info(`[interview.service] uploading JD interviewId=${interviewId}`);
 
-  await repo.updateInterview(interviewId, { status: InterviewStatus.PROCESSING });
-
   try {
     const jdAnalysis = await parseJD(fileBuffer);
 
-    let jdURL: string | undefined;
+    let jdUrl: string | undefined;
     try {
-      jdURL = await uploadFile(interviewId, "jd", fileBuffer);
+      jdUrl = await uploadFile(interviewId, "jd", fileBuffer);
     } catch (storageError) {
       logger.warn(
         `[interview.service] JD storage upload failed interviewId=${interviewId}`,
@@ -102,15 +108,12 @@ export const uploadJD = async (
       );
     }
 
-    const status = interview.resumeAnalysis ? InterviewStatus.READY : InterviewStatus.DRAFT;
-
     return repo.updateInterview(interviewId, {
-      ...(jdURL && { jdURL }),
+      ...(jdUrl && { jdUrl }),
       jdAnalysis,
-      status,
     });
   } catch (error) {
-    await repo.updateInterview(interviewId, { status: InterviewStatus.FAILED });
+    await repo.updateInterview(interviewId, { status: InterviewStatus.CANCELLED });
     throw error;
   }
 };
@@ -118,11 +121,11 @@ export const uploadJD = async (
 export const generateInterviewQuestions = async (
   userId: string,
   interviewId: string
-): Promise<Question[]> => {
+): Promise<InterviewQuestion[]> => {
   const interview = await repo.requireOwnedInterview(interviewId, userId);
 
   if (
-    interview.status === InterviewStatus.IN_PROGRESS ||
+    interview.status === InterviewStatus.STARTED ||
     interview.status === InterviewStatus.COMPLETED
   ) {
     throw new AppError(400, "Cannot regenerate questions for an interview already in progress.");
@@ -139,20 +142,15 @@ export const generateInterviewQuestions = async (
     resumeAnalysis: interview.resumeAnalysis,
     jdAnalysis: interview.jdAnalysis,
     userProfile,
-    role: interview.role,
-    experience: interview.experience,
-    interviewType: interview.type,
+    technology: interview.technology,
+    experienceLevel: interview.experienceLevel,
+    interviewType: interview.interviewType,
   });
 
-  const questions = await repo.saveQuestions(interviewId, userId, rawQuestions);
-
-  await repo.updateInterview(interviewId, {
-    totalQuestions: questions.length,
-    status: InterviewStatus.READY,
-  });
+  const questions = await repo.setInterviewQuestions(interviewId, rawQuestions);
 
   logger.info(
-    `[interview.service] ${questions.length} questions stored for interviewId=${interviewId}`
+    `[interview.service] ${questions.length} questions embedded for interviewId=${interviewId}`
   );
   return questions;
 };
@@ -160,9 +158,9 @@ export const generateInterviewQuestions = async (
 export const getQuestions = async (
   userId: string,
   interviewId: string
-): Promise<Question[]> => {
-  await repo.requireOwnedInterview(interviewId, userId);
-  return repo.getQuestionsByInterview(interviewId);
+): Promise<InterviewQuestion[]> => {
+  const interview = await repo.requireOwnedInterview(interviewId, userId);
+  return interview.questions;
 };
 
 export const submitAnswers = async (
@@ -175,23 +173,17 @@ export const submitAnswers = async (
   if (interview.status === InterviewStatus.COMPLETED) {
     throw new AppError(400, "This interview has already been completed.");
   }
-  if (
-    interview.status === InterviewStatus.DRAFT ||
-    interview.status === InterviewStatus.FAILED
-  ) {
-    throw new AppError(400, "Interview is not ready for answering. Please generate questions first.");
+  if (interview.status === InterviewStatus.CANCELLED) {
+    throw new AppError(400, "Interview was cancelled.");
   }
-
-  const questions = await repo.getQuestionsByInterview(interviewId);
-  if (questions.length === 0) {
+  if (interview.questions.length === 0) {
     throw new AppError(400, "No questions found. Please generate questions first.");
   }
 
-  const questionById = new Map(questions.map((q) => [q.id, q]));
+  const questionById = new Map(interview.questions.map((q) => [q.id, q]));
 
   for (const item of input.answers) {
-    const question = questionById.get(item.questionId);
-    if (!question) {
+    if (!questionById.has(item.questionId)) {
       throw new AppError(404, `Question not found: ${item.questionId}`);
     }
   }
@@ -200,18 +192,6 @@ export const submitAnswers = async (
     `[interview.service] submitting ${input.answers.length} answers interviewId=${interviewId}`
   );
 
-  const savedAnswers: { questionId: string; answer: Answer }[] = [];
-
-  for (const item of input.answers) {
-    const answer = await repo.saveAnswer(
-      interviewId,
-      item.questionId,
-      userId,
-      item.answer
-    );
-    savedAnswers.push({ questionId: item.questionId, answer });
-  }
-
   const batchItems = input.answers.map((item) => {
     const question = questionById.get(item.questionId)!;
     return {
@@ -219,119 +199,129 @@ export const submitAnswers = async (
       question: question.question,
       answer: item.answer,
       difficulty: question.difficulty,
-      category: question.category,
+      category: interview.technology,
     };
   });
 
   const evaluationsByQuestionId = await evaluateAnswersBatch({
-    role: interview.role,
+    technology: interview.technology,
     items: batchItems,
   });
 
-  const results: SubmitAnswersResult["results"] = [];
-
-  for (const { questionId, answer } of savedAnswers) {
-    const rawEvaluation = evaluationsByQuestionId.get(questionId);
-    if (!rawEvaluation) {
-      throw new AppError(500, `Missing evaluation for question ${questionId}`);
-    }
-
-    const evaluation = await repo.saveEvaluation(
-      interviewId,
-      questionId,
-      answer.id,
-      userId,
-      rawEvaluation
-    );
-
-    results.push({ answer, evaluation });
-  }
-
-  const [evaluations, allAnswers] = await Promise.all([
-    repo.getEvaluationsByInterview(interviewId),
-    repo.getAnswersByInterview(interviewId),
-  ]);
-
-  const overallPerformance = calculateInterviewOverallPerformance(
-    questions,
-    evaluations
-  );
-  const answeredQuestions = new Set(allAnswers.map((a) => a.questionId)).size;
-
-  await repo.updateInterview(interviewId, {
-    answeredQuestions,
-    overallPerformance,
-    status: InterviewStatus.IN_PROGRESS,
+  const answeredAt = Timestamp.now();
+  const answerUpdates = input.answers.map((item) => {
+    const rawEvaluation = evaluationsByQuestionId.get(item.questionId)!;
+    return {
+      questionId: item.questionId,
+      answer: item.answer,
+      score: getRawEvaluationScore(rawEvaluation),
+      feedback: rawEvaluation.feedback,
+      answeredAt,
+    };
   });
 
-  return { results, overallPerformance, answeredQuestions };
+  const mergedQuestions = interview.questions.map((q) => {
+    const update = answerUpdates.find((u) => u.questionId === q.id);
+    if (!update) return q;
+    return {
+      ...q,
+      answer: update.answer,
+      score: update.score,
+      feedback: update.feedback,
+      answeredAt: update.answeredAt,
+    };
+  });
+
+  const overallScore = calculateInterviewOverallScore(mergedQuestions);
+
+  const updatedInterview = await repo.applyAnswerEvaluations(
+    interviewId,
+    answerUpdates,
+    overallScore
+  );
+
+  const results: SubmitAnswersResult["results"] = answerUpdates.map((update) => ({
+    questionId: update.questionId,
+    answer: update.answer,
+    score: update.score,
+    feedback: update.feedback,
+    answeredAt: update.answeredAt,
+  }));
+
+  return {
+    results,
+    overallScore: updatedInterview.overallScore ?? overallScore,
+    answeredCount: countAnsweredQuestions(updatedInterview.questions),
+  };
 };
 
 export const finishInterview = async (
   userId: string,
   interviewId: string
-): Promise<Report> => {
+): Promise<InterviewReport> => {
   const interview = await repo.requireOwnedInterview(interviewId, userId);
 
-  if (interview.status === InterviewStatus.COMPLETED) {
-    const existing = await repo.getReportByInterview(interviewId);
-    if (existing) return existing;
+  if (interview.status === InterviewStatus.CANCELLED) {
+    throw new AppError(400, "Interview was cancelled.");
   }
 
-  if (
-    interview.status === InterviewStatus.DRAFT ||
-    interview.status === InterviewStatus.FAILED
-  ) {
-    throw new AppError(400, "Interview has no answers to generate a report from.");
+  const answeredCount = countAnsweredQuestions(interview.questions);
+  if (answeredCount === 0) {
+    throw new AppError(
+      400,
+      "No answers submitted yet. Answer at least one question before finishing."
+    );
+  }
+
+  const claim = await repo.claimReportGeneration(interviewId);
+  if (claim !== "proceed") {
+    return claim;
   }
 
   logger.info(`[interview.service] finishing interview interviewId=${interviewId}`);
 
-  const [questions, answers, evaluations] = await Promise.all([
-    repo.getQuestionsByInterview(interviewId),
-    repo.getAnswersByInterview(interviewId),
-    repo.getEvaluationsByInterview(interviewId),
-  ]);
+  try {
+    const overallScore = calculateInterviewOverallScore(interview.questions);
 
-  if (answers.length === 0) {
-    throw new AppError(400, "No answers submitted yet. Answer at least one question before finishing.");
+    const rawReport = await generateReport({
+      technology: interview.technology,
+      experienceLevel: interview.experienceLevel,
+      questions: interview.questions,
+    });
+
+    const report: InterviewReport = {
+      overallScore: rawReport.overallScore,
+      strengths: rawReport.strengths,
+      weaknesses: rawReport.weaknesses,
+      recommendations: rawReport.recommendations,
+      summary: rawReport.summary ?? "Interview completed.",
+      generatedAt: Timestamp.now(),
+    };
+
+    await repo.completeInterview(interviewId, report, overallScore);
+    await userStatsService.onInterviewCompleted(userId, overallScore);
+
+    logger.info(`[interview.service] interview completed interviewId=${interviewId}`, {
+      overallScore,
+      reportScore: report.overallScore,
+    });
+
+    return report;
+  } catch (error) {
+    await repo.releaseReportGeneration(interviewId);
+    throw error;
   }
-
-  const overallPerformance = calculateInterviewOverallPerformance(
-    questions,
-    evaluations
-  );
-
-  const rawReport = await generateReport({
-    role: interview.role,
-    experience: interview.experience,
-    questions,
-    answers,
-    evaluations,
-  });
-
-  const report = await repo.saveReport(interviewId, userId, rawReport);
-
-  await repo.updateInterview(interviewId, {
-    status: InterviewStatus.COMPLETED,
-    overallPerformance,
-  });
-
-  logger.info(`[interview.service] interview completed interviewId=${interviewId}`, {
-    overallPerformance,
-    overallScore: report.overallScore,
-  });
-
-  return report;
 };
 
-export const getReport = async (userId: string, interviewId: string): Promise<Report> => {
-  await repo.requireOwnedInterview(interviewId, userId);
+export const getReport = async (
+  userId: string,
+  interviewId: string
+): Promise<InterviewReport> => {
+  const interview = await repo.requireOwnedInterview(interviewId, userId);
 
-  const report = await repo.getReportByInterview(interviewId);
-  if (!report) {
+  if (!interview.report) {
     throw new AppError(404, "Report not found. Please finish the interview first.");
   }
 
-  return report;
+  return interview.report;
 };

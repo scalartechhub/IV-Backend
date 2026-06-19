@@ -2,16 +2,14 @@ import { Timestamp } from "firebase-admin/firestore";
 
 export enum InterviewStatus {
   DRAFT = "draft",
-  PROCESSING = "processing",
-  READY = "ready",
-  IN_PROGRESS = "in_progress",
+  STARTED = "started",
   COMPLETED = "completed",
-  FAILED = "failed",
+  CANCELLED = "cancelled",
 }
 
 export enum InterviewType {
   TECHNICAL = "technical",
-  BEHAVIORAL = "behavioral",
+  HR = "hr",
   MIXED = "mixed",
 }
 
@@ -21,8 +19,28 @@ export enum QuestionDifficulty {
   HARD = "hard",
 }
 
-// ─── Domain Models ────────────────────────────────────────────────────────────
+// ─── Embedded interview document models ───────────────────────────────────────
 
+export interface InterviewQuestion {
+  id: string;
+  question: string;
+  difficulty: QuestionDifficulty;
+  answer?: string;
+  score?: number;
+  feedback?: string;
+  answeredAt?: Timestamp;
+}
+
+export interface InterviewReport {
+  overallScore: number;
+  strengths: string[];
+  weaknesses: string[];
+  recommendations: string[];
+  summary: string;
+  generatedAt: Timestamp;
+}
+
+/** Optional AI context persisted during resume/JD upload (not required for list views). */
 export interface ResumeAnalysis {
   skills: string[];
   projects: string[];
@@ -39,73 +57,33 @@ export interface JDAnalysis {
 export interface Interview {
   id: string;
   userId: string;
-  role: string;
-  experience: string;
-  type: InterviewType;
+  technology: string;
+  experienceLevel: string;
+  interviewType: InterviewType;
   status: InterviewStatus;
-  resumeURL?: string;
-  jdURL?: string;
+  overallScore?: number;
+  questionCount: number;
+  questions: InterviewQuestion[];
+  report?: InterviewReport;
+  /** Internal flag while report AI generation is in progress */
+  reportGenerating?: boolean;
+  resumeUrl?: string;
+  jdUrl?: string;
   resumeAnalysis?: ResumeAnalysis;
   jdAnalysis?: JDAnalysis;
-  totalQuestions: number;
-  answeredQuestions: number;
-  /** Aggregate score out of 100 (10 per question; 0 if not attempted). */
-  overallPerformance?: number;
   createdAt: Timestamp;
+  completedAt?: Timestamp;
   updatedAt: Timestamp;
-}
-
-export interface Question {
-  id: string;
-  interviewId: string;
-  userId: string;
-  question: string;
-  difficulty: QuestionDifficulty;
-  category: string;
-  order: number;
-  createdAt: Timestamp;
-}
-
-export interface Answer {
-  id: string;
-  interviewId: string;
-  questionId: string;
-  userId: string;
-  answer: string;
-  submittedAt: Timestamp;
-}
-
-export interface Evaluation {
-  id: string;
-  interviewId: string;
-  questionId: string;
-  answerId: string;
-  userId: string;
-  technical: number;
-  communication: number;
-  completeness: number;
-  confidence: number;
-  feedback: string;
-  createdAt: Timestamp;
-}
-
-export interface Report {
-  id: string;
-  interviewId: string;
-  userId: string;
-  overallScore: number;
-  strengths: string[];
-  weaknesses: string[];
-  recommendations: string[];
-  createdAt: Timestamp;
+  version: number;
+  isDeleted: boolean;
 }
 
 // ─── Input / Output DTOs ──────────────────────────────────────────────────────
 
 export interface CreateInterviewInput {
-  role: string;
-  experience: string;
-  type: InterviewType;
+  technology: string;
+  experienceLevel: string;
+  interviewType: InterviewType;
 }
 
 export interface SubmitAnswerItem {
@@ -118,17 +96,18 @@ export interface SubmitAnswersInput {
 }
 
 export interface SubmitAnswerResult {
-  answer: Answer;
-  evaluation: Evaluation;
+  questionId: string;
+  answer: string;
+  score: number;
+  feedback: string;
+  answeredAt: Timestamp;
 }
 
 export interface SubmitAnswersResult {
   results: SubmitAnswerResult[];
-  overallPerformance: number;
-  answeredQuestions: number;
+  overallScore: number;
+  answeredCount: number;
 }
-
-// ─── Pagination ───────────────────────────────────────────────────────────────
 
 export interface ListInterviewsQuery {
   page: number;
@@ -142,6 +121,21 @@ export interface PaginatedResult<T> {
   page: number;
   limit: number;
   totalPages: number;
+}
+
+/** Slim list item for dashboard — no embedded Q&A payload */
+export interface InterviewSummary {
+  id: string;
+  userId: string;
+  technology: string;
+  experienceLevel: string;
+  interviewType: InterviewType;
+  status: InterviewStatus;
+  overallScore?: number;
+  questionCount: number;
+  answeredCount: number;
+  createdAt: Timestamp;
+  completedAt?: Timestamp;
 }
 
 // ─── AI Raw Outputs ───────────────────────────────────────────────────────────
@@ -169,4 +163,5 @@ export interface RawReport {
   strengths: string[];
   weaknesses: string[];
   recommendations: string[];
+  summary?: string;
 }

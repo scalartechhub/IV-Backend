@@ -33,4 +33,10 @@ settings:
   followRedirects: true
   maxRedirects: 5
 
-docs: Login with email/password. Auto-saves `token` to environment.
+docs: |-
+  Login with email and password.
+
+  Returns `idToken` in `data.idToken`. Auto-saves it as `token` for
+  authenticated interview requests.
+
+  Run after **Register** using the same credentials from the environment.

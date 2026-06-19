@@ -1,22 +1,33 @@
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { v4 as uuidv4 } from "uuid";
 import { db } from "../../config/firebase";
-import { COLLECTIONS } from "../../shared/constants";
+import { COLLECTIONS, INTERVIEW_DOCUMENT_VERSION } from "../../shared/constants";
 import { AppError } from "../../shared/utils";
 import type {
-  Answer,
   CreateInterviewInput,
-  Evaluation,
   Interview,
-  InterviewStatus,
+  InterviewQuestion,
+  InterviewReport,
+  InterviewSummary,
   ListInterviewsQuery,
   PaginatedResult,
-  Question,
-  RawEvaluation,
   RawQuestion,
-  RawReport,
-  Report,
 } from "./interview.types";
-import { QuestionDifficulty } from "./interview.types";
+import { InterviewStatus, QuestionDifficulty } from "./interview.types";
+
+const toInterviewSummary = (interview: Interview): InterviewSummary => ({
+  id: interview.id,
+  userId: interview.userId,
+  technology: interview.technology,
+  experienceLevel: interview.experienceLevel,
+  interviewType: interview.interviewType,
+  status: interview.status,
+  overallScore: interview.overallScore,
+  questionCount: interview.questionCount,
+  answeredCount: interview.questions.filter((q) => Boolean(q.answer)).length,
+  createdAt: interview.createdAt,
+  completedAt: interview.completedAt,
+});
 
 export const createInterview = async (
   userId: string,
@@ -28,12 +39,14 @@ export const createInterview = async (
   await ref.set({
     id: ref.id,
     userId,
-    role: input.role,
-    experience: input.experience,
-    type: input.type,
-    status: "draft",
-    totalQuestions: 0,
-    answeredQuestions: 0,
+    technology: input.technology,
+    experienceLevel: input.experienceLevel,
+    interviewType: input.interviewType,
+    status: InterviewStatus.DRAFT,
+    questionCount: 0,
+    questions: [],
+    version: INTERVIEW_DOCUMENT_VERSION,
+    isDeleted: false,
     createdAt: now,
     updatedAt: now,
   });
@@ -43,7 +56,12 @@ export const createInterview = async (
 
 export const findInterviewById = async (interviewId: string): Promise<Interview | null> => {
   const snap = await db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId).get();
-  return snap.exists ? (snap.data() as Interview) : null;
+  if (!snap.exists) return null;
+
+  const interview = snap.data() as Interview;
+  if (interview.isDeleted) return null;
+
+  return interview;
 };
 
 export const requireInterview = async (interviewId: string): Promise<Interview> => {
@@ -73,185 +91,163 @@ export const updateInterview = async (
 export const listInterviewsByUser = async (
   userId: string,
   params: ListInterviewsQuery
-): Promise<PaginatedResult<Interview>> => {
+): Promise<PaginatedResult<InterviewSummary>> => {
   const { page, limit, status } = params;
   const offset = (page - 1) * limit;
 
-  const snap = await db
+  let query = db
     .collection(COLLECTIONS.INTERVIEWS)
     .where("userId", "==", userId)
-    .get();
-
-  let interviews = snap.docs.map((d) => d.data() as Interview);
+    .where("isDeleted", "==", false) as FirebaseFirestore.Query;
 
   if (status) {
-    interviews = interviews.filter((i) => i.status === status);
+    query = query.where("status", "==", status);
   }
 
-  interviews.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+  query = query.orderBy("createdAt", "desc");
 
-  const total = interviews.length;
+  const [countSnap, pageSnap] = await Promise.all([
+    query.count().get(),
+    query.offset(offset).limit(limit).get(),
+  ]);
+
+  const total = countSnap.data().count;
+  const data = pageSnap.docs.map((d) => toInterviewSummary(d.data() as Interview));
 
   return {
-    data: interviews.slice(offset, offset + limit),
+    data,
     total,
     page,
     limit,
-    totalPages: Math.ceil(total / limit),
+    totalPages: total > 0 ? Math.ceil(total / limit) : 0,
   };
 };
 
-export const saveQuestions = async (
+export const setInterviewQuestions = async (
   interviewId: string,
-  userId: string,
   rawQuestions: RawQuestion[]
-): Promise<Question[]> => {
-  const batch = db.batch();
-  const questions: Question[] = [];
+): Promise<InterviewQuestion[]> => {
+  const questions: InterviewQuestion[] = rawQuestions.map((rq) => ({
+    id: uuidv4(),
+    question: rq.question,
+    difficulty: (rq.difficulty as QuestionDifficulty) ?? QuestionDifficulty.MEDIUM,
+  }));
 
-  rawQuestions.forEach((rq, index) => {
-    const ref = db.collection(COLLECTIONS.QUESTIONS).doc();
-    const question: Omit<Question, "createdAt"> & {
-      createdAt: ReturnType<typeof FieldValue.serverTimestamp>;
-    } = {
-      id: ref.id,
-      interviewId,
-      userId,
-      question: rq.question,
-      difficulty: (rq.difficulty as QuestionDifficulty) ?? QuestionDifficulty.MEDIUM,
-      category: rq.category ?? "General",
-      order: index + 1,
-      createdAt: FieldValue.serverTimestamp(),
-    };
-    batch.set(ref, question);
-    questions.push(question as unknown as Question);
+  const ref = db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId);
+  await ref.update({
+    questions,
+    questionCount: questions.length,
+    status: InterviewStatus.DRAFT,
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
-  await batch.commit();
   return questions;
 };
 
-export const getQuestionsByInterview = async (interviewId: string): Promise<Question[]> => {
-  const snap = await db
-    .collection(COLLECTIONS.QUESTIONS)
-    .where("interviewId", "==", interviewId)
-    .get();
-
-  return snap.docs
-    .map((d) => d.data() as Question)
-    .sort((a, b) => a.order - b.order);
-};
-
-export const findQuestionById = async (questionId: string): Promise<Question | null> => {
-  const snap = await db.collection(COLLECTIONS.QUESTIONS).doc(questionId).get();
-  return snap.exists ? (snap.data() as Question) : null;
-};
-
-export const saveAnswer = async (
+export const applyAnswerEvaluations = async (
   interviewId: string,
-  questionId: string,
-  userId: string,
-  answerText: string
-): Promise<Answer> => {
-  const ref = db.collection(COLLECTIONS.ANSWERS).doc();
+  answerUpdates: Array<{
+    questionId: string;
+    answer: string;
+    score: number;
+    feedback: string;
+    answeredAt: Timestamp;
+  }>,
+  overallScore: number
+): Promise<Interview> => {
+  const ref = db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId);
 
-  await ref.set({
-    id: ref.id,
-    interviewId,
-    questionId,
-    userId,
-    answer: answerText,
-    submittedAt: FieldValue.serverTimestamp(),
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new AppError(404, "Interview not found");
+
+    const interview = snap.data() as Interview;
+    const updateById = new Map(answerUpdates.map((u) => [u.questionId, u]));
+
+    const questions = interview.questions.map((q) => {
+      const update = updateById.get(q.id);
+      if (!update) return q;
+
+      if (q.answer && q.answer.length > 0) {
+        throw new AppError(409, `Answer already submitted for question ${q.id}.`);
+      }
+
+      return {
+        ...q,
+        answer: update.answer,
+        score: update.score,
+        feedback: update.feedback,
+        answeredAt: update.answeredAt,
+      };
+    });
+
+    tx.update(ref, {
+      questions,
+      overallScore,
+      status: InterviewStatus.STARTED,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return { ...interview, questions, overallScore, status: InterviewStatus.STARTED };
+  });
+};
+
+/** Returns an existing report, or "proceed" when this caller should generate one. */
+export const claimReportGeneration = async (
+  interviewId: string
+): Promise<InterviewReport | "proceed"> => {
+  const ref = db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId);
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new AppError(404, "Interview not found");
+
+    const interview = snap.data() as Interview;
+
+    if (interview.report?.generatedAt) {
+      return interview.report;
+    }
+
+    if (interview.reportGenerating) {
+      throw new AppError(409, "Report generation already in progress.");
+    }
+
+    tx.update(ref, {
+      reportGenerating: true,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return "proceed";
+  });
+};
+
+export const releaseReportGeneration = async (interviewId: string): Promise<void> => {
+  const ref = db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId);
+  await ref.update({
+    reportGenerating: FieldValue.delete(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+};
+
+export const completeInterview = async (
+  interviewId: string,
+  report: InterviewReport,
+  overallScore: number
+): Promise<Interview> => {
+  const ref = db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId);
+
+  await ref.update({
+    report,
+    overallScore,
+    status: InterviewStatus.COMPLETED,
+    completedAt: FieldValue.serverTimestamp(),
+    reportGenerating: FieldValue.delete(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
-  return (await ref.get()).data() as Answer;
+  return (await ref.get()).data() as Interview;
 };
 
-export const getAnswersByInterview = async (interviewId: string): Promise<Answer[]> => {
-  const snap = await db
-    .collection(COLLECTIONS.ANSWERS)
-    .where("interviewId", "==", interviewId)
-    .get();
-
-  return snap.docs.map((d) => d.data() as Answer);
-};
-
-export const hasAnswerForQuestion = async (
-  interviewId: string,
-  questionId: string
-): Promise<boolean> => {
-  const snap = await db
-    .collection(COLLECTIONS.ANSWERS)
-    .where("interviewId", "==", interviewId)
-    .where("questionId", "==", questionId)
-    .limit(1)
-    .get();
-
-  return !snap.empty;
-};
-
-export const saveEvaluation = async (
-  interviewId: string,
-  questionId: string,
-  answerId: string,
-  userId: string,
-  raw: RawEvaluation
-): Promise<Evaluation> => {
-  const ref = db.collection(COLLECTIONS.EVALUATIONS).doc();
-
-  await ref.set({
-    id: ref.id,
-    interviewId,
-    questionId,
-    answerId,
-    userId,
-    technical: raw.technical,
-    communication: raw.communication,
-    completeness: raw.completeness,
-    confidence: raw.confidence,
-    feedback: raw.feedback,
-    createdAt: FieldValue.serverTimestamp(),
-  });
-
-  return (await ref.get()).data() as Evaluation;
-};
-
-export const getEvaluationsByInterview = async (interviewId: string): Promise<Evaluation[]> => {
-  const snap = await db
-    .collection(COLLECTIONS.EVALUATIONS)
-    .where("interviewId", "==", interviewId)
-    .get();
-
-  return snap.docs.map((d) => d.data() as Evaluation);
-};
-
-export const saveReport = async (
-  interviewId: string,
-  userId: string,
-  raw: RawReport
-): Promise<Report> => {
-  const ref = db.collection(COLLECTIONS.REPORTS).doc();
-
-  await ref.set({
-    id: ref.id,
-    interviewId,
-    userId,
-    overallScore: raw.overallScore,
-    strengths: raw.strengths,
-    weaknesses: raw.weaknesses,
-    recommendations: raw.recommendations,
-    createdAt: FieldValue.serverTimestamp(),
-  });
-
-  return (await ref.get()).data() as Report;
-};
-
-export const getReportByInterview = async (interviewId: string): Promise<Report | null> => {
-  const snap = await db
-    .collection(COLLECTIONS.REPORTS)
-    .where("interviewId", "==", interviewId)
-    .limit(1)
-    .get();
-
-  return snap.empty ? null : (snap.docs[0].data() as Report);
+export const softDeleteInterview = async (interviewId: string): Promise<void> => {
+  await updateInterview(interviewId, { isDeleted: true });
 };

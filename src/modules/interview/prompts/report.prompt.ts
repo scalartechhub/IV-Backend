@@ -1,33 +1,28 @@
-import type { Question, Answer, Evaluation } from "../interview.types";
+import type { InterviewQuestion } from "../interview.types";
 
 interface ReportParams {
-  role: string;
-  experience: string;
-  questions: Question[];
-  answers: Answer[];
-  evaluations: Evaluation[];
+  technology: string;
+  experienceLevel: string;
+  questions: InterviewQuestion[];
 }
 
 export const buildReportPrompt = (params: ReportParams): string => {
-  const { role, experience, questions, answers, evaluations } = params;
+  const { technology, experienceLevel, questions } = params;
 
   const qaSection = questions
-    .map((q) => {
-      const answer = answers.find((a) => a.questionId === q.id);
-      const evaluation = evaluations.find((e) => e.questionId === q.id);
-
-      return [
-        `[${q.difficulty.toUpperCase()} | ${q.category}] Q: ${q.question}`,
-        `A: ${answer?.answer ?? "(no answer provided)"}`,
-        evaluation
-          ? `Scores → technical:${evaluation.technical}, communication:${evaluation.communication}, completeness:${evaluation.completeness}, confidence:${evaluation.confidence}`
-          : "Scores → not evaluated",
-      ].join("\n");
-    })
+    .map((q) =>
+      [
+        `[${q.difficulty.toUpperCase()}] Q: ${q.question}`,
+        `A: ${q.answer ?? "(no answer provided)"}`,
+        q.score !== undefined
+          ? `Score: ${q.score}/10 — ${q.feedback ?? "No feedback"}`
+          : "Score: not evaluated",
+      ].join("\n")
+    )
     .join("\n\n");
 
   return `
-You are generating a comprehensive final interview report for a ${role} candidate with ${experience} of experience.
+You are generating a comprehensive final interview report for a ${technology} candidate with ${experienceLevel} of experience.
 
 Complete Interview Transcript with Scores:
 ---
@@ -38,6 +33,7 @@ Based on the above, generate a professional final report.
 
 Instructions:
 - Calculate an overall score (0-100) that reflects the aggregate performance
+- Write a concise executive summary (2-4 sentences)
 - Identify 3-5 specific strengths demonstrated by the candidate
 - Identify 2-4 specific areas for improvement (weaknesses)
 - Provide 3-5 actionable, specific recommendations for the candidate
@@ -45,6 +41,7 @@ Instructions:
 Return ONLY a valid JSON object. No markdown, no explanation:
 {
   "overallScore": 72,
+  "summary": "The candidate demonstrated solid fundamentals with room to grow in advanced topics.",
   "strengths": [
     "Strong understanding of React component lifecycle",
     "Clear communication style with good use of examples"

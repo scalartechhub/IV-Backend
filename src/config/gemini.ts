@@ -1,20 +1,28 @@
 import { GoogleGenAI } from "@google/genai";
+import { appConfig } from "./app.config";
+import { secretService } from "./secrets";
 
-/** Primary model; fallbacks used when API returns 503/429 (high demand). */
-export const GEMINI_MODEL = "gemini-2.5-flash";
+const SECONDARY_FALLBACK_MODEL = "gemini-2.0-flash";
 
-export const GEMINI_FALLBACK_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.0-flash",
-] as const;
+export const GEMINI_MODEL = appConfig.geminiModel;
+
+export const GEMINI_FALLBACK_MODELS: readonly string[] =
+  GEMINI_MODEL === SECONDARY_FALLBACK_MODEL
+    ? [GEMINI_MODEL]
+    : [GEMINI_MODEL, SECONDARY_FALLBACK_MODEL];
+
+export const GEMINI_REQUEST_TIMEOUT_MS = appConfig.geminiTimeoutMs;
 
 let _genai: GoogleGenAI | null = null;
 
+export const initializeGemini = (): void => {
+  if (_genai) return;
+  _genai = new GoogleGenAI({ apiKey: secretService.getGeminiApiKey() });
+};
+
 export const getGenAI = (): GoogleGenAI => {
   if (!_genai) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
-    _genai = new GoogleGenAI({ apiKey });
+    initializeGemini();
   }
-  return _genai;
+  return _genai!;
 };
