@@ -19,7 +19,7 @@ router.post("/:id/jd", requirePdfUpload, interviewController.uploadJD);
 router.post("/:id/generate-questions", interviewController.generateQuestions);
 router.get("/:id/questions", interviewController.getQuestions);
 
-router.post("/:id/answer", validate(submitAnswerSchema), interviewController.submitAnswer);
+router.post("/:id/answer", validate(submitAnswerSchema), interviewController.submitAnswers);
 router.post("/:id/finish", interviewController.finishInterview);
 router.get("/:id/report", interviewController.getReport);
 

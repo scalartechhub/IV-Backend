@@ -2,7 +2,7 @@ import * as repo from "./interview.repository";
 import { parseResume } from "../ai/resume-parser.service";
 import { parseJD } from "../ai/jd-parser.service";
 import { generateQuestions } from "../ai/question-generator.service";
-import { evaluateAnswer } from "../ai/evaluation.service";
+import { evaluateAnswersBatch } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
 import { uploadFile } from "../storage/storage.service";
 import { getUserProfile } from "../auth/auth.service";
@@ -15,8 +15,9 @@ import type {
   PaginatedResult,
   Question,
   Report,
-  SubmitAnswerInput,
-  SubmitAnswerResult,
+  SubmitAnswersInput,
+  SubmitAnswersResult,
+  Answer,
 } from "./interview.types";
 import { InterviewStatus } from "./interview.types";
 import { calculateInterviewOverallPerformance } from "./interview.scoring";
@@ -164,11 +165,11 @@ export const getQuestions = async (
   return repo.getQuestionsByInterview(interviewId);
 };
 
-export const submitAnswer = async (
+export const submitAnswers = async (
   userId: string,
   interviewId: string,
-  input: SubmitAnswerInput
-): Promise<SubmitAnswerResult> => {
+  input: SubmitAnswersInput
+): Promise<SubmitAnswersResult> => {
   const interview = await repo.requireOwnedInterview(interviewId, userId);
 
   if (interview.status === InterviewStatus.COMPLETED) {
@@ -181,56 +182,89 @@ export const submitAnswer = async (
     throw new AppError(400, "Interview is not ready for answering. Please generate questions first.");
   }
 
-  const question = await repo.findQuestionById(input.questionId);
-  if (!question) throw new AppError(404, "Question not found.");
-  if (question.interviewId !== interviewId)
-    throw new AppError(403, "Question does not belong to this interview.");
+  const questions = await repo.getQuestionsByInterview(interviewId);
+  if (questions.length === 0) {
+    throw new AppError(400, "No questions found. Please generate questions first.");
+  }
+
+  const questionById = new Map(questions.map((q) => [q.id, q]));
+
+  for (const item of input.answers) {
+    const question = questionById.get(item.questionId);
+    if (!question) {
+      throw new AppError(404, `Question not found: ${item.questionId}`);
+    }
+  }
 
   logger.info(
-    `[interview.service] submitting answer interviewId=${interviewId} questionId=${input.questionId}`
+    `[interview.service] submitting ${input.answers.length} answers interviewId=${interviewId}`
   );
 
-  const isFirstAnswer = !(await repo.hasAnswerForQuestion(
-    interviewId,
-    input.questionId
-  ));
+  const savedAnswers: { questionId: string; answer: Answer }[] = [];
 
-  const answer = await repo.saveAnswer(interviewId, input.questionId, userId, input.answer);
+  for (const item of input.answers) {
+    const answer = await repo.saveAnswer(
+      interviewId,
+      item.questionId,
+      userId,
+      item.answer
+    );
+    savedAnswers.push({ questionId: item.questionId, answer });
+  }
 
-  const rawEvaluation = await evaluateAnswer({
-    question: question.question,
-    answer: input.answer,
-    role: interview.role,
-    difficulty: question.difficulty,
-    category: question.category,
+  const batchItems = input.answers.map((item) => {
+    const question = questionById.get(item.questionId)!;
+    return {
+      questionId: item.questionId,
+      question: question.question,
+      answer: item.answer,
+      difficulty: question.difficulty,
+      category: question.category,
+    };
   });
 
-  const evaluation = await repo.saveEvaluation(
-    interviewId,
-    input.questionId,
-    answer.id,
-    userId,
-    rawEvaluation
-  );
+  const evaluationsByQuestionId = await evaluateAnswersBatch({
+    role: interview.role,
+    items: batchItems,
+  });
 
-  const [questions, evaluations] = await Promise.all([
-    repo.getQuestionsByInterview(interviewId),
+  const results: SubmitAnswersResult["results"] = [];
+
+  for (const { questionId, answer } of savedAnswers) {
+    const rawEvaluation = evaluationsByQuestionId.get(questionId);
+    if (!rawEvaluation) {
+      throw new AppError(500, `Missing evaluation for question ${questionId}`);
+    }
+
+    const evaluation = await repo.saveEvaluation(
+      interviewId,
+      questionId,
+      answer.id,
+      userId,
+      rawEvaluation
+    );
+
+    results.push({ answer, evaluation });
+  }
+
+  const [evaluations, allAnswers] = await Promise.all([
     repo.getEvaluationsByInterview(interviewId),
+    repo.getAnswersByInterview(interviewId),
   ]);
+
   const overallPerformance = calculateInterviewOverallPerformance(
     questions,
     evaluations
   );
+  const answeredQuestions = new Set(allAnswers.map((a) => a.questionId)).size;
 
   await repo.updateInterview(interviewId, {
-    ...(isFirstAnswer && {
-      answeredQuestions: interview.answeredQuestions + 1,
-    }),
+    answeredQuestions,
     overallPerformance,
     status: InterviewStatus.IN_PROGRESS,
   });
 
-  return { answer, evaluation };
+  return { results, overallPerformance, answeredQuestions };
 };
 
 export const finishInterview = async (
