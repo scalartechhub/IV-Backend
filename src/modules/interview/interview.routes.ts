@@ -7,7 +7,6 @@ import { requirePdfUpload } from "../../middleware/upload.middleware";
 import {
   createInterviewSchema,
   submitAnswerSchema,
-  listInterviewsQuerySchema,
   interviewIdParamSchema,
 } from "./interview.validation";
 
@@ -16,8 +15,6 @@ const router = Router();
 router.use(verifyToken);
 
 router.post("/create", validate(createInterviewSchema), asyncHandler(interviewController.createInterview));
-router.get("/", validate(listInterviewsQuerySchema, "query"), asyncHandler(interviewController.listInterviews));
-router.get("/:id", validate(interviewIdParamSchema, "params"), asyncHandler(interviewController.getInterview));
 
 router.post(
   "/:id/resume",
@@ -37,11 +34,6 @@ router.post(
   validate(interviewIdParamSchema, "params"),
   asyncHandler(interviewController.generateQuestions)
 );
-router.get(
-  "/:id/questions",
-  validate(interviewIdParamSchema, "params"),
-  asyncHandler(interviewController.getQuestions)
-);
 
 router.post(
   "/:id/answer",
@@ -53,11 +45,6 @@ router.post(
   "/:id/finish",
   validate(interviewIdParamSchema, "params"),
   asyncHandler(interviewController.finishInterview)
-);
-router.get(
-  "/:id/report",
-  validate(interviewIdParamSchema, "params"),
-  asyncHandler(interviewController.getReport)
 );
 
 export default router;
