@@ -1,6 +1,6 @@
 import { Timestamp } from "firebase-admin/firestore";
 
-export type AuthProvider = "email" | "google" | "github" | "phone";
+export type AuthProvider = "email";
 
 export interface User {
   uid: string;
@@ -53,22 +53,13 @@ export interface LoginInput {
   password: string;
 }
 
-export interface OAuthTokenInput {
-  idToken: string;
-}
-
 export interface RegisterResult {
   user: User;
-  customToken: string;
 }
 
 export interface LoginResult {
   user: User;
   idToken: string;
-}
-
-export interface OAuthResult {
-  user: User;
 }
 
 // ─── Extended Firestore user profile (candidate app) ─────────────────────────

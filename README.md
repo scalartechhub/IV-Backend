@@ -13,6 +13,19 @@ npm install
 npm run dev
 ```
 
+## Authentication (email / password)
+
+Email and password only. **Register does not return a token** — call Login after registering.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/auth/register` | No | Create account `{ name, email, password }` |
+| POST | `/api/auth/login` | No | Returns `{ idToken, ...user }` — use `idToken` as Bearer token |
+| GET | `/api/auth/me` | Bearer | Current user + interview stats |
+| POST | `/api/auth/logout` | Bearer | Revoke refresh tokens |
+
+**Bruno flow:** Register → Login (auto-saves `token`) → interview requests.
+
 ## Firestore architecture (2 collections)
 
 All interview data is embedded in a single document for minimal reads/writes.
