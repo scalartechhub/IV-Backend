@@ -28,5 +28,10 @@ export const safeJsonParse = <T>(text: string): T => {
     .replace(/^```\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
-  return JSON.parse(cleaned) as T;
+
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch {
+    throw new AppError(502, "AI returned invalid JSON. Please try again.");
+  }
 };

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import multer from "multer";
+import { appConfig } from "../config/app.config";
 import { AppError } from "../shared/utils";
 import { logger } from "../shared/logger";
 
@@ -52,17 +53,15 @@ export const errorMiddleware = (
   if (error.message?.includes("FAILED_PRECONDITION") && error.message?.includes("index")) {
     res.status(503).json({
       success: false,
-      message: "Database index required. Restart the server after pulling latest code, or create the index from the Firebase Console link in server logs.",
+      message:
+        "Database index required. Restart the server after pulling latest code, or create the index from the Firebase Console link in server logs.",
     });
     return;
   }
 
   res.status(500).json({
     success: false,
-    message:
-      process.env.NODE_ENV === "production"
-        ? "Internal server error"
-        : error.message,
+    message: appConfig.isProduction ? "Internal server error" : error.message,
   });
 };
 

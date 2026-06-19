@@ -6,9 +6,6 @@ info:
 http:
   method: POST
   url: "{{baseUrl}}/auth/login"
-  headers:
-    - name: Content-Type
-      value: application/json
   body:
     type: json
     data: |-
@@ -16,7 +13,6 @@ http:
         "email": "{{email}}",
         "password": "{{password}}"
       }
-  auth: none
 
 runtime:
   scripts:

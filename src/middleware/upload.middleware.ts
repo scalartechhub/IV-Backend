@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import multer from "multer";
 import { FILE_LIMITS } from "../shared/constants";
+import { AppError } from "../shared/utils";
 
 const memoryStorage = multer.memoryStorage();
 
@@ -37,11 +38,12 @@ export const requirePdfUpload = (req: Request, res: Response, next: NextFunction
     }
 
     if (!req.file) {
-      res.status(400).json({
-        success: false,
-        message:
-          'No file received. Use multipart form-data with field name "file" and select a PDF. In Postman: Body → form-data → key "file" → type File.',
-      });
+      next(
+        new AppError(
+          400,
+          'No file received. Use multipart form-data with field name "file" and select a PDF. In Postman: Body → form-data → key "file" → type File.'
+        )
+      );
       return;
     }
 

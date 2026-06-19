@@ -1,14 +1,32 @@
 import "dotenv/config";
-import "./config/env";
+import { appConfig } from "./config/app.config";
+import { secretService, SecretValidationError } from "./config/secrets";
+import { initializeFirebase, isStorageConfigured } from "./config/firebase";
+import { initializeGemini } from "./config/gemini";
 import app from "./app";
 import { logger } from "./shared/logger";
-import { isStorageConfigured } from "./config/firebase";
 
-const PORT = process.env.PORT ?? 5000;
+try {
+  secretService.initialize();
+  initializeFirebase();
+  initializeGemini();
+} catch (error) {
+  if (error instanceof SecretValidationError) {
+    console.error(error.message);
+    if (error.missingKeys.length > 0) {
+      console.error(`Missing keys: ${error.missingKeys.join(", ")}`);
+    }
+  } else if (error instanceof Error) {
+    console.error("Startup failed:", error.message);
+  } else {
+    console.error("Startup failed:", error);
+  }
+  process.exit(1);
+}
 
-const server = app.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT}`);
-  logger.info(`Environment: ${process.env.NODE_ENV ?? "development"}`);
+const server = app.listen(appConfig.port, () => {
+  logger.info(`Server running on port ${appConfig.port}`);
+  logger.info(`Environment: ${appConfig.nodeEnv}`);
   if (!isStorageConfigured()) {
     logger.warn("FIREBASE_STORAGE_BUCKET not set — PDF files will be parsed but not stored");
   }

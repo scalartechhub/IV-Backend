@@ -1,40 +1,15 @@
-import { FieldValue } from "firebase-admin/firestore";
-import { auth, db } from "../../config/firebase";
-import { COLLECTIONS } from "../../shared/constants";
+import { auth } from "../../config/firebase";
+import { secretService } from "../../config/secrets";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
+import * as userRepo from "./auth.repository";
 import type {
   AuthProvider,
   LoginResult,
   OAuthResult,
   RegisterResult,
   User,
-  UserProfile,
 } from "./auth.types";
-
-const upsertUser = async (
-  uid: string,
-  fields: Partial<Omit<User, "isActive" | "createdAt" | "updatedAt">>
-): Promise<User> => {
-  const ref = db.collection(COLLECTIONS.USERS).doc(uid);
-  const snapshot = await ref.get();
-
-  if (!snapshot.exists) {
-    await ref.set({
-      ...fields,
-      isActive: true,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-  } else {
-    await ref.update({
-      ...fields,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-  }
-
-  return (await ref.get()).data() as User;
-};
 
 export const register = async (input: {
   name: string;
@@ -46,7 +21,7 @@ export const register = async (input: {
 
   const userRecord = await auth.createUser({ email, password, displayName: name });
 
-  const user = await upsertUser(userRecord.uid, {
+  const user = await userRepo.upsertUser(userRecord.uid, {
     uid: userRecord.uid,
     name,
     email,
@@ -66,8 +41,7 @@ export const login = async (input: {
   const { email, password } = input;
   logger.info(`[auth.service] login attempt: ${email}`);
 
-  const apiKey = process.env.FIREBASE_API_KEY;
-  if (!apiKey) throw new AppError(500, "FIREBASE_API_KEY is not configured");
+  const apiKey = secretService.getFirebaseApiKey();
 
   const response = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
@@ -92,7 +66,7 @@ export const login = async (input: {
   const idToken = data.idToken!;
   const userRecord = await auth.getUser(uid);
 
-  const user = await upsertUser(uid, {
+  const user = await userRepo.upsertUser(uid, {
     uid,
     name: userRecord.displayName ?? "",
     email,
@@ -107,7 +81,7 @@ export const googleLogin = async (input: { idToken: string }): Promise<OAuthResu
   const decoded = await auth.verifyIdToken(input.idToken);
   const { uid, name, email, picture } = decoded;
 
-  const user = await upsertUser(uid, {
+  const user = await userRepo.upsertUser(uid, {
     uid,
     name: name ?? "",
     email: email ?? "",
@@ -123,7 +97,7 @@ export const githubLogin = async (input: { idToken: string }): Promise<OAuthResu
   const decoded = await auth.verifyIdToken(input.idToken);
   const { uid, name, email, picture } = decoded;
 
-  const user = await upsertUser(uid, {
+  const user = await userRepo.upsertUser(uid, {
     uid,
     name: name ?? "",
     email: email ?? "",
@@ -139,7 +113,7 @@ export const phoneLogin = async (input: { idToken: string }): Promise<OAuthResul
   const decoded = await auth.verifyIdToken(input.idToken);
   const { uid, phone_number, name, picture } = decoded;
 
-  const user = await upsertUser(uid, {
+  const user = await userRepo.upsertUser(uid, {
     uid,
     name: name ?? "",
     phoneNumber: phone_number ?? "",
@@ -152,15 +126,7 @@ export const phoneLogin = async (input: { idToken: string }): Promise<OAuthResul
 };
 
 export const getCurrentUser = async (uid: string): Promise<User> => {
-  const snapshot = await db.collection(COLLECTIONS.USERS).doc(uid).get();
-  if (!snapshot.exists) throw new AppError(404, "User not found");
-  return snapshot.data() as User;
-};
-
-export const getUserProfile = async (uid: string): Promise<UserProfile> => {
-  const snapshot = await db.collection(COLLECTIONS.USERS).doc(uid).get();
-  if (!snapshot.exists) throw new AppError(404, "User profile not found");
-  return snapshot.data() as UserProfile;
+  return userRepo.requireUserById(uid);
 };
 
 export const logout = async (uid: string): Promise<void> => {

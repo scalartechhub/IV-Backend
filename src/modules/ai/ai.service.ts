@@ -1,4 +1,5 @@
-import { getGenAI, GEMINI_FALLBACK_MODELS } from "../../config/gemini";
+import { getGenAI, GEMINI_FALLBACK_MODELS, GEMINI_REQUEST_TIMEOUT_MS } from "../../config/gemini";
+import { appConfig } from "../../config/app.config";
 import { logger } from "../../shared/logger";
 import { AppError, safeJsonParse } from "../../shared/utils";
 
@@ -24,7 +25,10 @@ const errorMessage = (error: unknown): string =>
 const isBillingQuotaError = (error: unknown): boolean =>
   BILLING_QUOTA_PATTERN.test(errorMessage(error));
 
+const isRetryableAppError = (error: AppError): boolean => error.statusCode === 504;
+
 const isRetryableError = (error: unknown): boolean => {
+  if (error instanceof AppError) return isRetryableAppError(error);
   if (isBillingQuotaError(error)) return false;
   return RETRYABLE_PATTERN.test(errorMessage(error));
 };
@@ -34,36 +38,63 @@ const isHighDemandError = (error: unknown): boolean => {
   return /503|UNAVAILABLE|high demand/i.test(message);
 };
 
+const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new AppError(504, "AI request timed out. Please try again.")),
+      ms
+    );
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+};
+
 export class AIService {
   async generateJSON<T>(prompt: string, maxOutputTokens = 4096): Promise<T> {
     const trimmedPrompt = trimPrompt(prompt);
     let lastError: unknown;
+    const primaryModel = GEMINI_FALLBACK_MODELS[0];
 
     for (const model of GEMINI_FALLBACK_MODELS) {
       for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_MODEL; attempt++) {
+        const startedAt = Date.now();
+
         try {
           const genai = getGenAI();
-          const response = await genai.models.generateContent({
-            model,
-            contents: trimmedPrompt,
-            config: {
-              responseMimeType: "application/json",
-              temperature: 0.3,
-              maxOutputTokens,
-            },
-          });
+          const response = await withTimeout(
+            genai.models.generateContent({
+              model,
+              contents: trimmedPrompt,
+              config: {
+                responseMimeType: "application/json",
+                temperature: 0.3,
+                maxOutputTokens: 4096,
+              },
+            }),
+            GEMINI_REQUEST_TIMEOUT_MS
+          );
 
           const text = response.text?.trim();
           if (!text) throw new AppError(500, "Gemini returned empty JSON response");
 
-          if (model !== GEMINI_FALLBACK_MODELS[0]) {
-            logger.info(`[AIService] succeeded with fallback model ${model}`);
+          const elapsedMs = Date.now() - startedAt;
+          if (model !== primaryModel) {
+            logger.info(`[AIService] succeeded with fallback model ${model}`, { elapsedMs });
+          } else {
+            logger.debug(`[AIService] ${model} completed`, { elapsedMs });
           }
 
           return safeJsonParse<T>(text);
         } catch (error) {
           lastError = error;
-          if (error instanceof AppError) throw error;
+
+          if (error instanceof AppError && !isRetryableAppError(error)) {
+            throw error;
+          }
 
           if (isBillingQuotaError(error)) {
             throw new AppError(
@@ -94,8 +125,12 @@ export class AIService {
       );
     }
 
+    if (lastError instanceof AppError && lastError.statusCode === 504) {
+      throw lastError;
+    }
+
     const message =
-      process.env.NODE_ENV === "development" && lastError instanceof Error
+      appConfig.isDevelopment && lastError instanceof Error
         ? `AI service failed: ${lastError.message}`
         : "AI service temporarily unavailable. Please try again.";
 

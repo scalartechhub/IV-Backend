@@ -1,8 +1,6 @@
 import { Request, Response } from "express";
 import * as authService from "./auth.service";
-import { sendSuccess, sendCreated, sendError } from "../../shared/responses";
-import { logger } from "../../shared/logger";
-import { AppError } from "../../shared/utils";
+import { sendSuccess, sendCreated } from "../../shared/responses";
 import type { User, UserResponse } from "./auth.types";
 
 const toUserResponse = (user: User): UserResponse => ({
@@ -15,75 +13,37 @@ const toUserResponse = (user: User): UserResponse => ({
   isActive: user.isActive,
 });
 
-const handleError = (res: Response, error: unknown, context: string): void => {
-  logger.error(`[${context}]`, error);
-  if (error instanceof AppError) {
-    sendError(res, error.message, error.statusCode, error.details);
-  } else {
-    const message = error instanceof Error ? error.message : "An unexpected error occurred";
-    sendError(res, message, 400);
-  }
-};
-
 export const register = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { user, customToken } = await authService.register(req.body);
-    sendCreated(res, { ...toUserResponse(user), customToken }, "Registration successful");
-  } catch (error) {
-    handleError(res, error, "register");
-  }
+  const { user, customToken } = await authService.register(req.body);
+  sendCreated(res, { ...toUserResponse(user), customToken }, "Registration successful");
 };
 
 export const login = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { user, idToken } = await authService.login(req.body);
-    sendSuccess(res, { ...toUserResponse(user), idToken }, "Login successful");
-  } catch (error) {
-    handleError(res, error, "login");
-  }
+  const { user, idToken } = await authService.login(req.body);
+  sendSuccess(res, { ...toUserResponse(user), idToken }, "Login successful");
 };
 
 export const googleLogin = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { user } = await authService.googleLogin(req.body);
-    sendSuccess(res, toUserResponse(user), "Google authentication successful");
-  } catch (error) {
-    handleError(res, error, "googleLogin");
-  }
+  const { user } = await authService.googleLogin(req.body);
+  sendSuccess(res, toUserResponse(user), "Google authentication successful");
 };
 
 export const githubLogin = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { user } = await authService.githubLogin(req.body);
-    sendSuccess(res, toUserResponse(user), "GitHub authentication successful");
-  } catch (error) {
-    handleError(res, error, "githubLogin");
-  }
+  const { user } = await authService.githubLogin(req.body);
+  sendSuccess(res, toUserResponse(user), "GitHub authentication successful");
 };
 
 export const phoneLogin = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { user } = await authService.phoneLogin(req.body);
-    sendSuccess(res, toUserResponse(user), "Phone authentication successful");
-  } catch (error) {
-    handleError(res, error, "phoneLogin");
-  }
+  const { user } = await authService.phoneLogin(req.body);
+  sendSuccess(res, toUserResponse(user), "Phone authentication successful");
 };
 
 export const getCurrentUser = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const user = await authService.getCurrentUser(req.user!.uid);
-    sendSuccess(res, toUserResponse(user));
-  } catch (error) {
-    handleError(res, error, "getCurrentUser");
-  }
+  const user = await authService.getCurrentUser(req.user!.uid);
+  sendSuccess(res, toUserResponse(user));
 };
 
 export const logout = async (req: Request, res: Response): Promise<void> => {
-  try {
-    await authService.logout(req.user!.uid);
-    sendSuccess(res, null, "Successfully logged out");
-  } catch (error) {
-    handleError(res, error, "logout");
-  }
+  await authService.logout(req.user!.uid);
+  sendSuccess(res, null, "Successfully logged out");
 };

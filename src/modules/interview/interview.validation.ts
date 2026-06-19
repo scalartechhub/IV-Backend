@@ -61,6 +61,11 @@ export const listInterviewsQuerySchema = z.object({
   status: z.nativeEnum(InterviewStatus).optional(),
 });
 
+export const interviewIdParamSchema = z.object({
+  id: z.string().min(1, "Interview ID is required"),
+});
+
 export type CreateInterviewInput = z.infer<typeof createInterviewSchema>;
 export type SubmitAnswerInput = z.infer<typeof submitAnswerSchema>;
 export type ListInterviewsQuery = z.infer<typeof listInterviewsQuerySchema>;
+export type InterviewIdParams = z.infer<typeof interviewIdParamSchema>;
