@@ -17,7 +17,7 @@ interface EvaluateAnswerParams {
 }
 
 interface EvaluateAnswersBatchParams {
-  role: string;
+  technology: string;
   items: BatchEvaluationItem[];
 }
 

@@ -12,18 +12,18 @@ const answerItemSchema = z.object({
 });
 
 export const createInterviewSchema = z.object({
-  role: z
+  technology: z
     .string()
-    .min(2, "Role must be at least 2 characters")
-    .max(100, "Role is too long")
+    .min(2, "Technology must be at least 2 characters")
+    .max(100, "Technology is too long")
     .trim(),
-  experience: z
+  experienceLevel: z
     .string()
-    .min(1, "Experience is required")
-    .max(50, "Experience value is too long")
+    .min(1, "Experience level is required")
+    .max(50, "Experience level is too long")
     .trim(),
-  type: z.nativeEnum(InterviewType, {
-    message: "Type must be one of: technical, behavioral, mixed",
+  interviewType: z.nativeEnum(InterviewType, {
+    message: "interviewType must be one of: technical, hr, mixed",
   }),
 });
 

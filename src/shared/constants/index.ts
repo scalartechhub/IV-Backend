@@ -1,6 +1,10 @@
 export const COLLECTIONS = {
   USERS: "users",
   INTERVIEWS: "interviews",
+} as const;
+
+/** Legacy collection names — used only by MigrationService */
+export const LEGACY_COLLECTIONS = {
   QUESTIONS: "questions",
   ANSWERS: "answers",
   EVALUATIONS: "evaluations",
@@ -36,3 +40,5 @@ export const RATE_LIMIT = {
   AI_MAX_REQUESTS: 20,
   AI_WINDOW_MS: 60 * 1000, // 1 minute
 } as const;
+
+export const INTERVIEW_DOCUMENT_VERSION = 2;

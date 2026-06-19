@@ -18,6 +18,7 @@ export const listInterviews = async (req: Request, res: Response): Promise<void>
   sendSuccess(res, result);
 };
 
+/** Single read — returns questions, answers, scores, feedback, and report when present. */
 export const getInterview = async (req: Request, res: Response): Promise<void> => {
   const interview = await interviewService.getInterview(req.user!.uid, param(req, "id"));
   sendSuccess(res, interview);

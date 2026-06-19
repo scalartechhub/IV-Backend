@@ -13,9 +13,9 @@ http:
     type: json
     data: |-
       {
-        "role": "Frontend Developer",
-        "experience": "2 years",
-        "type": "technical"
+        "technology": "Frontend Developer",
+        "experienceLevel": "2 years",
+        "interviewType": "technical"
       }
   auth:
     type: bearer
@@ -37,5 +37,11 @@ settings:
   maxRedirects: 5
 
 docs: |-
-  Create a new interview. Type: technical | behavioral | mixed.
+  Create a new interview.
+
+  Body fields:
+  - `technology` — role/stack focus (e.g. "Frontend Developer")
+  - `experienceLevel` — e.g. "2 years", "Junior", "Senior"
+  - `interviewType` — `technical` | `hr` | `mixed`
+
   Auto-saves `interviewId` to environment.

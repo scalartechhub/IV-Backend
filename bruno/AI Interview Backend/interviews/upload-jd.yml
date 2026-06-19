@@ -17,11 +17,6 @@ http:
     type: bearer
     token: "{{token}}"
 
-runtime:
-  variables:
-    - name: interviewId
-      value: lUcCOQxLnkY4I1MYEjHD
-
 settings:
   encodeUrl: true
   timeout: 0
@@ -30,4 +25,5 @@ settings:
 
 docs: |-
   Upload job description PDF (multipart field: `file`).
+  Parsed analysis is stored on the interview document for question generation.
   Update the file path or pick a PDF in Bruno before sending.

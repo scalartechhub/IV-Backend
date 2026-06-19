@@ -17,4 +17,9 @@ settings:
   maxRedirects: 5
 
 docs: |-
-  Get the interview evaluation report. Call after finishing the interview.
+  Get the embedded interview report.
+
+  **Note:** `GET /interviews/:id` also returns `report` in the same document
+  (single read for the full detail page).
+
+  Call after **Finish Interview**.
