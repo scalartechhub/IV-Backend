@@ -52,3 +52,50 @@ export interface LoginResult {
 export interface OAuthResult {
   user: User;
 }
+
+// ─── Extended Firestore user profile (candidate app) ─────────────────────────
+
+export interface UserSkill {
+  name: string;
+  isCustom?: boolean;
+}
+
+export interface UserExperienceEntry {
+  id?: number;
+  company: string;
+  title: string;
+  period?: string;
+  description?: string;
+  iconVariant?: string;
+}
+
+export interface FavoriteTechStack {
+  label: string;
+  isCustom?: boolean;
+}
+
+export interface InterviewPreferences {
+  aiPersonality?: string;
+  difficultyLevel?: string;
+  favoriteTechStacks?: FavoriteTechStack[];
+}
+
+export interface ProfessionalDetails {
+  company?: string;
+  designation?: string;
+  industry?: string;
+  yearsOfExperience?: string;
+}
+
+export interface UserProfile {
+  uid: string;
+  name?: string;
+  email?: string;
+  skills?: UserSkill[];
+  experiences?: UserExperienceEntry[];
+  interviewPreferences?: InterviewPreferences;
+  professionalDetails?: ProfessionalDetails;
+  professionalSummary?: { bio?: string };
+  provider?: AuthProvider;
+  role?: string;
+}

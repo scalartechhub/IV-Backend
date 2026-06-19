@@ -3,17 +3,30 @@ import { buildQuestionGeneratorPrompt } from "../interview/prompts/question-gene
 import { logger } from "../../shared/logger";
 import { AppError } from "../../shared/utils";
 import { QUESTION_DISTRIBUTION } from "../../shared/constants";
-import type { ResumeAnalysis, JDAnalysis, RawQuestion } from "../interview/interview.types";
+import type {
+  ResumeAnalysis,
+  JDAnalysis,
+  RawQuestion,
+  InterviewType,
+} from "../interview/interview.types";
+import type { UserProfile } from "../auth/auth.types";
 
 interface GenerateQuestionsParams {
-  resumeAnalysis: ResumeAnalysis;
-  jdAnalysis: JDAnalysis;
   role: string;
   experience: string;
+  interviewType: InterviewType;
+  resumeAnalysis?: ResumeAnalysis;
+  jdAnalysis?: JDAnalysis;
+  userProfile?: UserProfile;
 }
 
 export const generateQuestions = async (params: GenerateQuestionsParams): Promise<RawQuestion[]> => {
-  logger.info("[question-generator] generating questions", { role: params.role });
+  logger.info("[question-generator] generating questions", {
+    role: params.role,
+    hasResume: Boolean(params.resumeAnalysis),
+    hasJD: Boolean(params.jdAnalysis),
+    hasUserProfile: Boolean(params.userProfile),
+  });
 
   const prompt = buildQuestionGeneratorPrompt(params);
   const questions = await aiService.generateJSON<RawQuestion[]>(prompt);

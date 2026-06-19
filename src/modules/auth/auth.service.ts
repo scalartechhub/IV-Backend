@@ -9,6 +9,7 @@ import type {
   OAuthResult,
   RegisterResult,
   User,
+  UserProfile,
 } from "./auth.types";
 
 const upsertUser = async (
@@ -154,6 +155,12 @@ export const getCurrentUser = async (uid: string): Promise<User> => {
   const snapshot = await db.collection(COLLECTIONS.USERS).doc(uid).get();
   if (!snapshot.exists) throw new AppError(404, "User not found");
   return snapshot.data() as User;
+};
+
+export const getUserProfile = async (uid: string): Promise<UserProfile> => {
+  const snapshot = await db.collection(COLLECTIONS.USERS).doc(uid).get();
+  if (!snapshot.exists) throw new AppError(404, "User profile not found");
+  return snapshot.data() as UserProfile;
 };
 
 export const logout = async (uid: string): Promise<void> => {

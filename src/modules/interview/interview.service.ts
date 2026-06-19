@@ -5,6 +5,7 @@ import { generateQuestions } from "../ai/question-generator.service";
 import { evaluateAnswer } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
 import { uploadFile } from "../storage/storage.service";
+import { getUserProfile } from "../auth/auth.service";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
 import type {
@@ -119,12 +120,6 @@ export const generateInterviewQuestions = async (
 ): Promise<Question[]> => {
   const interview = await repo.requireOwnedInterview(interviewId, userId);
 
-  if (!interview.resumeAnalysis) {
-    throw new AppError(400, "Resume has not been uploaded and parsed yet.");
-  }
-  if (!interview.jdAnalysis) {
-    throw new AppError(400, "Job description has not been uploaded and parsed yet.");
-  }
   if (
     interview.status === InterviewStatus.IN_PROGRESS ||
     interview.status === InterviewStatus.COMPLETED
@@ -132,13 +127,20 @@ export const generateInterviewQuestions = async (
     throw new AppError(400, "Cannot regenerate questions for an interview already in progress.");
   }
 
-  logger.info(`[interview.service] generating questions interviewId=${interviewId}`);
+  const userProfile = await getUserProfile(userId);
+
+  logger.info(`[interview.service] generating questions interviewId=${interviewId}`, {
+    hasResume: Boolean(interview.resumeAnalysis),
+    hasJD: Boolean(interview.jdAnalysis),
+  });
 
   const rawQuestions = await generateQuestions({
     resumeAnalysis: interview.resumeAnalysis,
     jdAnalysis: interview.jdAnalysis,
+    userProfile,
     role: interview.role,
     experience: interview.experience,
+    interviewType: interview.type,
   });
 
   const questions = await repo.saveQuestions(interviewId, userId, rawQuestions);
