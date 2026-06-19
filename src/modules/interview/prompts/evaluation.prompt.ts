@@ -54,12 +54,12 @@ export interface BatchEvaluationItem {
 }
 
 interface BatchEvaluationParams {
-  role: string;
+  technology: string;
   items: BatchEvaluationItem[];
 }
 
 export const buildBatchEvaluationPrompt = (params: BatchEvaluationParams): string => {
-  const { role, items } = params;
+  const { technology, items } = params;
 
   const qaBlocks = items
     .map(
@@ -71,7 +71,7 @@ Answer: "${item.answer}"`
     .join("\n\n");
 
   return `
-You are an expert technical interviewer evaluating a candidate's answers for a ${role} position.
+You are an expert technical interviewer evaluating a candidate's answers for a ${technology} position.
 
 Evaluate EACH answer below independently across four dimensions (0-10):
 - technical: Accuracy of technical content, correct use of concepts, depth of knowledge

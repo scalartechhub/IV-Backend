@@ -37,6 +37,13 @@
       "secret": false
     },
     {
+      "name": "questionIds",
+      "value": "",
+      "type": "text",
+      "enabled": true,
+      "secret": false
+    },
+    {
       "name": "token",
       "value": "",
       "type": "text",
@@ -46,7 +53,7 @@
   ],
   "info": {
     "type": "bruno-environment",
-    "exportedAt": "2026-06-17T06:38:05.419Z",
+    "exportedAt": "2026-06-19T00:00:00.000Z",
     "exportedUsing": "Bruno/v3.4.2"
   }
 }

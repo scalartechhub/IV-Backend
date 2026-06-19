@@ -26,4 +26,10 @@ settings:
   followRedirects: true
   maxRedirects: 5
 
-docs: "List interviews with pagination. Optional status: draft | processing | ready | in_progress | completed | failed."
+docs: |-
+  List interviews with pagination (summary view — no embedded Q&A payload).
+
+  Optional `status` filter: `draft` | `started` | `completed` | `cancelled`
+
+  Response fields per item: `technology`, `experienceLevel`, `interviewType`,
+  `questionCount`, `answeredCount`, `overallScore`, `status`.

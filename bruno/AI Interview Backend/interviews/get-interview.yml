@@ -13,7 +13,7 @@ http:
 runtime:
   variables:
     - name: interviewId
-      value: NrAXkcPxbvcY0fHR539a
+      value:
 
 settings:
   encodeUrl: true
@@ -21,4 +21,12 @@ settings:
   followRedirects: true
   maxRedirects: 5
 
-docs: Get interview details by ID. Uses `interviewId` from environment.
+docs: |-
+  Get full interview details in a **single read**.
+
+  Returns embedded:
+  - `questions[]` — question, difficulty, answer, score, feedback
+  - `report` — when interview is finished
+  - `overallScore`, `questionCount`, `status`
+
+  Uses `interviewId` from environment (set by Create Interview).

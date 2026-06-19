@@ -3,8 +3,8 @@ import type { UserProfile } from "../../auth/auth.types";
 import { QUESTION_DISTRIBUTION } from "../../../shared/constants";
 
 interface QuestionGeneratorParams {
-  role: string;
-  experience: string;
+  technology: string;
+  experienceLevel: string;
   interviewType: InterviewType;
   resumeAnalysis?: ResumeAnalysis;
   jdAnalysis?: JDAnalysis;
@@ -12,8 +12,8 @@ interface QuestionGeneratorParams {
 }
 
 const buildCandidateSection = (
-  role: string,
-  experience: string,
+  technology: string,
+  experienceLevel: string,
   resumeAnalysis?: ResumeAnalysis,
   userProfile?: UserProfile
 ): string => {
@@ -37,9 +37,9 @@ const buildCandidateSection = (
             `${e.title} at ${e.company}${e.period ? ` (${e.period})` : ""}${e.description ? `: ${e.description}` : ""}`
         )
         .join(" | ") || "Not specified";
-    const designation = userProfile.professionalDetails?.designation ?? role;
+    const designation = userProfile.professionalDetails?.designation ?? technology;
     const years =
-      userProfile.professionalDetails?.yearsOfExperience ?? experience;
+      userProfile.professionalDetails?.yearsOfExperience ?? experienceLevel;
     const industry = userProfile.professionalDetails?.industry ?? "Not specified";
     const bio = userProfile.professionalSummary?.bio ?? "Not specified";
 
@@ -54,12 +54,12 @@ const buildCandidateSection = (
   }
 
   return `Candidate Profile:
-- Target Role: ${role}
-- Experience Level: ${experience}`;
+- Target Technology/Role: ${technology}
+- Experience Level: ${experienceLevel}`;
 };
 
 const buildRequirementsSection = (
-  role: string,
+  technology: string,
   interviewType: InterviewType,
   jdAnalysis?: JDAnalysis,
   userProfile?: UserProfile
@@ -81,7 +81,7 @@ const buildRequirementsSection = (
       userProfile.interviewPreferences?.difficultyLevel ?? "Intermediate";
     const personality =
       userProfile.interviewPreferences?.aiPersonality ?? "Balanced";
-    const targetRole = userProfile.professionalDetails?.designation ?? role;
+    const targetRole = userProfile.professionalDetails?.designation ?? technology;
     const company = userProfile.professionalDetails?.company ?? "Not specified";
 
     return `Interview Focus (from user preferences & profile):
@@ -94,7 +94,7 @@ const buildRequirementsSection = (
   }
 
   return `Interview Focus:
-- Target Role: ${role}
+- Target Technology/Role: ${technology}
 - Interview Type: ${interviewType}`;
 };
 
@@ -103,19 +103,19 @@ export const buildQuestionGeneratorPrompt = (params: QuestionGeneratorParams): s
     resumeAnalysis,
     jdAnalysis,
     userProfile,
-    role,
-    experience,
+    technology,
+    experienceLevel,
     interviewType,
   } = params;
 
   const candidateSection = buildCandidateSection(
-    role,
-    experience,
+    technology,
+    experienceLevel,
     resumeAnalysis,
     userProfile
   );
   const requirementsSection = buildRequirementsSection(
-    role,
+    technology,
     interviewType,
     jdAnalysis,
     userProfile
@@ -127,8 +127,8 @@ export const buildQuestionGeneratorPrompt = (params: QuestionGeneratorParams): s
       : "Base all questions on the candidate profile and interview preferences above.";
 
   return `
-You are a senior technical interviewer conducting a ${interviewType} interview for a ${role} position.
-The candidate has ${experience} of experience.
+You are a senior technical interviewer conducting a ${interviewType} interview for a ${technology} position.
+The candidate has ${experienceLevel} of experience.
 
 ${candidateSection}
 

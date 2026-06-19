@@ -17,4 +17,9 @@ settings:
   maxRedirects: 5
 
 docs: |-
-  Get the authenticated user profile.
+  Get the authenticated user profile and interview stats.
+
+  Response includes:
+  - `displayName`, `email`, `photoURL`
+  - `currentRole`, `experience`, `technologies`, `resumeUrl`
+  - `totalInterviews`, `completedInterviews`, `averageScore`, `bestScore`

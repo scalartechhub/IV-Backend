@@ -10,7 +10,7 @@ import { appConfig } from "../src/config/app.config";
 import { secretService, SecretValidationError } from "../src/config/secrets";
 import { initializeFirebase } from "../src/config/firebase";
 import { db } from "../src/config/firebase";
-import { COLLECTIONS } from "../src/shared/constants";
+import { COLLECTIONS, LEGACY_COLLECTIONS } from "../src/shared/constants";
 import { isCanonicalReportId, toReportDocId } from "../src/shared/firestore-ids";
 
 interface LegacyReport {
@@ -40,7 +40,7 @@ try {
 }
 
 const migrateReports = async (): Promise<void> => {
-  const snap = await db.collection(COLLECTIONS.REPORTS).get();
+  const snap = await db.collection(LEGACY_COLLECTIONS.REPORTS).get();
   let migrated = 0;
   let skipped = 0;
   let deleted = 0;
@@ -69,7 +69,7 @@ const migrateReports = async (): Promise<void> => {
     }
 
     const targetId = toReportDocId(data.interviewId);
-    const targetRef = db.collection(COLLECTIONS.REPORTS).doc(targetId);
+    const targetRef = db.collection(LEGACY_COLLECTIONS.REPORTS).doc(targetId);
     const targetSnap = await targetRef.get();
 
     if (targetSnap.exists && !targetSnap.data()?.pending) {

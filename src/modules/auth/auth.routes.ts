@@ -3,15 +3,12 @@ import * as authController from "./auth.controller";
 import verifyToken from "../../middleware/auth.middleware";
 import { asyncHandler } from "../../middleware/async.middleware";
 import { validate } from "../../middleware/validation.middleware";
-import { registerSchema, loginSchema, oAuthTokenSchema } from "./auth.validation";
+import { registerSchema, loginSchema } from "./auth.validation";
 
 const router = Router();
 
 router.post("/register", validate(registerSchema), asyncHandler(authController.register));
 router.post("/login", validate(loginSchema), asyncHandler(authController.login));
-router.post("/google", validate(oAuthTokenSchema), asyncHandler(authController.googleLogin));
-router.post("/github", validate(oAuthTokenSchema), asyncHandler(authController.githubLogin));
-router.post("/phone", validate(oAuthTokenSchema), asyncHandler(authController.phoneLogin));
 
 router.get("/me", verifyToken, asyncHandler(authController.getCurrentUser));
 router.post("/logout", verifyToken, asyncHandler(authController.logout));

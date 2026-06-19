@@ -27,3 +27,6 @@ settings:
 
 docs: |-
   Create a new user with email and password.
+
+  Does **not** return an auth token. Run **Login** next with the same
+  `email` and `password` to receive `idToken` (saved as `token`).

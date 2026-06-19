@@ -2,22 +2,19 @@ import { aiService } from "./ai.service";
 import { buildReportPrompt } from "../interview/prompts/report.prompt";
 import { logger } from "../../shared/logger";
 import { AppError, clamp, toNumber } from "../../shared/utils";
-import type { Question, Answer, Evaluation, RawReport } from "../interview/interview.types";
+import type { InterviewQuestion, RawReport } from "../interview/interview.types";
 
 interface GenerateReportParams {
-  role: string;
-  experience: string;
-  questions: Question[];
-  answers: Answer[];
-  evaluations: Evaluation[];
+  technology: string;
+  experienceLevel: string;
+  questions: InterviewQuestion[];
 }
 
 export const generateReport = async (params: GenerateReportParams): Promise<RawReport> => {
   logger.info("[report] generating final report", {
-    role: params.role,
+    technology: params.technology,
     questions: params.questions.length,
-    answers: params.answers.length,
-    evaluations: params.evaluations.length,
+    answered: params.questions.filter((q) => q.answer).length,
   });
 
   if (params.questions.length === 0) {
@@ -37,6 +34,10 @@ export const generateReport = async (params: GenerateReportParams): Promise<RawR
     strengths: Array.isArray(result.strengths) ? result.strengths : [],
     weaknesses: Array.isArray(result.weaknesses) ? result.weaknesses : [],
     recommendations: Array.isArray(result.recommendations) ? result.recommendations : [],
+    summary:
+      typeof result.summary === "string" && result.summary.trim()
+        ? result.summary.trim()
+        : "Interview completed.",
   };
 
   logger.info("[report] generation complete", { overallScore: report.overallScore });

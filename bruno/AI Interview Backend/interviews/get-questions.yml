@@ -18,6 +18,10 @@ runtime:
         const questions = body?.data?.questions;
         if (Array.isArray(questions) && questions.length > 0) {
           bru.setEnvVar("questionId", questions[0].id);
+          bru.setEnvVar(
+            "questionIds",
+            JSON.stringify(questions.map((q) => q.id))
+          );
         }
 
 settings:
@@ -27,4 +31,7 @@ settings:
   maxRedirects: 5
 
 docs: |-
-  Get generated questions. Auto-saves first `questionId` to environment.
+  Get embedded questions from the interview document.
+
+  Auto-saves `questionId` (first) and `questionIds` (JSON array) to environment.
+  Use those IDs in Submit Answers.

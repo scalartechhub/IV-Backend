@@ -12,8 +12,8 @@ import type {
 import type { UserProfile } from "../auth/auth.types";
 
 interface GenerateQuestionsParams {
-  role: string;
-  experience: string;
+  technology: string;
+  experienceLevel: string;
   interviewType: InterviewType;
   resumeAnalysis?: ResumeAnalysis;
   jdAnalysis?: JDAnalysis;
@@ -22,7 +22,7 @@ interface GenerateQuestionsParams {
 
 export const generateQuestions = async (params: GenerateQuestionsParams): Promise<RawQuestion[]> => {
   logger.info("[question-generator] generating questions", {
-    role: params.role,
+    technology: params.technology,
     hasResume: Boolean(params.resumeAnalysis),
     hasJD: Boolean(params.jdAnalysis),
     hasUserProfile: Boolean(params.userProfile),
