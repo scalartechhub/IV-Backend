@@ -1,4 +1,5 @@
 import { Timestamp } from "firebase-admin/firestore";
+import type { ResumeAnalysis } from "../interview/interview.types";
 
 export type AuthProvider = "email";
 
@@ -11,6 +12,7 @@ export interface User {
   experience?: number;
   technologies?: string[];
   resumeUrl?: string;
+  resumeAnalyses?: UserResumeAnalysisEntry[];
   totalInterviews: number;
   completedInterviews: number;
   averageScore: number;
@@ -24,6 +26,13 @@ export interface User {
   updatedAt: Timestamp;
 }
 
+export interface UserResumeAnalysisEntry {
+  no: number;
+  resumeUrl?: string;
+  analysis: ResumeAnalysis;
+  uploadedAt: Timestamp;
+}
+
 export interface UserResponse {
   uid: string;
   displayName: string;
@@ -34,6 +43,7 @@ export interface UserResponse {
   experience?: number;
   technologies?: string[];
   resumeUrl?: string;
+  resumeAnalyses?: UserResumeAnalysisEntry[];
   totalInterviews: number;
   completedInterviews: number;
   averageScore: number;
