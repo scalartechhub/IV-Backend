@@ -63,6 +63,8 @@ export interface Interview {
   status: InterviewStatus;
   overallScore?: number;
   questionCount: number;
+  numberOfQuestions?: number;
+  durationMinutes?: number;
   questions: InterviewQuestion[];
   report?: InterviewReport;
   /** Internal flag while report AI generation is in progress */
@@ -84,6 +86,8 @@ export interface CreateInterviewInput {
   technology: string;
   experienceLevel: string;
   interviewType: InterviewType;
+  durationMinutes: number;
+  numberOfQuestions: number;
 }
 
 export interface SubmitAnswerItem {

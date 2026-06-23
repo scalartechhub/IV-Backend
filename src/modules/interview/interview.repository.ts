@@ -25,6 +25,8 @@ export const createInterview = async (
     technology: input.technology,
     experienceLevel: input.experienceLevel,
     interviewType: input.interviewType,
+    durationMinutes: input.durationMinutes,
+    numberOfQuestions: input.numberOfQuestions,
     status: InterviewStatus.DRAFT,
     questionCount: 0,
     questions: [],

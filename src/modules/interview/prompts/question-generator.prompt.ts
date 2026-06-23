@@ -1,11 +1,12 @@
 import type { ResumeAnalysis, JDAnalysis, InterviewType } from "../interview.types";
 import type { UserProfile } from "../../auth/auth.types";
-import { QUESTION_DISTRIBUTION } from "../../../shared/constants";
+import { getQuestionDistribution } from "../../../shared/constants";
 
 interface QuestionGeneratorParams {
   technology: string;
   experienceLevel: string;
   interviewType: InterviewType;
+  numberOfQuestions: number;
   resumeAnalysis?: ResumeAnalysis;
   jdAnalysis?: JDAnalysis;
   userProfile?: UserProfile;
@@ -106,7 +107,10 @@ export const buildQuestionGeneratorPrompt = (params: QuestionGeneratorParams): s
     technology,
     experienceLevel,
     interviewType,
+    numberOfQuestions,
   } = params;
+
+  const distribution = getQuestionDistribution(numberOfQuestions);
 
   const candidateSection = buildCandidateSection(
     technology,
@@ -136,10 +140,10 @@ ${requirementsSection}
 
 ${sourceNote}
 
-Generate EXACTLY ${QUESTION_DISTRIBUTION.TOTAL} interview questions:
-- ${QUESTION_DISTRIBUTION.EASY} EASY questions (foundational concepts, definitions, basic usage)
-- ${QUESTION_DISTRIBUTION.MEDIUM} MEDIUM questions (practical application, problem-solving, real scenarios)
-- ${QUESTION_DISTRIBUTION.HARD} HARD questions (advanced architecture, optimisation, complex trade-offs)
+Generate EXACTLY ${distribution.total} interview questions:
+- ${distribution.easy} EASY questions (foundational concepts, definitions, basic usage)
+- ${distribution.medium} MEDIUM questions (practical application, problem-solving, real scenarios)
+- ${distribution.hard} HARD questions (advanced architecture, optimisation, complex trade-offs)
 
 Guidelines:
 - Tailor questions to the candidate's skills, experience, and preferred tech stacks

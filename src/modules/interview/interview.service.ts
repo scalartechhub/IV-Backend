@@ -10,6 +10,7 @@ import { getUserProfile } from "../auth/auth.repository";
 import { userStatsService } from "../auth/user-stats.service";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
+import { QUESTION_DISTRIBUTION } from "../../shared/constants";
 import type {
   CreateInterviewInput,
   Interview,
@@ -119,9 +120,13 @@ export const generateInterviewQuestions = async (
   const userProfile = await getUserProfile(userId);
 
   logger.info(`[interview.service] generating questions interviewId=${interviewId}`, {
+    numberOfQuestions: interview.numberOfQuestions,
     hasResume: Boolean(interview.resumeAnalysis),
     hasJD: Boolean(interview.jdAnalysis),
   });
+
+  const numberOfQuestions =
+    interview.numberOfQuestions ?? QUESTION_DISTRIBUTION.TOTAL;
 
   const rawQuestions = await generateQuestions({
     resumeAnalysis: interview.resumeAnalysis,
@@ -130,6 +135,7 @@ export const generateInterviewQuestions = async (
     technology: interview.technology,
     experienceLevel: interview.experienceLevel,
     interviewType: interview.interviewType,
+    numberOfQuestions,
   });
 
   const questions = await repo.setInterviewQuestions(interviewId, rawQuestions);

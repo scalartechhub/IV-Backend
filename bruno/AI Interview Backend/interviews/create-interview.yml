@@ -15,13 +15,18 @@ http:
       {
         "technology": "Frontend Developer",
         "experienceLevel": "2 years",
-        "interviewType": "technical"
+        "interviewType": "technical",
+        "durationMinutes": 30,
+        "numberOfQuestions": 10
       }
   auth:
     type: bearer
     token: "{{token}}"
 
 runtime:
+  variables:
+    - name: token
+      value: eyJhbGciOiJSUzI1NiIsImtpZCI6ImVlOTA0NmVhZDJlMDUwMDAxMGVkNTA0M2I0ODNkODRiMGM1MmM3YzQiLCJ0eXAiOiJKV1QifQ.eyJuYW1lIjoiRGVtbyBVc2VyIiwiaXNzIjoiaHR0cHM6Ly9zZWN1cmV0b2tlbi5nb29nbGUuY29tL2ludGVydmlldy04OWUwOSIsImF1ZCI6ImludGVydmlldy04OWUwOSIsImF1dGhfdGltZSI6MTc4MjIwMDYyNiwidXNlcl9pZCI6ImJvekxoSDFRSkJXMUNZUmJydmhwcTFDNm5YdjEiLCJzdWIiOiJib3pMaEgxUUpCVzFDWVJicnZocHExQzZuWHYxIiwiaWF0IjoxNzgyMjAwNjI2LCJleHAiOjE3ODIyMDQyMjYsImVtYWlsIjoiZGVtb0BtYWlsaW5hdG9yLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJmaXJlYmFzZSI6eyJpZGVudGl0aWVzIjp7ImVtYWlsIjpbImRlbW9AbWFpbGluYXRvci5jb20iXX0sInNpZ25faW5fcHJvdmlkZXIiOiJwYXNzd29yZCJ9fQ.aqWAxw8fSlBqDpWAhFoNumx70eqlQEOro0ynNZ5Z59tPpCcn9mr09K4czkDZ4KADzHCSQkWP1muz0XLmgFscHNru_ObO2TMFHoM3w377lK9zF1M3CGOm3bTSU_wSH-KBe8wEJ1VKJZcRkEoINwTlJVSGNeRe8atfdOD0UKytR9Vhp5RU4-0rOMpFfPbcVJA5dMY4ghcYJJn85JERRVIjPHCv7h1-bwcR2wrvGZmfwH26jyVce1zy5zuwfqnlB0mj1UWDvPG1Tp7XBwzdR1tfFYk4h-stlRLdrXGrQbenX1FWPgWca2294RORytS5EiInaOUlonfKcqYAepQMbMSmPQ
   scripts:
     - type: after-response
       code: |-
@@ -43,5 +48,7 @@ docs: |-
   - `technology` — role/stack focus (e.g. "Frontend Developer")
   - `experienceLevel` — e.g. "2 years", "Junior", "Senior"
   - `interviewType` — `technical` | `hr` | `mixed`
+  - `durationMinutes` — interview duration in minutes (validated on frontend)
+  - `numberOfQuestions` — how many questions to generate (validated on frontend)
 
   Auto-saves `interviewId` to environment.

@@ -1,9 +1,9 @@
 import type { Content } from "@google/genai";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { env } from "../../config/env";
+import { appConfig } from "../../config/app.config";
 import { db } from "../../config/firebase";
 import { getGenAI } from "../../config/gemini";
-import { COLLECTIONS } from "../../shared/constants";
+import { LEGACY_COLLECTIONS } from "../../shared/constants";
 import { AppError } from "../../shared/utils";
 
 interface SendMessageInput {
@@ -23,15 +23,15 @@ interface ChatMessage {
 const HISTORY_LIMIT = 20;
 const SYSTEM_INSTRUCTION =
   "You are a helpful assistant. Be accurate, concise, and transparent about uncertainty.";
-const conversations = db.collection(COLLECTIONS.CHAT_CONVERSATIONS);
+const getConversations = () => db.collection(LEGACY_COLLECTIONS.CHAT_CONVERSATIONS);
 const messageCollection = (conversationId: string) =>
-  conversations.doc(conversationId).collection(COLLECTIONS.CHAT_MESSAGES);
+  getConversations().doc(conversationId).collection(LEGACY_COLLECTIONS.CHAT_MESSAGES);
 
 const requireOwnedConversation = async (
   conversationId: string,
   userId: string
 ): Promise<void> => {
-  const snapshot = await conversations.doc(conversationId).get();
+  const snapshot = await getConversations().doc(conversationId).get();
   if (!snapshot.exists) throw new AppError(404, "Conversation not found");
   if (snapshot.data()!.userId !== userId) throw new AppError(403, "Access denied");
 };
@@ -53,7 +53,7 @@ export const sendMessage = async (userId: string, input: SendMessageInput) => {
   if (conversationId) {
     await requireOwnedConversation(conversationId, userId);
   } else {
-    const ref = conversations.doc();
+    const ref = getConversations().doc();
     conversationId = ref.id;
     await ref.set({
       id: ref.id,
@@ -76,7 +76,7 @@ export const sendMessage = async (userId: string, input: SendMessageInput) => {
   let response;
   try {
     response = await getGenAI().models.generateContent({
-      model: env.GEMINI_CHAT_MODEL,
+      model: appConfig.geminiModel,
       contents,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
@@ -107,7 +107,7 @@ export const sendMessage = async (userId: string, input: SendMessageInput) => {
     conversationId,
     role: "model",
     text: reply,
-    model: env.GEMINI_CHAT_MODEL,
+    model: appConfig.geminiModel,
     createdAt: assistantTime,
   };
 
@@ -120,7 +120,7 @@ export const sendMessage = async (userId: string, input: SendMessageInput) => {
     createdAt: now,
   });
   batch.set(assistantRef, assistantMessage);
-  batch.update(conversations.doc(conversationId), { updatedAt: assistantTime });
+  batch.update(getConversations().doc(conversationId), { updatedAt: assistantTime });
   await batch.commit();
 
   return {
