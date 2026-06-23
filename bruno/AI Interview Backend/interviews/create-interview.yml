@@ -15,7 +15,8 @@ http:
       {
         "technology": "Frontend Developer",
         "experienceLevel": "2 years",
-        "interviewType": "technical",
+        "difficultyLevel": "Medium",
+        "interviewType": "Technical Interview",
         "durationMinutes": 30,
         "questionCount": 10
       }
@@ -47,8 +48,11 @@ docs: |-
   Body fields:
   - `technology` — role/stack focus (e.g. "Frontend Developer")
   - `experienceLevel` — e.g. "2 years", "Junior", "Senior"
-  - `interviewType` — `technical` | `hr` | `mixed`
+  - `difficultyLevel` — `Easy` | `Medium` | `Hard` | `Expert`
+  - `interviewType` — `Technical Interview` | `Coding Interview` | `System Design` | `HR Interview` | `Behavioral Interview`
   - `durationMinutes` — interview duration in minutes (validated on frontend)
   - `questionCount` — how many questions to generate (validated on frontend)
+
+  `difficultyLevel` and `interviewType` are stored on the interview and used by **Generate Questions**.
 
   Auto-saves `interviewId` to environment.

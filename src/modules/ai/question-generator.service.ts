@@ -7,12 +7,15 @@ import type {
   JDAnalysis,
   RawQuestion,
   InterviewType,
+  DifficultyLevel,
 } from "../interview/interview.types";
+import { toQuestionDifficulty } from "../interview/interview.types";
 import type { UserProfile } from "../auth/auth.types";
 
 interface GenerateQuestionsParams {
   technology: string;
   experienceLevel: string;
+  difficultyLevel: DifficultyLevel;
   interviewType: InterviewType;
   questionCount: number;
   resumeAnalysis?: ResumeAnalysis;
@@ -23,6 +26,8 @@ interface GenerateQuestionsParams {
 export const generateQuestions = async (params: GenerateQuestionsParams): Promise<RawQuestion[]> => {
   logger.info("[question-generator] generating questions", {
     technology: params.technology,
+    difficultyLevel: params.difficultyLevel,
+    interviewType: params.interviewType,
     questionCount: params.questionCount,
     hasResume: Boolean(params.resumeAnalysis),
     hasJD: Boolean(params.jdAnalysis),
@@ -36,13 +41,13 @@ export const generateQuestions = async (params: GenerateQuestionsParams): Promis
     throw new AppError(500, "AI failed to generate questions. Please try again.");
   }
 
-  const valid = questions.filter(
-    (q) =>
-      typeof q.question === "string" &&
-      q.question.length > 0 &&
-      typeof q.difficulty === "string" &&
-      typeof q.category === "string"
-  );
+  const valid = questions
+    .filter((q) => typeof q.question === "string" && q.question.length > 0)
+    .map((q) => ({
+      question: q.question,
+      difficulty: toQuestionDifficulty(params.difficultyLevel),
+      category: typeof q.category === "string" && q.category.length > 0 ? q.category : params.technology,
+    }));
 
   const targetCount = params.questionCount;
 

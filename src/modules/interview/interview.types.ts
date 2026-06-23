@@ -1,4 +1,5 @@
 import { Timestamp } from "firebase-admin/firestore";
+import type { DifficultyLevel, InterviewType } from "../../shared/constants";
 
 export enum InterviewStatus {
   DRAFT = "draft",
@@ -7,17 +8,24 @@ export enum InterviewStatus {
   CANCELLED = "cancelled",
 }
 
-export enum InterviewType {
-  TECHNICAL = "technical",
-  HR = "hr",
-  MIXED = "mixed",
-}
+export type { DifficultyLevel, InterviewType };
 
 export enum QuestionDifficulty {
   EASY = "easy",
   MEDIUM = "medium",
   HARD = "hard",
+  EXPERT = "expert",
 }
+
+export const toQuestionDifficulty = (difficultyLevel: DifficultyLevel): QuestionDifficulty => {
+  const map: Record<DifficultyLevel, QuestionDifficulty> = {
+    Easy: QuestionDifficulty.EASY,
+    Medium: QuestionDifficulty.MEDIUM,
+    Hard: QuestionDifficulty.HARD,
+    Expert: QuestionDifficulty.EXPERT,
+  };
+  return map[difficultyLevel];
+};
 
 // ─── Embedded interview document models ───────────────────────────────────────
 
@@ -59,6 +67,7 @@ export interface Interview {
   userId: string;
   technology: string;
   experienceLevel: string;
+  difficultyLevel: DifficultyLevel;
   interviewType: InterviewType;
   status: InterviewStatus;
   overallScore?: number;
@@ -84,6 +93,7 @@ export interface Interview {
 export interface CreateInterviewInput {
   technology: string;
   experienceLevel: string;
+  difficultyLevel: DifficultyLevel;
   interviewType: InterviewType;
   durationMinutes: number;
   questionCount: number;

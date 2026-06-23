@@ -1,10 +1,10 @@
-import { QUESTION_DISTRIBUTION } from "../../shared/constants";
+import { DEFAULT_QUESTION_COUNT } from "../../shared/constants";
 import { clamp } from "../../shared/utils";
 import type { InterviewQuestion, RawEvaluation } from "./interview.types";
 
 export const MAX_SCORE_PER_QUESTION = 10;
 export const MAX_INTERVIEW_SCORE =
-  QUESTION_DISTRIBUTION.TOTAL * MAX_SCORE_PER_QUESTION;
+  DEFAULT_QUESTION_COUNT * MAX_SCORE_PER_QUESTION;
 
 /** Per-question score (0–10) from the average of the four evaluation dimensions. */
 export const getRawEvaluationScore = (evaluation: RawEvaluation): number => {

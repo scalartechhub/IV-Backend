@@ -33,6 +33,7 @@ settings:
 docs: |-
   Generate interview questions and embed them in the interview document.
 
+  Uses `difficultyLevel` and `interviewType` from the interview created in **Create Interview**.
   Optional: upload resume/JD first for tailored questions.
   May take 30–60 seconds (Gemini AI).
 

@@ -10,7 +10,7 @@ import { getUserProfile } from "../auth/auth.repository";
 import { userStatsService } from "../auth/user-stats.service";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
-import { QUESTION_DISTRIBUTION } from "../../shared/constants";
+import { DEFAULT_QUESTION_COUNT } from "../../shared/constants";
 import type {
   CreateInterviewInput,
   Interview,
@@ -121,11 +121,13 @@ export const generateInterviewQuestions = async (
 
   logger.info(`[interview.service] generating questions interviewId=${interviewId}`, {
     questionCount: interview.questionCount,
+    difficultyLevel: interview.difficultyLevel,
+    interviewType: interview.interviewType,
     hasResume: Boolean(interview.resumeAnalysis),
     hasJD: Boolean(interview.jdAnalysis),
   });
 
-  const questionCount = interview.questionCount ?? QUESTION_DISTRIBUTION.TOTAL;
+  const questionCount = interview.questionCount ?? DEFAULT_QUESTION_COUNT;
 
   const rawQuestions = await generateQuestions({
     resumeAnalysis: interview.resumeAnalysis,
@@ -133,11 +135,16 @@ export const generateInterviewQuestions = async (
     userProfile,
     technology: interview.technology,
     experienceLevel: interview.experienceLevel,
+    difficultyLevel: interview.difficultyLevel,
     interviewType: interview.interviewType,
     questionCount,
   });
 
-  const questions = await repo.setInterviewQuestions(interviewId, rawQuestions);
+  const questions = await repo.setInterviewQuestions(
+    interviewId,
+    rawQuestions,
+    interview.difficultyLevel
+  );
 
   logger.info(
     `[interview.service] ${questions.length} questions embedded for interviewId=${interviewId}`

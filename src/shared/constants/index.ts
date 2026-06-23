@@ -24,25 +24,19 @@ export const FILE_LIMITS = {
   ALLOWED_MIME_TYPES: ["application/pdf"],
 } as const;
 
-export const QUESTION_DISTRIBUTION = {
-  EASY: 3,
-  MEDIUM: 4,
-  HARD: 3,
-  TOTAL: 10,
-} as const;
+export const DEFAULT_QUESTION_COUNT = 10;
 
-export const getQuestionDistribution = (
-  total: number
-): { easy: number; medium: number; hard: number; total: number } => {
-  const easy = Math.floor(
-    (total * QUESTION_DISTRIBUTION.EASY) / QUESTION_DISTRIBUTION.TOTAL
-  );
-  const medium = Math.floor(
-    (total * QUESTION_DISTRIBUTION.MEDIUM) / QUESTION_DISTRIBUTION.TOTAL
-  );
-  const hard = total - easy - medium;
-  return { easy, medium, hard, total };
-};
+export const DIFFICULTY_LEVELS = ["Easy", "Medium", "Hard", "Expert"] as const;
+export type DifficultyLevel = (typeof DIFFICULTY_LEVELS)[number];
+
+export const INTERVIEW_TYPES = [
+  "Technical Interview",
+  "Coding Interview",
+  "System Design",
+  "HR Interview",
+  "Behavioral Interview",
+] as const;
+export type InterviewType = (typeof INTERVIEW_TYPES)[number];
 
 export const PAGINATION = {
   DEFAULT_PAGE: 1,
