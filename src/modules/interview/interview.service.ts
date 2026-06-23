@@ -120,13 +120,14 @@ export const generateInterviewQuestions = async (
   const userProfile = await getUserProfile(userId);
 
   logger.info(`[interview.service] generating questions interviewId=${interviewId}`, {
-    numberOfQuestions: interview.numberOfQuestions,
+    questionCount: interview.questionCount,
     hasResume: Boolean(interview.resumeAnalysis),
     hasJD: Boolean(interview.jdAnalysis),
   });
 
-  const numberOfQuestions =
-    interview.numberOfQuestions ?? QUESTION_DISTRIBUTION.TOTAL;
+  const legacy = interview as Interview & { numberOfQuestions?: number };
+  const questionCount =
+    legacy.numberOfQuestions ?? interview.questionCount ?? QUESTION_DISTRIBUTION.TOTAL;
 
   const rawQuestions = await generateQuestions({
     resumeAnalysis: interview.resumeAnalysis,
@@ -135,7 +136,7 @@ export const generateInterviewQuestions = async (
     technology: interview.technology,
     experienceLevel: interview.experienceLevel,
     interviewType: interview.interviewType,
-    numberOfQuestions,
+    questionCount,
   });
 
   const questions = await repo.setInterviewQuestions(interviewId, rawQuestions);

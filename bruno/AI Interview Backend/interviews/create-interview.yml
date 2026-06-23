@@ -17,7 +17,7 @@ http:
         "experienceLevel": "2 years",
         "interviewType": "technical",
         "durationMinutes": 30,
-        "numberOfQuestions": 10
+        "questionCount": 10
       }
   auth:
     type: bearer
@@ -49,6 +49,6 @@ docs: |-
   - `experienceLevel` — e.g. "2 years", "Junior", "Senior"
   - `interviewType` — `technical` | `hr` | `mixed`
   - `durationMinutes` — interview duration in minutes (validated on frontend)
-  - `numberOfQuestions` — how many questions to generate (validated on frontend)
+  - `questionCount` — how many questions to generate (validated on frontend)
 
   Auto-saves `interviewId` to environment.
