@@ -30,6 +30,19 @@ export const QUESTION_DISTRIBUTION = {
   TOTAL: 10,
 } as const;
 
+export const getQuestionDistribution = (
+  total: number
+): { easy: number; medium: number; hard: number; total: number } => {
+  const easy = Math.floor(
+    (total * QUESTION_DISTRIBUTION.EASY) / QUESTION_DISTRIBUTION.TOTAL
+  );
+  const medium = Math.floor(
+    (total * QUESTION_DISTRIBUTION.MEDIUM) / QUESTION_DISTRIBUTION.TOTAL
+  );
+  const hard = total - easy - medium;
+  return { easy, medium, hard, total };
+};
+
 export const PAGINATION = {
   DEFAULT_PAGE: 1,
   DEFAULT_LIMIT: 10,

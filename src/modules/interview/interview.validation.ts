@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { InterviewType } from "./interview.types";
-import { QUESTION_DISTRIBUTION } from "../../shared/constants";
 
 const answerItemSchema = z.object({
   questionId: z.string().min(1, "questionId is required"),
@@ -25,16 +24,20 @@ export const createInterviewSchema = z.object({
   interviewType: z.nativeEnum(InterviewType, {
     message: "interviewType must be one of: technical, hr, mixed",
   }),
+  durationMinutes: z
+    .number()
+    .int("durationMinutes must be a whole number")
+    .positive("durationMinutes must be greater than 0"),
+  numberOfQuestions: z
+    .number()
+    .int("numberOfQuestions must be a whole number")
+    .positive("numberOfQuestions must be greater than 0"),
 });
 
 export const submitAnswerSchema = z.object({
   answers: z
     .array(answerItemSchema)
     .min(1, "At least one answer is required")
-    .max(
-      QUESTION_DISTRIBUTION.TOTAL,
-      `Cannot submit more than ${QUESTION_DISTRIBUTION.TOTAL} answers at once`
-    )
     .refine(
       (answers) => new Set(answers.map((a) => a.questionId)).size === answers.length,
       { message: "Each questionId must appear only once in answers" }

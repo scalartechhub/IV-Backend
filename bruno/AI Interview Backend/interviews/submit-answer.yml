@@ -37,4 +37,4 @@ settings:
 docs: |-
   Submit all interview answers in one request.
   All answers are evaluated in a single Gemini API call.
-  Include every attempted question in the `answers` array (1–10 items).
+  Include every attempted question in the `answers` array.

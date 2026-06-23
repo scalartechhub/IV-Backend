@@ -2,7 +2,6 @@ import { aiService } from "./ai.service";
 import { buildQuestionGeneratorPrompt } from "../interview/prompts/question-generator.prompt";
 import { logger } from "../../shared/logger";
 import { AppError } from "../../shared/utils";
-import { QUESTION_DISTRIBUTION } from "../../shared/constants";
 import type {
   ResumeAnalysis,
   JDAnalysis,
@@ -15,6 +14,7 @@ interface GenerateQuestionsParams {
   technology: string;
   experienceLevel: string;
   interviewType: InterviewType;
+  numberOfQuestions: number;
   resumeAnalysis?: ResumeAnalysis;
   jdAnalysis?: JDAnalysis;
   userProfile?: UserProfile;
@@ -23,6 +23,7 @@ interface GenerateQuestionsParams {
 export const generateQuestions = async (params: GenerateQuestionsParams): Promise<RawQuestion[]> => {
   logger.info("[question-generator] generating questions", {
     technology: params.technology,
+    numberOfQuestions: params.numberOfQuestions,
     hasResume: Boolean(params.resumeAnalysis),
     hasJD: Boolean(params.jdAnalysis),
     hasUserProfile: Boolean(params.userProfile),
@@ -43,10 +44,12 @@ export const generateQuestions = async (params: GenerateQuestionsParams): Promis
       typeof q.category === "string"
   );
 
-  if (valid.length < QUESTION_DISTRIBUTION.TOTAL) {
-    logger.warn(`[question-generator] only ${valid.length}/${QUESTION_DISTRIBUTION.TOTAL} valid questions generated`);
+  const targetCount = params.numberOfQuestions;
+
+  if (valid.length < targetCount) {
+    logger.warn(`[question-generator] only ${valid.length}/${targetCount} valid questions generated`);
   }
 
   logger.info(`[question-generator] generated ${valid.length} questions`);
-  return valid.slice(0, QUESTION_DISTRIBUTION.TOTAL);
+  return valid.slice(0, targetCount);
 };
