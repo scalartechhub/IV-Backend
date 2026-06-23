@@ -125,9 +125,7 @@ export const generateInterviewQuestions = async (
     hasJD: Boolean(interview.jdAnalysis),
   });
 
-  const legacy = interview as Interview & { numberOfQuestions?: number };
-  const questionCount =
-    legacy.numberOfQuestions ?? interview.questionCount ?? QUESTION_DISTRIBUTION.TOTAL;
+  const questionCount = interview.questionCount ?? QUESTION_DISTRIBUTION.TOTAL;
 
   const rawQuestions = await generateQuestions({
     resumeAnalysis: interview.resumeAnalysis,
