@@ -14,7 +14,7 @@ interface GenerateQuestionsParams {
   technology: string;
   experienceLevel: string;
   interviewType: InterviewType;
-  numberOfQuestions: number;
+  questionCount: number;
   resumeAnalysis?: ResumeAnalysis;
   jdAnalysis?: JDAnalysis;
   userProfile?: UserProfile;
@@ -23,7 +23,7 @@ interface GenerateQuestionsParams {
 export const generateQuestions = async (params: GenerateQuestionsParams): Promise<RawQuestion[]> => {
   logger.info("[question-generator] generating questions", {
     technology: params.technology,
-    numberOfQuestions: params.numberOfQuestions,
+    questionCount: params.questionCount,
     hasResume: Boolean(params.resumeAnalysis),
     hasJD: Boolean(params.jdAnalysis),
     hasUserProfile: Boolean(params.userProfile),
@@ -44,7 +44,7 @@ export const generateQuestions = async (params: GenerateQuestionsParams): Promis
       typeof q.category === "string"
   );
 
-  const targetCount = params.numberOfQuestions;
+  const targetCount = params.questionCount;
 
   if (valid.length < targetCount) {
     logger.warn(`[question-generator] only ${valid.length}/${targetCount} valid questions generated`);

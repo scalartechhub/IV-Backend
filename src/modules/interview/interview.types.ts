@@ -63,7 +63,6 @@ export interface Interview {
   status: InterviewStatus;
   overallScore?: number;
   questionCount: number;
-  numberOfQuestions?: number;
   durationMinutes?: number;
   questions: InterviewQuestion[];
   report?: InterviewReport;
@@ -87,7 +86,7 @@ export interface CreateInterviewInput {
   experienceLevel: string;
   interviewType: InterviewType;
   durationMinutes: number;
-  numberOfQuestions: number;
+  questionCount: number;
 }
 
 export interface SubmitAnswerItem {

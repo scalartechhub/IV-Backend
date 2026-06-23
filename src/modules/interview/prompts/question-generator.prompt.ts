@@ -6,7 +6,7 @@ interface QuestionGeneratorParams {
   technology: string;
   experienceLevel: string;
   interviewType: InterviewType;
-  numberOfQuestions: number;
+  questionCount: number;
   resumeAnalysis?: ResumeAnalysis;
   jdAnalysis?: JDAnalysis;
   userProfile?: UserProfile;
@@ -107,10 +107,10 @@ export const buildQuestionGeneratorPrompt = (params: QuestionGeneratorParams): s
     technology,
     experienceLevel,
     interviewType,
-    numberOfQuestions,
+    questionCount,
   } = params;
 
-  const distribution = getQuestionDistribution(numberOfQuestions);
+  const distribution = getQuestionDistribution(questionCount);
 
   const candidateSection = buildCandidateSection(
     technology,

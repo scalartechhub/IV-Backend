@@ -28,10 +28,10 @@ export const createInterviewSchema = z.object({
     .number()
     .int("durationMinutes must be a whole number")
     .positive("durationMinutes must be greater than 0"),
-  numberOfQuestions: z
+  questionCount: z
     .number()
-    .int("numberOfQuestions must be a whole number")
-    .positive("numberOfQuestions must be greater than 0"),
+    .int("questionCount must be a whole number")
+    .positive("questionCount must be greater than 0"),
 });
 
 export const submitAnswerSchema = z.object({
