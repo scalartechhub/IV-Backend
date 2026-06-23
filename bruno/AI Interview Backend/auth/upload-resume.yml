@@ -1,0 +1,36 @@
+info:
+  name: Upload Resume
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{baseUrl}}/auth/resume"
+  body:
+    type: multipart-form
+    data:
+      - name: file
+        type: file
+        value:
+          - C:\path\to\your\resume.pdf
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Upload resume PDF for the logged-in user (multipart field: `file`).
+
+  - Requires Bearer token — run **Login** first.
+  - Parses resume with the same AI analysis used during interview upload.
+  - Stores the file in Firebase Storage under `users/{uid}/resumes/`.
+  - Appends an entry to `resumeAnalyses` on the user document:
+    `{ no, resumeUrl, analysis, uploadedAt }`.
+  - Resume URL is stored only inside `resumeAnalyses`, not duplicated at user root.
+
+  Update the file path or pick a PDF in Bruno before sending.

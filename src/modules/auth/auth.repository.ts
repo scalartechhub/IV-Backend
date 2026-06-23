@@ -2,7 +2,12 @@ import { FieldValue } from "firebase-admin/firestore";
 import { db } from "../../config/firebase";
 import { COLLECTIONS } from "../../shared/constants";
 import { AppError } from "../../shared/utils";
-import { DEFAULT_USER_STATS, type User, type UserProfile } from "./auth.types";
+import {
+  DEFAULT_USER_STATS,
+  type User,
+  type UserProfile,
+  type UserResumeAnalysisEntry,
+} from "./auth.types";
 
 const normalizeUserFields = (
   fields: Partial<Omit<User, "isActive" | "createdAt" | "updatedAt">>
@@ -104,5 +109,32 @@ export const updateUserResumeUrl = async (uid: string, resumeUrl: string): Promi
   await db.collection(COLLECTIONS.USERS).doc(uid).update({
     resumeUrl,
     updatedAt: FieldValue.serverTimestamp(),
+  });
+};
+
+export const appendUserResumeAnalysis = async (
+  uid: string,
+  entry: Omit<UserResumeAnalysisEntry, "no">
+): Promise<UserResumeAnalysisEntry> => {
+  const ref = db.collection(COLLECTIONS.USERS).doc(uid);
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new AppError(404, "User not found");
+
+    const user = snap.data() as User;
+    const resumeAnalyses = Array.isArray(user.resumeAnalyses) ? user.resumeAnalyses : [];
+    const highestNo = resumeAnalyses.reduce((maxNo, item) => Math.max(maxNo, item.no ?? 0), 0);
+    const nextEntry: UserResumeAnalysisEntry = {
+      no: highestNo + 1,
+      ...entry,
+    };
+
+    tx.update(ref, {
+      resumeAnalyses: [...resumeAnalyses, nextEntry],
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return nextEntry;
   });
 };

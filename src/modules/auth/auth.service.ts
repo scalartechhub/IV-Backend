@@ -1,9 +1,18 @@
 import { auth } from "../../config/firebase";
 import { secretService } from "../../config/secrets";
+import { Timestamp } from "firebase-admin/firestore";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
+import { parseResume } from "../ai/resume-parser.service";
+import { uploadUserResumeFile } from "../storage/storage.service";
 import * as userRepo from "./auth.repository";
-import type { AuthProvider, LoginResult, RegisterResult, User } from "./auth.types";
+import type {
+  AuthProvider,
+  LoginResult,
+  RegisterResult,
+  User,
+  UserResumeAnalysisEntry,
+} from "./auth.types";
 
 export const register = async (input: {
   name: string;
@@ -72,4 +81,28 @@ export const login = async (input: {
 export const logout = async (uid: string): Promise<void> => {
   await auth.revokeRefreshTokens(uid);
   logger.info(`[auth.service] logout uid=${uid}`);
+};
+
+export const uploadResumeAnalysis = async (
+  uid: string,
+  fileBuffer: Buffer
+): Promise<UserResumeAnalysisEntry> => {
+  logger.info(`[auth.service] user resume upload uid=${uid}`);
+
+  const analysis = await parseResume(fileBuffer);
+
+  let resumeUrl: string | undefined;
+  try {
+    resumeUrl = await uploadUserResumeFile(uid, fileBuffer);
+  } catch (storageError) {
+    logger.warn(`[auth.service] user resume storage upload failed uid=${uid}`, storageError);
+  }
+
+  const entry = await userRepo.appendUserResumeAnalysis(uid, {
+    resumeUrl,
+    analysis,
+    uploadedAt: Timestamp.now(),
+  });
+
+  return entry;
 };
