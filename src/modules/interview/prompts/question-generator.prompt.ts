@@ -1,16 +1,39 @@
-import type { ResumeAnalysis, JDAnalysis, InterviewType } from "../interview.types";
+import type {
+  ResumeAnalysis,
+  JDAnalysis,
+  InterviewType,
+  DifficultyLevel,
+} from "../interview.types";
 import type { UserProfile } from "../../auth/auth.types";
-import { getQuestionDistribution } from "../../../shared/constants";
+import { toQuestionDifficulty } from "../interview.types";
 
 interface QuestionGeneratorParams {
   technology: string;
   experienceLevel: string;
+  difficultyLevel: DifficultyLevel;
   interviewType: InterviewType;
   questionCount: number;
   resumeAnalysis?: ResumeAnalysis;
   jdAnalysis?: JDAnalysis;
   userProfile?: UserProfile;
 }
+
+const getInterviewTypeGuidance = (interviewType: InterviewType): string => {
+  switch (interviewType) {
+    case "Technical Interview":
+      return "Focus on core technical knowledge, frameworks, tools, debugging, and role-specific concepts.";
+    case "Coding Interview":
+      return "Focus on algorithms, data structures, problem decomposition, complexity analysis, and verbal walkthroughs of code solutions.";
+    case "System Design":
+      return "Focus on architecture, scalability, reliability, trade-offs, APIs, databases, caching, and distributed systems.";
+    case "HR Interview":
+      return "Focus on career goals, role fit, communication, motivation, expectations, and professional background.";
+    case "Behavioral Interview":
+      return "Focus on past experiences using STAR-style prompts, teamwork, conflict resolution, ownership, and soft skills.";
+    default:
+      return "Tailor questions to the stated interview type and candidate background.";
+  }
+};
 
 const buildCandidateSection = (
   technology: string,
@@ -62,6 +85,7 @@ const buildCandidateSection = (
 const buildRequirementsSection = (
   technology: string,
   interviewType: InterviewType,
+  difficultyLevel: DifficultyLevel,
   jdAnalysis?: JDAnalysis,
   userProfile?: UserProfile
 ): string => {
@@ -69,7 +93,9 @@ const buildRequirementsSection = (
     return `Job Requirements (from job description):
 - Required Skills: ${jdAnalysis.requiredSkills.slice(0, 10).join(", ") || "Not specified"}
 - Core Responsibilities: ${jdAnalysis.responsibilities.slice(0, 5).join(" | ") || "Not specified"}
-- Experience Needed: ${jdAnalysis.experience.slice(0, 3).join(" | ") || "Not specified"}`;
+- Experience Needed: ${jdAnalysis.experience.slice(0, 3).join(" | ") || "Not specified"}
+- Interview Type: ${interviewType}
+- Difficulty Level: ${difficultyLevel}`;
   }
 
   if (userProfile) {
@@ -78,8 +104,6 @@ const buildRequirementsSection = (
         ?.map((t) => t.label)
         .filter(Boolean)
         .join(", ") || "Not specified";
-    const difficulty =
-      userProfile.interviewPreferences?.difficultyLevel ?? "Intermediate";
     const personality =
       userProfile.interviewPreferences?.aiPersonality ?? "Balanced";
     const targetRole = userProfile.professionalDetails?.designation ?? technology;
@@ -89,14 +113,15 @@ const buildRequirementsSection = (
 - Target Role: ${targetRole}
 - Current Company: ${company}
 - Preferred Tech Stacks: ${techStacks}
-- Difficulty Level: ${difficulty}
 - Interviewer Style: ${personality}
-- Interview Type: ${interviewType}`;
+- Interview Type: ${interviewType}
+- Difficulty Level: ${difficultyLevel}`;
   }
 
   return `Interview Focus:
 - Target Technology/Role: ${technology}
-- Interview Type: ${interviewType}`;
+- Interview Type: ${interviewType}
+- Difficulty Level: ${difficultyLevel}`;
 };
 
 export const buildQuestionGeneratorPrompt = (params: QuestionGeneratorParams): string => {
@@ -106,11 +131,13 @@ export const buildQuestionGeneratorPrompt = (params: QuestionGeneratorParams): s
     userProfile,
     technology,
     experienceLevel,
+    difficultyLevel,
     interviewType,
     questionCount,
   } = params;
 
-  const distribution = getQuestionDistribution(questionCount);
+  const questionDifficulty = toQuestionDifficulty(difficultyLevel);
+  const interviewTypeGuidance = getInterviewTypeGuidance(interviewType);
 
   const candidateSection = buildCandidateSection(
     technology,
@@ -121,6 +148,7 @@ export const buildQuestionGeneratorPrompt = (params: QuestionGeneratorParams): s
   const requirementsSection = buildRequirementsSection(
     technology,
     interviewType,
+    difficultyLevel,
     jdAnalysis,
     userProfile
   );
@@ -131,32 +159,37 @@ export const buildQuestionGeneratorPrompt = (params: QuestionGeneratorParams): s
       : "Base all questions on the candidate profile and interview preferences above.";
 
   return `
-You are a senior technical interviewer conducting a ${interviewType} interview for a ${technology} position.
+You are a senior interviewer conducting a ${interviewType} for a ${technology} position.
 The candidate has ${experienceLevel} of experience.
 
 ${candidateSection}
 
 ${requirementsSection}
 
+Interview type guidance:
+- ${interviewTypeGuidance}
+
 ${sourceNote}
 
-Generate EXACTLY ${distribution.total} interview questions:
-- ${distribution.easy} EASY questions (foundational concepts, definitions, basic usage)
-- ${distribution.medium} MEDIUM questions (practical application, problem-solving, real scenarios)
-- ${distribution.hard} HARD questions (advanced architecture, optimisation, complex trade-offs)
+Generate EXACTLY ${questionCount} interview questions.
+Every question MUST be at the ${difficultyLevel} difficulty level.
+Set the "difficulty" field to "${questionDifficulty}" for every question.
 
 Guidelines:
 - Tailor questions to the candidate's skills, experience, and preferred tech stacks
-- Match difficulty to the user's stated difficulty level when available
-- Include a mix of theoretical and practical questions appropriate for the interview type (${interviewType})
+- All questions must fit the selected interview type (${interviewType})
+- Do not mix easier or harder questions — keep all at ${difficultyLevel} level
+- For Coding Interview: include algorithmic and implementation-style questions
+- For System Design: include scalability, component design, and trade-off questions
+- For HR / Behavioral Interview: avoid deep coding puzzles; focus on communication and experience
 - Each question should be specific and answerable in 2-5 minutes verbally
-- Assign a relevant category (e.g. "React", "System Design", "JavaScript", "CSS", "Testing")
+- Assign a relevant category (e.g. "React", "System Design", "JavaScript", "Behavioral", "Algorithms")
 
 Return ONLY a valid JSON array. No markdown, no explanation:
 [
   {
     "question": "What is the difference between null and undefined in JavaScript?",
-    "difficulty": "easy",
+    "difficulty": "${questionDifficulty}",
     "category": "JavaScript"
   }
 ]

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { InterviewType } from "./interview.types";
+import { DIFFICULTY_LEVELS, INTERVIEW_TYPES } from "../../shared/constants";
 
 const answerItemSchema = z.object({
   questionId: z.string().min(1, "questionId is required"),
@@ -21,8 +21,12 @@ export const createInterviewSchema = z.object({
     .min(1, "Experience level is required")
     .max(50, "Experience level is too long")
     .trim(),
-  interviewType: z.nativeEnum(InterviewType, {
-    message: "interviewType must be one of: technical, hr, mixed",
+  difficultyLevel: z.enum(DIFFICULTY_LEVELS, {
+    message: "difficultyLevel must be one of: Easy, Medium, Hard, Expert",
+  }),
+  interviewType: z.enum(INTERVIEW_TYPES, {
+    message:
+      "interviewType must be one of: Technical Interview, Coding Interview, System Design, HR Interview, Behavioral Interview",
   }),
   durationMinutes: z
     .number()

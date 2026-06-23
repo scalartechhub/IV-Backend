@@ -9,8 +9,9 @@ import type {
   InterviewQuestion,
   InterviewReport,
   RawQuestion,
+  DifficultyLevel,
 } from "./interview.types";
-import { InterviewStatus, QuestionDifficulty } from "./interview.types";
+import { InterviewStatus, toQuestionDifficulty } from "./interview.types";
 
 export const createInterview = async (
   userId: string,
@@ -24,6 +25,7 @@ export const createInterview = async (
     userId,
     technology: input.technology,
     experienceLevel: input.experienceLevel,
+    difficultyLevel: input.difficultyLevel,
     interviewType: input.interviewType,
     durationMinutes: input.durationMinutes,
     questionCount: input.questionCount,
@@ -74,12 +76,14 @@ export const updateInterview = async (
 
 export const setInterviewQuestions = async (
   interviewId: string,
-  rawQuestions: RawQuestion[]
+  rawQuestions: RawQuestion[],
+  difficultyLevel: DifficultyLevel
 ): Promise<InterviewQuestion[]> => {
+  const difficulty = toQuestionDifficulty(difficultyLevel);
   const questions: InterviewQuestion[] = rawQuestions.map((rq) => ({
     id: uuidv4(),
     question: rq.question,
-    difficulty: (rq.difficulty as QuestionDifficulty) ?? QuestionDifficulty.MEDIUM,
+    difficulty,
   }));
 
   const ref = db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId);

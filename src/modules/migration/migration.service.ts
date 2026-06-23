@@ -32,6 +32,7 @@ interface LegacyInterview {
   role?: string;
   experience?: string;
   type?: string;
+  difficulty?: string;
   status?: string;
   totalQuestions?: number;
   answeredQuestions?: number;
@@ -96,14 +97,26 @@ const mapLegacyStatus = (status?: string): InterviewStatus => {
 };
 
 const mapLegacyType = (type?: string): InterviewType => {
-  if (type === "behavioral") return InterviewType.HR;
-  if (type === "mixed") return InterviewType.MIXED;
-  return InterviewType.TECHNICAL;
+  if (type === "behavioral") return "Behavioral Interview";
+  if (type === "hr") return "HR Interview";
+  if (type === "coding") return "Coding Interview";
+  if (type === "system_design" || type === "system design") return "System Design";
+  if (type === "mixed") return "Technical Interview";
+  return "Technical Interview";
+};
+
+const mapLegacyDifficultyLevel = (value?: string): Interview["difficultyLevel"] => {
+  const normalized = value?.toLowerCase();
+  if (normalized === "easy" || normalized === "junior") return "Easy";
+  if (normalized === "hard" || normalized === "senior") return "Hard";
+  if (normalized === "expert") return "Expert";
+  return "Medium";
 };
 
 const mapDifficulty = (value: string): QuestionDifficulty => {
   if (value === "easy") return QuestionDifficulty.EASY;
   if (value === "hard") return QuestionDifficulty.HARD;
+  if (value === "expert") return QuestionDifficulty.EXPERT;
   return QuestionDifficulty.MEDIUM;
 };
 
@@ -234,6 +247,7 @@ export class MigrationService {
       userId: legacy.userId,
       technology: legacy.role ?? "General",
       experienceLevel: legacy.experience ?? "Not specified",
+      difficultyLevel: mapLegacyDifficultyLevel(legacy.difficulty),
       interviewType: mapLegacyType(legacy.type),
       status,
       overallScore,
