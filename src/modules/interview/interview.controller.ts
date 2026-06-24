@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import * as interviewService from "./interview.service";
+import * as authService from "../auth/auth.service";
 import { sendSuccess, sendCreated } from "../../shared/responses";
 
 const param = (req: Request, key: string): string => String(req.params[key]);
@@ -7,6 +8,14 @@ const param = (req: Request, key: string): string => String(req.params[key]);
 export const createInterview = async (req: Request, res: Response): Promise<void> => {
   const interview = await interviewService.createInterview(req.user!.uid, req.body);
   sendCreated(res, interview, "Interview created successfully");
+};
+
+export const resumeAnalysis = async (req: Request, res: Response): Promise<void> => {
+  const resumeAnalysisEntry = await authService.uploadResumeAnalysis(
+    req.user!.uid,
+    req.file!.buffer
+  );
+  sendSuccess(res, resumeAnalysisEntry, "Resume uploaded and analyzed successfully");
 };
 
 export const uploadResume = async (req: Request, res: Response): Promise<void> => {
