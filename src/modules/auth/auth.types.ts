@@ -1,7 +1,15 @@
 import { Timestamp } from "firebase-admin/firestore";
 import type { ResumeAnalysis } from "../interview/interview.types";
+import type { DifficultyLevel, InterviewType } from "../../shared/constants";
 
 export type AuthProvider = "email";
+
+export interface UserInterviewSettings {
+  difficultyLevel: DifficultyLevel;
+  interviewType: InterviewType;
+  durationMinutes: number;
+  questionCount: number;
+}
 
 export interface User {
   uid: string;
@@ -13,6 +21,7 @@ export interface User {
   technologies?: string[];
   resumeUrl?: string;
   resumeAnalyses?: UserResumeAnalysisEntry[];
+  settings?: UserInterviewSettings;
   totalInterviews: number;
   completedInterviews: number;
   averageScore: number;

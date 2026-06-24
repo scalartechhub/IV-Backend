@@ -79,7 +79,9 @@ export class AIService {
           );
 
           const text = response.text?.trim();
-          if (!text) throw new AppError(500, "Gemini returned empty JSON response");
+          if (!text) {
+            throw new AppError(502, "AI returned an empty response. Please try again.");
+          }
 
           const elapsedMs = Date.now() - startedAt;
           if (model !== primaryModel) {

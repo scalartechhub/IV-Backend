@@ -16,7 +16,6 @@ http:
         "email": "{{email}}",
         "password": "{{password}}"
       }
-  auth: none
 
 runtime:
   scripts:

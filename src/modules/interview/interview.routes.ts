@@ -3,7 +3,10 @@ import * as interviewController from "./interview.controller";
 import verifyToken from "../../middleware/auth.middleware";
 import { asyncHandler } from "../../middleware/async.middleware";
 import { validate } from "../../middleware/validation.middleware";
-import { requirePdfUpload } from "../../middleware/upload.middleware";
+import {
+  requireInterviewDocumentsUpload,
+  requirePdfUpload,
+} from "../../middleware/upload.middleware";
 import {
   createInterviewSchema,
   submitAnswerSchema,
@@ -17,22 +20,15 @@ router.use(verifyToken);
 router.post("/create", validate(createInterviewSchema), asyncHandler(interviewController.createInterview));
 
 router.post(
-  "/resume-analysis",
-  requirePdfUpload,
-  asyncHandler(interviewController.resumeAnalysis)
+  "/create-with-documents",
+  requireInterviewDocumentsUpload,
+  asyncHandler(interviewController.createInterviewWithDocuments)
 );
 
 router.post(
-  "/:id/resume",
-  validate(interviewIdParamSchema, "params"),
+  "/resume-analysis",
   requirePdfUpload,
-  asyncHandler(interviewController.uploadResume)
-);
-router.post(
-  "/:id/jd",
-  validate(interviewIdParamSchema, "params"),
-  requirePdfUpload,
-  asyncHandler(interviewController.uploadJD)
+  asyncHandler(interviewController.resumeAnalysis)
 );
 
 router.post(

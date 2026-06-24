@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { ZodSchema } from "zod";
 import { logger } from "../shared/logger";
 import { AppError } from "../shared/utils";
+import { buildValidationMessage, formatZodErrors } from "../shared/errors";
 
 export const validate =
   (schema: ZodSchema, target: "body" | "query" | "params" = "body") =>
@@ -9,10 +10,9 @@ export const validate =
     const result = schema.safeParse(req[target]);
 
     if (!result.success) {
-      logger.debug("[validation.middleware] validation failed", result.error.flatten());
-      next(
-        new AppError(400, "Validation failed", result.error.flatten().fieldErrors)
-      );
+      const errors = formatZodErrors(result.error);
+      logger.debug("[validation.middleware] validation failed", errors);
+      next(new AppError(400, buildValidationMessage(errors), errors));
       return;
     }
 

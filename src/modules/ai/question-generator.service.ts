@@ -13,14 +13,15 @@ import { toQuestionDifficulty } from "../interview/interview.types";
 import type { UserProfile } from "../auth/auth.types";
 
 interface GenerateQuestionsParams {
-  technology: string;
-  experienceLevel: string;
+  technology?: string;
+  experienceLevel?: string;
   difficultyLevel: DifficultyLevel;
   interviewType: InterviewType;
   questionCount: number;
   resumeAnalysis?: ResumeAnalysis;
   jdAnalysis?: JDAnalysis;
   userProfile?: UserProfile;
+  documentsOnly?: boolean;
 }
 
 export const generateQuestions = async (params: GenerateQuestionsParams): Promise<RawQuestion[]> => {
@@ -29,6 +30,7 @@ export const generateQuestions = async (params: GenerateQuestionsParams): Promis
     difficultyLevel: params.difficultyLevel,
     interviewType: params.interviewType,
     questionCount: params.questionCount,
+    documentsOnly: Boolean(params.documentsOnly),
     hasResume: Boolean(params.resumeAnalysis),
     hasJD: Boolean(params.jdAnalysis),
     hasUserProfile: Boolean(params.userProfile),
@@ -46,7 +48,13 @@ export const generateQuestions = async (params: GenerateQuestionsParams): Promis
     .map((q) => ({
       question: q.question,
       difficulty: toQuestionDifficulty(params.difficultyLevel),
-      category: typeof q.category === "string" && q.category.length > 0 ? q.category : params.technology,
+      category:
+        typeof q.category === "string" && q.category.length > 0
+          ? q.category
+          : (params.technology ??
+            params.resumeAnalysis?.skills?.[0] ??
+            params.jdAnalysis?.requiredSkills?.[0] ??
+            "Interview"),
     }));
 
   const targetCount = params.questionCount;

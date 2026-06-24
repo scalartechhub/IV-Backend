@@ -8,6 +8,11 @@ export enum InterviewStatus {
   CANCELLED = "cancelled",
 }
 
+export enum InterviewCreationMode {
+  PAYLOAD = "payload",
+  DOCUMENTS = "documents",
+}
+
 export type { DifficultyLevel, InterviewType };
 
 export enum QuestionDifficulty {
@@ -65,10 +70,11 @@ export interface JDAnalysis {
 export interface Interview {
   id: string;
   userId: string;
-  technology: string;
-  experienceLevel: string;
-  difficultyLevel: DifficultyLevel;
-  interviewType: InterviewType;
+  technology?: string;
+  experienceLevel?: string;
+  creationMode: InterviewCreationMode;
+  difficultyLevel?: DifficultyLevel;
+  interviewType?: InterviewType;
   status: InterviewStatus;
   overallScore?: number;
   questionCount: number;
@@ -97,6 +103,11 @@ export interface CreateInterviewInput {
   interviewType: InterviewType;
   durationMinutes: number;
   questionCount: number;
+}
+
+export interface CreateInterviewDocumentsInput {
+  resumeBuffer?: Buffer;
+  jdBuffer?: Buffer;
 }
 
 export interface SubmitAnswerItem {

@@ -49,7 +49,7 @@ export const uploadFile = async (
     logger.error(`[storage] upload failed for ${type}`, error);
     throw new AppError(
       500,
-      `Failed to upload ${type === "resume" ? "resume" : "job description"} file.`
+      `Failed to upload ${type === "resume" ? "resume" : "job description"} file to storage. Please try again.`
     );
   }
 };
@@ -90,6 +90,6 @@ export const uploadUserResumeFile = async (
     return publicUrl;
   } catch (error) {
     logger.error("[storage] user resume upload failed", error);
-    throw new AppError(500, "Failed to upload resume file.");
+    throw new AppError(500, "Failed to upload resume file to storage. Please try again.");
   }
 };

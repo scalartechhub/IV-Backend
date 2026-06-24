@@ -32,8 +32,10 @@ const requireOwnedConversation = async (
   userId: string
 ): Promise<void> => {
   const snapshot = await getConversations().doc(conversationId).get();
-  if (!snapshot.exists) throw new AppError(404, "Conversation not found");
-  if (snapshot.data()!.userId !== userId) throw new AppError(403, "Access denied");
+  if (!snapshot.exists) throw new AppError(404, "Conversation not found. Please start a new chat.");
+  if (snapshot.data()!.userId !== userId) {
+    throw new AppError(403, "You do not have permission to access this conversation.");
+  }
 };
 
 const getRecentMessages = async (

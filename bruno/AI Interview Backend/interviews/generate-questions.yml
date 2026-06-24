@@ -33,8 +33,14 @@ settings:
 docs: |-
   Generate interview questions and embed them in the interview document.
 
-  Uses `difficultyLevel` and `interviewType` from the interview created in **Create Interview**.
-  Optional: upload resume/JD first for tailored questions.
+  Case 1 — interview created via **Create Interview** (JSON payload):
+  uses `difficultyLevel`, `interviewType`, `durationMinutes`, and `questionCount` from the interview.
+
+  Case 2 — interview created via **Create Interview With Documents**:
+  uses resume/JD analysis from the interview and reads
+  `difficultyLevel`, `durationMinutes`, `interviewType`, and `questionCount` from `users.settings`.
+  Returns an error if user settings are missing.
+
   May take 30–60 seconds (Gemini AI).
 
   Auto-saves `questionId` (first) and `questionIds` (JSON array) to environment.

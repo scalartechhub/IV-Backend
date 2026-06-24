@@ -5,9 +5,27 @@ import { sendSuccess, sendCreated } from "../../shared/responses";
 
 const param = (req: Request, key: string): string => String(req.params[key]);
 
+const getUploadedDocumentBuffers = (
+  req: Request
+): { resumeBuffer?: Buffer; jdBuffer?: Buffer } => {
+  const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+  return {
+    resumeBuffer: files?.resume?.[0]?.buffer,
+    jdBuffer: files?.jd?.[0]?.buffer,
+  };
+};
+
 export const createInterview = async (req: Request, res: Response): Promise<void> => {
   const interview = await interviewService.createInterview(req.user!.uid, req.body);
   sendCreated(res, interview, "Interview created successfully");
+};
+
+export const createInterviewWithDocuments = async (req: Request, res: Response): Promise<void> => {
+  const interview = await interviewService.createInterviewWithDocuments(
+    req.user!.uid,
+    getUploadedDocumentBuffers(req)
+  );
+  sendCreated(res, interview, "Interview created with documents successfully");
 };
 
 export const resumeAnalysis = async (req: Request, res: Response): Promise<void> => {
@@ -16,24 +34,6 @@ export const resumeAnalysis = async (req: Request, res: Response): Promise<void>
     req.file!.buffer
   );
   sendSuccess(res, resumeAnalysisEntry, "Resume uploaded and analyzed successfully");
-};
-
-export const uploadResume = async (req: Request, res: Response): Promise<void> => {
-  const interview = await interviewService.uploadResume(
-    req.user!.uid,
-    param(req, "id"),
-    req.file!.buffer
-  );
-  sendSuccess(res, interview, "Resume parsed successfully");
-};
-
-export const uploadJD = async (req: Request, res: Response): Promise<void> => {
-  const interview = await interviewService.uploadJD(
-    req.user!.uid,
-    param(req, "id"),
-    req.file!.buffer
-  );
-  sendSuccess(res, interview, "Job description parsed successfully");
 };
 
 export const generateQuestions = async (req: Request, res: Response): Promise<void> => {
