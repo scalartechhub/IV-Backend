@@ -3,7 +3,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { appConfig } from "../../config/app.config";
 import { db } from "../../config/firebase";
 import { getGenAI } from "../../config/gemini";
-import { LEGACY_COLLECTIONS } from "../../shared/constants";
+import { CHAT_COLLECTIONS } from "../../shared/constants";
 import { AppError } from "../../shared/utils";
 
 interface SendMessageInput {
@@ -23,9 +23,9 @@ interface ChatMessage {
 const HISTORY_LIMIT = 20;
 const SYSTEM_INSTRUCTION =
   "You are a helpful assistant. Be accurate, concise, and transparent about uncertainty.";
-const getConversations = () => db.collection(LEGACY_COLLECTIONS.CHAT_CONVERSATIONS);
+const getConversations = () => db.collection(CHAT_COLLECTIONS.CONVERSATIONS);
 const messageCollection = (conversationId: string) =>
-  getConversations().doc(conversationId).collection(LEGACY_COLLECTIONS.CHAT_MESSAGES);
+  getConversations().doc(conversationId).collection(CHAT_COLLECTIONS.MESSAGES);
 
 const requireOwnedConversation = async (
   conversationId: string,

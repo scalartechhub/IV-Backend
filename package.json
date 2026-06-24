@@ -5,9 +5,7 @@
   "scripts": {
     "dev": "nodemon",
     "build": "tsc",
-    "start": "node dist/server.js",
-    "migrate:reports": "ts-node scripts/migrate-reports.ts",
-    "migrate:embedded": "ts-node scripts/migrate-to-embedded.ts"
+    "start": "node dist/server.js"
   },
   "dependencies": {
     "@google/genai": "^2.8.0",

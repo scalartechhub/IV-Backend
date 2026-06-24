@@ -57,21 +57,6 @@ All sensitive values are loaded once at startup via `SecretService`.
 
 **Required at startup:** `GEMINI_API_KEY`, `FIREBASE_API_KEY`, Firebase Admin credentials.
 
-## Migration from legacy collections
-
-Legacy collections (`questions`, `answers`, `evaluations`, `reports`) are no longer written to.
-
-```bash
-# Dry-run embedded migration
-npm run migrate:embedded
-
-# Apply migration
-npm run migrate:embedded -- --apply
-
-# Verify migrated documents
-npm run migrate:embedded -- --verify
-```
-
 ## Firestore indexes
 
 Deploy updated indexes (includes `isDeleted` composite queries):
@@ -103,5 +88,3 @@ Open `bruno/AI Interview Backend` in Bruno. Use the **local** environment.
 | `npm run dev` | Start dev server |
 | `npm run build` | Compile TypeScript |
 | `npm start` | Run compiled server |
-| `npm run migrate:embedded` | Migrate to embedded interview documents |
-| `npm run migrate:reports` | Legacy report ID migration |

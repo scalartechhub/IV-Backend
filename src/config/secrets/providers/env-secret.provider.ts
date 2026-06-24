@@ -66,7 +66,6 @@ const loadFirebaseCredentials = (): FirebaseCredentials => {
 
 /**
  * Loads secrets from environment variables (local dev, Docker, CI).
- * Replace with GcpSecretManagerProvider in production when ready.
  */
 export class EnvSecretProvider implements SecretProvider {
   load(): AppSecrets {

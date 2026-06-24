@@ -3,14 +3,10 @@ export const COLLECTIONS = {
   INTERVIEWS: "interviews",
 } as const;
 
-/** Legacy collection names — used only by MigrationService */
-export const LEGACY_COLLECTIONS = {
-  QUESTIONS: "questions",
-  ANSWERS: "answers",
-  EVALUATIONS: "evaluations",
-  REPORTS: "reports",
-  CHAT_CONVERSATIONS: "chatConversations",
-  CHAT_MESSAGES: "messages",
+/** Chat module Firestore collection names */
+export const CHAT_COLLECTIONS = {
+  CONVERSATIONS: "chatConversations",
+  MESSAGES: "messages",
 } as const;
 
 export const STORAGE_PATHS = {
@@ -37,12 +33,6 @@ export const INTERVIEW_TYPES = [
   "Behavioral Interview",
 ] as const;
 export type InterviewType = (typeof INTERVIEW_TYPES)[number];
-
-export const PAGINATION = {
-  DEFAULT_PAGE: 1,
-  DEFAULT_LIMIT: 10,
-  MAX_LIMIT: 50,
-} as const;
 
 export const RATE_LIMIT = {
   WINDOW_MS: 15 * 60 * 1000, // 15 minutes
