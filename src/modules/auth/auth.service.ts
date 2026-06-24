@@ -3,6 +3,7 @@ import { secretService } from "../../config/secrets";
 import { Timestamp } from "firebase-admin/firestore";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
+import { mapFirebaseLoginError } from "../../shared/errors";
 import { parseResume } from "../ai/resume-parser.service";
 import { uploadUserResumeFile } from "../storage/storage.service";
 import * as userRepo from "./auth.repository";
@@ -22,17 +23,31 @@ export const register = async (input: {
   const { name, email, password } = input;
   logger.info(`[auth.service] register attempt: ${email}`);
 
-  const userRecord = await auth.createUser({ email, password, displayName: name });
+  try {
+    const userRecord = await auth.createUser({ email, password, displayName: name });
 
-  const user = await userRepo.upsertUser(userRecord.uid, {
-    uid: userRecord.uid,
-    name,
-    email,
-    provider: "email" as AuthProvider,
-  });
+    const user = await userRepo.upsertUser(userRecord.uid, {
+      uid: userRecord.uid,
+      name,
+      email,
+      provider: "email" as AuthProvider,
+    });
 
-  logger.info(`[auth.service] registered uid=${userRecord.uid}`);
-  return { user };
+    logger.info(`[auth.service] registered uid=${userRecord.uid}`);
+    return { user };
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (code === "auth/email-already-exists") {
+      throw new AppError(409, "An account with this email already exists. Please log in instead.");
+    }
+    if (code === "auth/invalid-email") {
+      throw new AppError(400, "Please enter a valid email address.");
+    }
+    if (code === "auth/weak-password") {
+      throw new AppError(400, "Password is too weak. Use at least 6 characters.");
+    }
+    throw new AppError(400, "Registration failed. Please check your details and try again.");
+  }
 };
 
 export const login = async (input: {
@@ -56,11 +71,11 @@ export const login = async (input: {
   const data = (await response.json()) as {
     localId?: string;
     idToken?: string;
-    error?: { message: string };
+    error?: { message: string; code?: number };
   };
 
   if (!response.ok) {
-    throw new AppError(401, data?.error?.message ?? "Invalid email or password");
+    throw new AppError(401, mapFirebaseLoginError(data?.error?.message));
   }
 
   const uid = data.localId!;

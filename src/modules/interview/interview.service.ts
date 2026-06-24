@@ -6,7 +6,7 @@ import { generateQuestions } from "../ai/question-generator.service";
 import { evaluateAnswersBatch } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
 import { uploadFile } from "../storage/storage.service";
-import { getUserProfile } from "../auth/auth.repository";
+import { getUserInterviewSettings, getUserProfile } from "../auth/auth.repository";
 import { userStatsService } from "../auth/user-stats.service";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
@@ -19,12 +19,60 @@ import type {
   SubmitAnswersInput,
   SubmitAnswersResult,
 } from "./interview.types";
-import { InterviewStatus } from "./interview.types";
+import { InterviewCreationMode, InterviewStatus } from "./interview.types";
 import {
   calculateInterviewOverallScore,
   countAnsweredQuestions,
   getRawEvaluationScore,
 } from "./interview.scoring";
+
+const getInterviewTechnology = (interview: Interview): string =>
+  interview.technology ??
+  interview.resumeAnalysis?.skills?.[0] ??
+  interview.jdAnalysis?.requiredSkills?.[0] ??
+  "Interview";
+
+const getInterviewExperienceLevel = (interview: Interview): string =>
+  interview.experienceLevel ??
+  interview.resumeAnalysis?.experience?.[0] ??
+  interview.jdAnalysis?.experience?.[0] ??
+  "Based on resume and job description";
+
+const parseInterviewDocuments = async (
+  interviewId: string,
+  files: { resumeBuffer?: Buffer; jdBuffer?: Buffer }
+) => {
+  let resumeAnalysis;
+  let jdAnalysis;
+  let resumeUrl: string | undefined;
+  let jdUrl: string | undefined;
+
+  if (files.resumeBuffer) {
+    resumeAnalysis = await parseResume(files.resumeBuffer);
+    try {
+      resumeUrl = await uploadFile(interviewId, "resume", files.resumeBuffer);
+    } catch (storageError) {
+      logger.warn(
+        `[interview.service] resume storage upload failed interviewId=${interviewId}`,
+        storageError
+      );
+    }
+  }
+
+  if (files.jdBuffer) {
+    jdAnalysis = await parseJD(files.jdBuffer);
+    try {
+      jdUrl = await uploadFile(interviewId, "jd", files.jdBuffer);
+    } catch (storageError) {
+      logger.warn(
+        `[interview.service] JD storage upload failed interviewId=${interviewId}`,
+        storageError
+      );
+    }
+  }
+
+  return { resumeAnalysis, jdAnalysis, resumeUrl, jdUrl };
+};
 
 export const createInterview = async (
   userId: string,
@@ -32,6 +80,7 @@ export const createInterview = async (
 ): Promise<Interview> => {
   logger.info(`[interview.service] create interview userId=${userId}`, {
     technology: input.technology,
+    creationMode: InterviewCreationMode.PAYLOAD,
   });
 
   const interview = await repo.createInterview(userId, input);
@@ -40,66 +89,42 @@ export const createInterview = async (
   return interview;
 };
 
-export const uploadResume = async (
+export const createInterviewWithDocuments = async (
   userId: string,
-  interviewId: string,
-  fileBuffer: Buffer
+  files: { resumeBuffer?: Buffer; jdBuffer?: Buffer }
 ): Promise<Interview> => {
-  const interview = await repo.requireOwnedInterview(interviewId, userId);
-
-  logger.info(`[interview.service] uploading resume interviewId=${interviewId}`);
-
-  try {
-    const resumeAnalysis = await parseResume(fileBuffer);
-
-    let resumeUrl: string | undefined;
-    try {
-      resumeUrl = await uploadFile(interviewId, "resume", fileBuffer);
-    } catch (storageError) {
-      logger.warn(
-        `[interview.service] resume storage upload failed interviewId=${interviewId}`,
-        storageError
-      );
-    }
-
-    return repo.updateInterview(interviewId, {
-      ...(resumeUrl && { resumeUrl }),
-      resumeAnalysis,
-    });
-  } catch (error) {
-    await repo.updateInterview(interviewId, { status: InterviewStatus.CANCELLED });
-    throw error;
+  if (!files.resumeBuffer && !files.jdBuffer) {
+    throw new AppError(
+      400,
+      "Please upload at least one PDF using form-data field \"resume\" and/or \"jd\"."
+    );
   }
-};
 
-export const uploadJD = async (
-  userId: string,
-  interviewId: string,
-  fileBuffer: Buffer
-): Promise<Interview> => {
-  const interview = await repo.requireOwnedInterview(interviewId, userId);
+  logger.info(`[interview.service] create interview with documents userId=${userId}`, {
+    hasResume: Boolean(files.resumeBuffer),
+    hasJD: Boolean(files.jdBuffer),
+  });
 
-  logger.info(`[interview.service] uploading JD interviewId=${interviewId}`);
+  let interview: Interview | undefined;
 
   try {
-    const jdAnalysis = await parseJD(fileBuffer);
+    interview = await repo.createInterviewWithDocuments(userId, {});
 
-    let jdUrl: string | undefined;
-    try {
-      jdUrl = await uploadFile(interviewId, "jd", fileBuffer);
-    } catch (storageError) {
-      logger.warn(
-        `[interview.service] JD storage upload failed interviewId=${interviewId}`,
-        storageError
-      );
-    }
+    const parsed = await parseInterviewDocuments(interview.id, files);
 
-    return repo.updateInterview(interviewId, {
-      ...(jdUrl && { jdUrl }),
-      jdAnalysis,
+    interview = await repo.updateInterview(interview.id, {
+      ...(parsed.resumeUrl && { resumeUrl: parsed.resumeUrl }),
+      ...(parsed.jdUrl && { jdUrl: parsed.jdUrl }),
+      ...(parsed.resumeAnalysis && { resumeAnalysis: parsed.resumeAnalysis }),
+      ...(parsed.jdAnalysis && { jdAnalysis: parsed.jdAnalysis }),
     });
+
+    await userStatsService.onInterviewCreated(userId);
+    return interview;
   } catch (error) {
-    await repo.updateInterview(interviewId, { status: InterviewStatus.CANCELLED });
+    if (interview?.id) {
+      await repo.updateInterview(interview.id, { status: InterviewStatus.CANCELLED });
+    }
     throw error;
   }
 };
@@ -114,36 +139,82 @@ export const generateInterviewQuestions = async (
     interview.status === InterviewStatus.STARTED ||
     interview.status === InterviewStatus.COMPLETED
   ) {
-    throw new AppError(400, "Cannot regenerate questions for an interview already in progress.");
+    throw new AppError(
+      400,
+      "Cannot generate questions because this interview is already in progress or completed."
+    );
   }
 
-  const userProfile = await getUserProfile(userId);
+  const usesDocuments =
+    interview.creationMode === InterviewCreationMode.DOCUMENTS ||
+    (Boolean(interview.resumeAnalysis || interview.jdAnalysis) &&
+      interview.creationMode !== InterviewCreationMode.PAYLOAD &&
+      !interview.difficultyLevel);
+
+  const questionConfig = usesDocuments
+    ? await getUserInterviewSettings(userId)
+    : {
+        difficultyLevel: interview.difficultyLevel,
+        interviewType: interview.interviewType,
+        durationMinutes: interview.durationMinutes,
+        questionCount: interview.questionCount,
+      };
+
+  if (
+    !questionConfig.difficultyLevel ||
+    !questionConfig.interviewType ||
+    !questionConfig.durationMinutes ||
+    !questionConfig.questionCount
+  ) {
+    throw new AppError(
+      400,
+      usesDocuments
+        ? "Interview settings are missing. Please set difficultyLevel, durationMinutes, interviewType, and questionCount in your user settings."
+        : "Interview configuration is incomplete. Please create the interview again with technology, experienceLevel, difficultyLevel, interviewType, durationMinutes, and questionCount."
+    );
+  }
+
+  if (usesDocuments && !interview.resumeAnalysis && !interview.jdAnalysis) {
+    throw new AppError(
+      400,
+      "Cannot generate questions because no resume or job description was uploaded for this interview."
+    );
+  }
+
+  const userProfile = usesDocuments ? undefined : await getUserProfile(userId);
 
   logger.info(`[interview.service] generating questions interviewId=${interviewId}`, {
-    questionCount: interview.questionCount,
-    difficultyLevel: interview.difficultyLevel,
-    interviewType: interview.interviewType,
+    creationMode: interview.creationMode,
+    questionCount: questionConfig.questionCount,
+    difficultyLevel: questionConfig.difficultyLevel,
+    interviewType: questionConfig.interviewType,
     hasResume: Boolean(interview.resumeAnalysis),
     hasJD: Boolean(interview.jdAnalysis),
   });
 
-  const questionCount = interview.questionCount ?? DEFAULT_QUESTION_COUNT;
+  const questionCount = questionConfig.questionCount ?? DEFAULT_QUESTION_COUNT;
 
   const rawQuestions = await generateQuestions({
     resumeAnalysis: interview.resumeAnalysis,
     jdAnalysis: interview.jdAnalysis,
     userProfile,
-    technology: interview.technology,
-    experienceLevel: interview.experienceLevel,
-    difficultyLevel: interview.difficultyLevel,
-    interviewType: interview.interviewType,
+    documentsOnly: usesDocuments,
+    technology: usesDocuments ? undefined : interview.technology,
+    experienceLevel: usesDocuments ? undefined : interview.experienceLevel,
+    difficultyLevel: questionConfig.difficultyLevel,
+    interviewType: questionConfig.interviewType,
     questionCount,
   });
 
   const questions = await repo.setInterviewQuestions(
     interviewId,
     rawQuestions,
-    interview.difficultyLevel
+    questionConfig.difficultyLevel,
+    {
+      interviewType: questionConfig.interviewType,
+      durationMinutes: questionConfig.durationMinutes,
+      questionCount,
+    }
   );
 
   logger.info(
@@ -160,20 +231,26 @@ export const submitAnswers = async (
   const interview = await repo.requireOwnedInterview(interviewId, userId);
 
   if (interview.status === InterviewStatus.COMPLETED) {
-    throw new AppError(400, "This interview has already been completed.");
+    throw new AppError(400, "This interview is already completed. You cannot submit more answers.");
   }
   if (interview.status === InterviewStatus.CANCELLED) {
-    throw new AppError(400, "Interview was cancelled.");
+    throw new AppError(400, "This interview was cancelled and cannot be continued.");
   }
   if (interview.questions.length === 0) {
-    throw new AppError(400, "No questions found. Please generate questions first.");
+    throw new AppError(
+      400,
+      "No questions are available yet. Please generate questions before submitting answers."
+    );
   }
 
   const questionById = new Map(interview.questions.map((q) => [q.id, q]));
 
   for (const item of input.answers) {
     if (!questionById.has(item.questionId)) {
-      throw new AppError(404, `Question not found: ${item.questionId}`);
+      throw new AppError(
+        404,
+        `Question not found: ${item.questionId}. Make sure you are answering a valid question from this interview.`
+      );
     }
   }
 
@@ -188,12 +265,12 @@ export const submitAnswers = async (
       question: question.question,
       answer: item.answer,
       difficulty: question.difficulty,
-      category: interview.technology,
+      category: getInterviewTechnology(interview),
     };
   });
 
   const evaluationsByQuestionId = await evaluateAnswersBatch({
-    technology: interview.technology,
+    technology: getInterviewTechnology(interview),
     items: batchItems,
   });
 
@@ -251,7 +328,7 @@ export const finishInterview = async (
   const interview = await repo.requireOwnedInterview(interviewId, userId);
 
   if (interview.status === InterviewStatus.CANCELLED) {
-    throw new AppError(400, "Interview was cancelled.");
+    throw new AppError(400, "This interview was cancelled and cannot be continued.");
   }
 
   const answeredCount = countAnsweredQuestions(interview.questions);
@@ -273,8 +350,8 @@ export const finishInterview = async (
     const overallScore = calculateInterviewOverallScore(interview.questions);
 
     const rawReport = await generateReport({
-      technology: interview.technology,
-      experienceLevel: interview.experienceLevel,
+      technology: getInterviewTechnology(interview),
+      experienceLevel: getInterviewExperienceLevel(interview),
       questions: interview.questions,
     });
 

@@ -1,0 +1,47 @@
+info:
+  name: Create Interview With Documents
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{baseUrl}}/interviews/create-with-documents"
+  body:
+    type: multipart-form
+    data:
+      - name: resume
+        type: file
+        value: []
+      - name: jd
+        type: file
+        value: []
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body?.data?.id) {
+          bru.setEnvVar("interviewId", body.data.id);
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 120000
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Create an interview by uploading resume and/or JD PDFs.
+
+  - Upload at least one file using multipart fields `resume` and/or `jd`.
+  - Resume/JD are parsed and stored on the interview document.
+  - Does **not** use user profile `technology` / `experienceLevel`.
+  - Questions are **not** generated here — call **Generate Questions** next.
+  - Generate questions uses resume/JD analysis plus `users.settings` for
+    `difficultyLevel`, `durationMinutes`, `interviewType`, and `questionCount`.
+
+  Auto-saves `interviewId` to environment.

@@ -5,9 +5,11 @@ import { AppError } from "../../shared/utils";
 import {
   DEFAULT_USER_STATS,
   type User,
+  type UserInterviewSettings,
   type UserProfile,
   type UserResumeAnalysisEntry,
 } from "./auth.types";
+import { DIFFICULTY_LEVELS, INTERVIEW_TYPES } from "../../shared/constants";
 
 const normalizeUserFields = (
   fields: Partial<Omit<User, "isActive" | "createdAt" | "updatedAt">>
@@ -55,14 +57,46 @@ export const findUserById = async (uid: string): Promise<User | null> => {
 
 export const requireUserById = async (uid: string): Promise<User> => {
   const user = await findUserById(uid);
-  if (!user) throw new AppError(404, "User not found");
+  if (!user) throw new AppError(404, "User account not found.");
   return user;
 };
 
 export const getUserProfile = async (uid: string): Promise<UserProfile> => {
   const snapshot = await db.collection(COLLECTIONS.USERS).doc(uid).get();
-  if (!snapshot.exists) throw new AppError(404, "User profile not found");
+  if (!snapshot.exists) throw new AppError(404, "User profile not found. Please complete your profile first.");
   return snapshot.data() as UserProfile;
+};
+
+const isValidInterviewSettings = (
+  settings: unknown
+): settings is UserInterviewSettings => {
+  if (!settings || typeof settings !== "object") return false;
+
+  const value = settings as Record<string, unknown>;
+
+  return (
+    typeof value.difficultyLevel === "string" &&
+    DIFFICULTY_LEVELS.includes(value.difficultyLevel as UserInterviewSettings["difficultyLevel"]) &&
+    typeof value.interviewType === "string" &&
+    INTERVIEW_TYPES.includes(value.interviewType as UserInterviewSettings["interviewType"]) &&
+    typeof value.durationMinutes === "number" &&
+    value.durationMinutes > 0 &&
+    typeof value.questionCount === "number" &&
+    value.questionCount > 0
+  );
+};
+
+export const getUserInterviewSettings = async (uid: string): Promise<UserInterviewSettings> => {
+  const user = await requireUserById(uid);
+
+  if (!isValidInterviewSettings(user.settings)) {
+    throw new AppError(
+      400,
+      "Interview settings are missing. Please set difficultyLevel, durationMinutes, interviewType, and questionCount in your user settings."
+    );
+  }
+
+  return user.settings;
 };
 
 export const incrementTotalInterviews = async (uid: string): Promise<void> => {
@@ -81,7 +115,7 @@ export const updateUserStatsOnCompletion = async (
 
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
-    if (!snap.exists) throw new AppError(404, "User not found");
+    if (!snap.exists) throw new AppError(404, "User account not found.");
 
     const user = snap.data() as User;
     const completedInterviews = (user.completedInterviews ?? 0) + 1;
@@ -120,7 +154,7 @@ export const appendUserResumeAnalysis = async (
 
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
-    if (!snap.exists) throw new AppError(404, "User not found");
+    if (!snap.exists) throw new AppError(404, "User account not found.");
 
     const user = snap.data() as User;
     const resumeAnalyses = Array.isArray(user.resumeAnalyses) ? user.resumeAnalyses : [];

@@ -2,7 +2,7 @@ export class AppError extends Error {
   constructor(
     public readonly statusCode: number,
     message: string,
-    public readonly details?: unknown
+    public readonly errors?: import("../errors").ApiFieldError[]
   ) {
     super(message);
     this.name = "AppError";

@@ -10,8 +10,11 @@ import type {
   InterviewReport,
   RawQuestion,
   DifficultyLevel,
+  InterviewType,
+  ResumeAnalysis,
+  JDAnalysis,
 } from "./interview.types";
-import { InterviewStatus, toQuestionDifficulty } from "./interview.types";
+import { InterviewCreationMode, InterviewStatus, toQuestionDifficulty } from "./interview.types";
 
 export const createInterview = async (
   userId: string,
@@ -25,12 +28,45 @@ export const createInterview = async (
     userId,
     technology: input.technology,
     experienceLevel: input.experienceLevel,
+    creationMode: InterviewCreationMode.PAYLOAD,
     difficultyLevel: input.difficultyLevel,
     interviewType: input.interviewType,
     durationMinutes: input.durationMinutes,
     questionCount: input.questionCount,
     status: InterviewStatus.DRAFT,
     questions: [],
+    version: INTERVIEW_DOCUMENT_VERSION,
+    isDeleted: false,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return (await ref.get()).data() as Interview;
+};
+
+export const createInterviewWithDocuments = async (
+  userId: string,
+  fields: {
+    resumeAnalysis?: ResumeAnalysis;
+    jdAnalysis?: JDAnalysis;
+    resumeUrl?: string;
+    jdUrl?: string;
+  }
+): Promise<Interview> => {
+  const ref = db.collection(COLLECTIONS.INTERVIEWS).doc();
+  const now = FieldValue.serverTimestamp();
+
+  await ref.set({
+    id: ref.id,
+    userId,
+    creationMode: InterviewCreationMode.DOCUMENTS,
+    questionCount: 0,
+    status: InterviewStatus.DRAFT,
+    questions: [],
+    ...(fields.resumeUrl && { resumeUrl: fields.resumeUrl }),
+    ...(fields.jdUrl && { jdUrl: fields.jdUrl }),
+    ...(fields.resumeAnalysis && { resumeAnalysis: fields.resumeAnalysis }),
+    ...(fields.jdAnalysis && { jdAnalysis: fields.jdAnalysis }),
     version: INTERVIEW_DOCUMENT_VERSION,
     isDeleted: false,
     createdAt: now,
@@ -52,7 +88,7 @@ export const findInterviewById = async (interviewId: string): Promise<Interview 
 
 export const requireInterview = async (interviewId: string): Promise<Interview> => {
   const interview = await findInterviewById(interviewId);
-  if (!interview) throw new AppError(404, "Interview not found");
+  if (!interview) throw new AppError(404, "Interview not found. Please check the interview ID.");
   return interview;
 };
 
@@ -61,7 +97,9 @@ export const requireOwnedInterview = async (
   userId: string
 ): Promise<Interview> => {
   const interview = await requireInterview(interviewId);
-  if (interview.userId !== userId) throw new AppError(403, "Access denied");
+  if (interview.userId !== userId) {
+    throw new AppError(403, "You do not have permission to access this interview.");
+  }
   return interview;
 };
 
@@ -77,7 +115,12 @@ export const updateInterview = async (
 export const setInterviewQuestions = async (
   interviewId: string,
   rawQuestions: RawQuestion[],
-  difficultyLevel: DifficultyLevel
+  difficultyLevel: DifficultyLevel,
+  config?: {
+    interviewType: InterviewType;
+    durationMinutes: number;
+    questionCount: number;
+  }
 ): Promise<InterviewQuestion[]> => {
   const difficulty = toQuestionDifficulty(difficultyLevel);
   const questions: InterviewQuestion[] = rawQuestions.map((rq) => ({
@@ -90,6 +133,11 @@ export const setInterviewQuestions = async (
   await ref.update({
     questions,
     questionCount: questions.length,
+    difficultyLevel,
+    ...(config && {
+      interviewType: config.interviewType,
+      durationMinutes: config.durationMinutes,
+    }),
     status: InterviewStatus.DRAFT,
     updatedAt: FieldValue.serverTimestamp(),
   });
@@ -112,7 +160,7 @@ export const applyAnswerEvaluations = async (
 
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
-    if (!snap.exists) throw new AppError(404, "Interview not found");
+    if (!snap.exists) throw new AppError(404, "Interview not found. Please check the interview ID.");
 
     const interview = snap.data() as Interview;
     const updateById = new Map(answerUpdates.map((u) => [u.questionId, u]));
@@ -122,7 +170,10 @@ export const applyAnswerEvaluations = async (
       if (!update) return q;
 
       if (q.answer && q.answer.length > 0) {
-        throw new AppError(409, `Answer already submitted for question ${q.id}.`);
+        throw new AppError(
+          409,
+          `An answer has already been submitted for question ${q.id}. Each question can only be answered once.`
+        );
       }
 
       return {
@@ -153,7 +204,7 @@ export const claimReportGeneration = async (
 
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
-    if (!snap.exists) throw new AppError(404, "Interview not found");
+    if (!snap.exists) throw new AppError(404, "Interview not found. Please check the interview ID.");
 
     const interview = snap.data() as Interview;
 
@@ -162,7 +213,10 @@ export const claimReportGeneration = async (
     }
 
     if (interview.reportGenerating) {
-      throw new AppError(409, "Report generation already in progress.");
+      throw new AppError(
+        409,
+        "Report generation is already in progress for this interview. Please wait and try again."
+      );
     }
 
     tx.update(ref, {
