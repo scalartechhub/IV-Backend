@@ -35,8 +35,3 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
   await authService.logout(req.user!.uid);
   sendSuccess(res, null, "Successfully logged out");
 };
-
-export const uploadResumeAnalysis = async (req: Request, res: Response): Promise<void> => {
-  const resumeAnalysis = await authService.uploadResumeAnalysis(req.user!.uid, req.file!.buffer);
-  sendSuccess(res, resumeAnalysis, "Resume uploaded and analyzed successfully");
-};

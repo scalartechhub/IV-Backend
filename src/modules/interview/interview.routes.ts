@@ -17,6 +17,12 @@ router.use(verifyToken);
 router.post("/create", validate(createInterviewSchema), asyncHandler(interviewController.createInterview));
 
 router.post(
+  "/resume-analysis",
+  requirePdfUpload,
+  asyncHandler(interviewController.resumeAnalysis)
+);
+
+router.post(
   "/:id/resume",
   validate(interviewIdParamSchema, "params"),
   requirePdfUpload,

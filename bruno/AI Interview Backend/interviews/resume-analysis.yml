@@ -1,0 +1,40 @@
+info:
+  name: Resume Analysis
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{baseUrl}}/interviews/resume-analysis"
+  body:
+    type: multipart-form
+    data:
+      - name: file
+        type: text
+        value: ""
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  variables:
+    - name: token
+      value: eyJhbGciOiJSUzI1NiIsImtpZCI6IjJmMjk1MGEyNGFlYWRkMjYzYzIxM2I2MDNhZjMxNWEzMjdiNmM3MjAiLCJ0eXAiOiJKV1QifQ.eyJuYW1lIjoidHVzaGFyIiwiaXNzIjoiaHR0cHM6Ly9zZWN1cmV0b2tlbi5nb29nbGUuY29tL2ludGVydmlldy04OWUwOSIsImF1ZCI6ImludGVydmlldy04OWUwOSIsImF1dGhfdGltZSI6MTc4MjI4MjMwMCwidXNlcl9pZCI6Illsc0VOdXNObHdQdU9Oa1Q5M2hCbmRiQ0tvODMiLCJzdWIiOiJZbHNFTnVzTmx3UHVPTmtUOTNoQm5kYkNLbzgzIiwiaWF0IjoxNzgyMjgyMzAwLCJleHAiOjE3ODIyODU5MDAsImVtYWlsIjoidHVzaGFyQGdtYWlsLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwiZmlyZWJhc2UiOnsiaWRlbnRpdGllcyI6eyJlbWFpbCI6WyJ0dXNoYXJAZ21haWwuY29tIl19LCJzaWduX2luX3Byb3ZpZGVyIjoicGFzc3dvcmQifX0.dAZ-ZFCMxtKJ0g6YFhrm4JeH03jdg3Rs3JrPWnwYiDAWh8dK6D3d-z1C7osrS26qwFAraF_gfLhl4nFfAnr0VaFbXPzI7XSS18YHRMlv4aJKzwy5e09ND4nCjxdgiTdFKtK_VImPfP_KNB-uIyao6bZrX3hlHbjZ3s1HYerdZR_qYeTypJTYDItDyGfWuQYEbYoykImV6gFUQbUq8UgkYIXacDfdFSjA4wYkLDwltf6F4cVDz3zrDpLUqvfH_9nkQ6QrVsr8ETfFq2zDv9Ap8y3kjyUmDBa_L3GpnUz-0iBJROuaqMfp_H8RiVugdlciQfx6NUzDN-Fbeq-jYlkudQ
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Upload resume PDF for the logged-in user (multipart field: `file`).
+
+  - Requires Bearer token — run **Login** first.
+  - Parses resume with the same AI analysis used during interview upload.
+  - Stores the file in Firebase Storage under `users/{uid}/resumes/`.
+  - Appends an entry to `resumeAnalyses` on the user document:
+    `{ no, resumeUrl, analysis, uploadedAt }`.
+  - Resume URL is stored only inside `resumeAnalyses`, not duplicated at user root.
+
+  Update the file path or pick a PDF in Bruno before sending.
