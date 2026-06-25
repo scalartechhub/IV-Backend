@@ -1,6 +1,7 @@
 export const COLLECTIONS = {
   USERS: "users",
   INTERVIEWS: "interviews",
+  NOTIFICATIONS: "notifications",
 } as const;
 
 /** Chat module Firestore collection names */
