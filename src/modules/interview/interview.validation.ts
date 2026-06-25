@@ -5,7 +5,6 @@ const answerItemSchema = z.object({
   questionId: z.string().min(1, "questionId is required"),
   answer: z
     .string()
-    .min(1, "Answer cannot be empty")
     .max(5000, "Answer is too long (max 5000 characters)")
     .trim(),
 });
@@ -22,11 +21,10 @@ export const createInterviewSchema = z.object({
     .max(50, "Experience level is too long")
     .trim(),
   difficultyLevel: z.enum(DIFFICULTY_LEVELS, {
-    message: "difficultyLevel must be one of: Easy, Medium, Hard, Expert",
+    message: `difficultyLevel must be one of: ${DIFFICULTY_LEVELS.join(", ")}`,
   }),
   interviewType: z.enum(INTERVIEW_TYPES, {
-    message:
-      "interviewType must be one of: Technical Interview, Coding Interview, System Design, HR Interview, Behavioral Interview",
+    message: `interviewType must be one of: ${INTERVIEW_TYPES.join(", ")}`,
   }),
   durationMinutes: z
     .number()
@@ -38,10 +36,10 @@ export const createInterviewSchema = z.object({
     .positive("questionCount must be greater than 0"),
 });
 
-export const submitAnswerSchema = z.object({
+export const finishInterviewSchema = z.object({
   answers: z
     .array(answerItemSchema)
-    .min(1, "At least one answer is required")
+    .default([])
     .refine(
       (answers) => new Set(answers.map((a) => a.questionId)).size === answers.length,
       { message: "Each questionId must appear only once in answers" }
@@ -53,5 +51,5 @@ export const interviewIdParamSchema = z.object({
 });
 
 export type CreateInterviewInput = z.infer<typeof createInterviewSchema>;
-export type SubmitAnswerInput = z.infer<typeof submitAnswerSchema>;
+export type FinishInterviewInput = z.infer<typeof finishInterviewSchema>;
 export type InterviewIdParams = z.infer<typeof interviewIdParamSchema>;

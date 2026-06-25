@@ -6,7 +6,7 @@ import { generateQuestions } from "../ai/question-generator.service";
 import { evaluateAnswersBatch } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
 import { uploadFile } from "../storage/storage.service";
-import { getUserInterviewSettings, getUserProfile } from "../auth/auth.repository";
+import { getUserInterviewSettings } from "../auth/auth.repository";
 import { userStatsService } from "../auth/user-stats.service";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
@@ -16,8 +16,10 @@ import type {
   Interview,
   InterviewQuestion,
   InterviewReport,
+  FinishInterviewResult,
   SubmitAnswersInput,
   SubmitAnswersResult,
+  RawEvaluation,
 } from "./interview.types";
 import { InterviewCreationMode, InterviewStatus } from "./interview.types";
 import {
@@ -181,8 +183,6 @@ export const generateInterviewQuestions = async (
     );
   }
 
-  const userProfile = usesDocuments ? undefined : await getUserProfile(userId);
-
   logger.info(`[interview.service] generating questions interviewId=${interviewId}`, {
     creationMode: interview.creationMode,
     questionCount: questionConfig.questionCount,
@@ -197,7 +197,6 @@ export const generateInterviewQuestions = async (
   const rawQuestions = await generateQuestions({
     resumeAnalysis: interview.resumeAnalysis,
     jdAnalysis: interview.jdAnalysis,
-    userProfile,
     documentsOnly: usesDocuments,
     technology: usesDocuments ? undefined : interview.technology,
     experienceLevel: usesDocuments ? undefined : interview.experienceLevel,
@@ -223,26 +222,18 @@ export const generateInterviewQuestions = async (
   return questions;
 };
 
-export const submitAnswers = async (
-  userId: string,
-  interviewId: string,
+const EMPTY_ANSWER_EVALUATION: RawEvaluation = {
+  technical: 0,
+  communication: 0,
+  completeness: 0,
+  confidence: 0,
+  feedback: "No answer provided.",
+};
+
+const evaluateSubmittedAnswers = async (
+  interview: Interview,
   input: SubmitAnswersInput
 ): Promise<SubmitAnswersResult> => {
-  const interview = await repo.requireOwnedInterview(interviewId, userId);
-
-  if (interview.status === InterviewStatus.COMPLETED) {
-    throw new AppError(400, "This interview is already completed. You cannot submit more answers.");
-  }
-  if (interview.status === InterviewStatus.CANCELLED) {
-    throw new AppError(400, "This interview was cancelled and cannot be continued.");
-  }
-  if (interview.questions.length === 0) {
-    throw new AppError(
-      400,
-      "No questions are available yet. Please generate questions before submitting answers."
-    );
-  }
-
   const questionById = new Map(interview.questions.map((q) => [q.id, q]));
 
   for (const item of input.answers) {
@@ -255,28 +246,41 @@ export const submitAnswers = async (
   }
 
   logger.info(
-    `[interview.service] submitting ${input.answers.length} answers interviewId=${interviewId}`
+    `[interview.service] evaluating ${input.answers.length} answers interviewId=${interview.id}`
   );
 
-  const batchItems = input.answers.map((item) => {
-    const question = questionById.get(item.questionId)!;
-    return {
-      questionId: item.questionId,
-      question: question.question,
-      answer: item.answer,
-      difficulty: question.difficulty,
-      category: getInterviewTechnology(interview),
-    };
-  });
+  const answeredItems = input.answers.filter((item) => item.answer.length > 0);
+  const evaluationsByQuestionId = new Map<string, RawEvaluation>();
 
-  const evaluationsByQuestionId = await evaluateAnswersBatch({
-    technology: getInterviewTechnology(interview),
-    items: batchItems,
-  });
+  if (answeredItems.length > 0) {
+    const batchItems = answeredItems.map((item) => {
+      const question = questionById.get(item.questionId)!;
+      return {
+        questionId: item.questionId,
+        question: question.question,
+        answer: item.answer,
+        difficulty: question.difficulty,
+        category: getInterviewTechnology(interview),
+      };
+    });
+
+    const batchEvaluations = await evaluateAnswersBatch({
+      technology: getInterviewTechnology(interview),
+      items: batchItems,
+    });
+
+    for (const [questionId, evaluation] of batchEvaluations) {
+      evaluationsByQuestionId.set(questionId, evaluation);
+    }
+  }
 
   const answeredAt = Timestamp.now();
   const answerUpdates = input.answers.map((item) => {
-    const rawEvaluation = evaluationsByQuestionId.get(item.questionId)!;
+    const rawEvaluation =
+      item.answer.length > 0
+        ? evaluationsByQuestionId.get(item.questionId)!
+        : EMPTY_ANSWER_EVALUATION;
+
     return {
       questionId: item.questionId,
       answer: item.answer,
@@ -301,7 +305,7 @@ export const submitAnswers = async (
   const overallScore = calculateInterviewOverallScore(mergedQuestions);
 
   const updatedInterview = await repo.applyAnswerEvaluations(
-    interviewId,
+    interview.id,
     answerUpdates,
     overallScore
   );
@@ -323,36 +327,52 @@ export const submitAnswers = async (
 
 export const finishInterview = async (
   userId: string,
-  interviewId: string
-): Promise<InterviewReport> => {
+  interviewId: string,
+  input: SubmitAnswersInput
+): Promise<FinishInterviewResult> => {
   const interview = await repo.requireOwnedInterview(interviewId, userId);
 
+  if (interview.status === InterviewStatus.COMPLETED) {
+    throw new AppError(400, "This interview is already completed.");
+  }
   if (interview.status === InterviewStatus.CANCELLED) {
     throw new AppError(400, "This interview was cancelled and cannot be continued.");
   }
-
-  const answeredCount = countAnsweredQuestions(interview.questions);
-  if (answeredCount === 0) {
+  if (interview.questions.length === 0) {
     throw new AppError(
       400,
-      "No answers submitted yet. Answer at least one question before finishing."
+      "No questions are available yet. Please generate questions before finishing the interview."
     );
   }
 
+  const submission =
+    input.answers.length > 0
+      ? await evaluateSubmittedAnswers(interview, input)
+      : {
+          results: [],
+          overallScore: calculateInterviewOverallScore(interview.questions),
+          answeredCount: countAnsweredQuestions(interview.questions),
+        };
+
   const claim = await repo.claimReportGeneration(interviewId);
   if (claim !== "proceed") {
-    return claim;
+    const updatedInterview = await repo.requireOwnedInterview(interviewId, userId);
+    return {
+      ...submission,
+      report: claim,
+    };
   }
 
   logger.info(`[interview.service] finishing interview interviewId=${interviewId}`);
 
   try {
-    const overallScore = calculateInterviewOverallScore(interview.questions);
+    const updatedInterview = await repo.requireOwnedInterview(interviewId, userId);
+    const overallScore = calculateInterviewOverallScore(updatedInterview.questions);
 
     const rawReport = await generateReport({
-      technology: getInterviewTechnology(interview),
-      experienceLevel: getInterviewExperienceLevel(interview),
-      questions: interview.questions,
+      technology: getInterviewTechnology(updatedInterview),
+      experienceLevel: getInterviewExperienceLevel(updatedInterview),
+      questions: updatedInterview.questions,
     });
 
     const report: InterviewReport = {
@@ -372,7 +392,10 @@ export const finishInterview = async (
       reportScore: report.overallScore,
     });
 
-    return report;
+    return {
+      ...submission,
+      report,
+    };
   } catch (error) {
     await repo.releaseReportGeneration(interviewId);
     throw error;

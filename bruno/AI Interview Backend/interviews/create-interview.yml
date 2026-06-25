@@ -13,12 +13,12 @@ http:
     type: json
     data: |-
       {
-        "technology": "Frontend Developer",
-        "experienceLevel": "2 years",
-        "difficultyLevel": "Medium",
-        "interviewType": "Technical Interview",
+        "technology": "node js Developer",
+        "experienceLevel": "3 years",
+        "difficultyLevel": "medium",
+        "interviewType": "technicalInterview",
         "durationMinutes": 30,
-        "questionCount": 10
+        "questionCount": 9
       }
   auth:
     type: bearer
@@ -27,7 +27,7 @@ http:
 runtime:
   variables:
     - name: token
-      value: eyJhbGciOiJSUzI1NiIsImtpZCI6ImVlOTA0NmVhZDJlMDUwMDAxMGVkNTA0M2I0ODNkODRiMGM1MmM3YzQiLCJ0eXAiOiJKV1QifQ.eyJuYW1lIjoiRGVtbyBVc2VyIiwiaXNzIjoiaHR0cHM6Ly9zZWN1cmV0b2tlbi5nb29nbGUuY29tL2ludGVydmlldy04OWUwOSIsImF1ZCI6ImludGVydmlldy04OWUwOSIsImF1dGhfdGltZSI6MTc4MjIwMDYyNiwidXNlcl9pZCI6ImJvekxoSDFRSkJXMUNZUmJydmhwcTFDNm5YdjEiLCJzdWIiOiJib3pMaEgxUUpCVzFDWVJicnZocHExQzZuWHYxIiwiaWF0IjoxNzgyMjAwNjI2LCJleHAiOjE3ODIyMDQyMjYsImVtYWlsIjoiZGVtb0BtYWlsaW5hdG9yLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJmaXJlYmFzZSI6eyJpZGVudGl0aWVzIjp7ImVtYWlsIjpbImRlbW9AbWFpbGluYXRvci5jb20iXX0sInNpZ25faW5fcHJvdmlkZXIiOiJwYXNzd29yZCJ9fQ.aqWAxw8fSlBqDpWAhFoNumx70eqlQEOro0ynNZ5Z59tPpCcn9mr09K4czkDZ4KADzHCSQkWP1muz0XLmgFscHNru_ObO2TMFHoM3w377lK9zF1M3CGOm3bTSU_wSH-KBe8wEJ1VKJZcRkEoINwTlJVSGNeRe8atfdOD0UKytR9Vhp5RU4-0rOMpFfPbcVJA5dMY4ghcYJJn85JERRVIjPHCv7h1-bwcR2wrvGZmfwH26jyVce1zy5zuwfqnlB0mj1UWDvPG1Tp7XBwzdR1tfFYk4h-stlRLdrXGrQbenX1FWPgWca2294RORytS5EiInaOUlonfKcqYAepQMbMSmPQ
+      value: eyJhbGciOiJSUzI1NiIsImtpZCI6IjJmMjk1MGEyNGFlYWRkMjYzYzIxM2I2MDNhZjMxNWEzMjdiNmM3MjAiLCJ0eXAiOiJKV1QifQ.eyJuYW1lIjoiRGVtbyBVc2VyIiwiaXNzIjoiaHR0cHM6Ly9zZWN1cmV0b2tlbi5nb29nbGUuY29tL2ludGVydmlldy04OWUwOSIsImF1ZCI6ImludGVydmlldy04OWUwOSIsImF1dGhfdGltZSI6MTc4MjM2ODcwNSwidXNlcl9pZCI6IkUzdndrNHEzcXJQc3lwbm1QNGJuMnZwRzRTajEiLCJzdWIiOiJFM3Z3azRxM3FyUHN5cG5tUDRibjJ2cEc0U2oxIiwiaWF0IjoxNzgyMzY4NzA1LCJleHAiOjE3ODIzNzIzMDUsImVtYWlsIjoidGVzdGVyMUBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImZpcmViYXNlIjp7ImlkZW50aXRpZXMiOnsiZW1haWwiOlsidGVzdGVyMUBnbWFpbC5jb20iXX0sInNpZ25faW5fcHJvdmlkZXIiOiJwYXNzd29yZCJ9fQ.D3nHSMrVscv1j-NDJ71Pu9wDviHn8i7JAI0qqw5ApMmuYMwHR7TRMd7WSX51CuVh8Hw1_Me26S1oUvrvsAQyd1g2SUWRe1e8g6wsF_6-q4F7CkhF7rQ8rpnLn7JtG2Aff3XwKP0A2q48wG2BM1AawKjiUtE7dTAJVIc8AdF53GHcN91jk8Ancb7LEBzDDMrxRa6GlDfIo0kRl3MSnEB4jTha_bv1oJEneEm12aWJs-SpLty9auY9CVNvFZkd3oFpL2g_0EF38UD8eXcREVXuM8Bbg47OdYVgAmeQM6mSP118RBi1Mr6mqFFEpVse5g2Ik_1zw8pQRZrdVsgOwgET-A
   scripts:
     - type: after-response
       code: |-
@@ -48,8 +48,8 @@ docs: |-
   Body fields:
   - `technology` — role/stack focus (e.g. "Frontend Developer")
   - `experienceLevel` — e.g. "2 years", "Junior", "Senior"
-  - `difficultyLevel` — `Easy` | `Medium` | `Hard` | `Expert`
-  - `interviewType` — `Technical Interview` | `Coding Interview` | `System Design` | `HR Interview` | `Behavioral Interview`
+  - `difficultyLevel` — `easy` | `medium` | `hard` | `expert`
+  - `interviewType` — `technicalInterview` | `codingInterview` | `systemDesign` | `hrInterview` | `behavioralInterview`
   - `durationMinutes` — interview duration in minutes (validated on frontend)
   - `questionCount` — how many questions to generate (validated on frontend)
 

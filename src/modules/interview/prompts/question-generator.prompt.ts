@@ -4,7 +4,6 @@ import type {
   InterviewType,
   DifficultyLevel,
 } from "../interview.types";
-import type { UserProfile } from "../../auth/auth.types";
 import { toQuestionDifficulty } from "../interview.types";
 
 interface QuestionGeneratorParams {
@@ -15,21 +14,31 @@ interface QuestionGeneratorParams {
   questionCount: number;
   resumeAnalysis?: ResumeAnalysis;
   jdAnalysis?: JDAnalysis;
-  userProfile?: UserProfile;
   documentsOnly?: boolean;
 }
 
+const INTERVIEW_TYPE_LABELS: Record<InterviewType, string> = {
+  technicalInterview: "Technical Interview",
+  codingInterview: "Coding Interview",
+  systemDesign: "System Design",
+  hrInterview: "HR Interview",
+  behavioralInterview: "Behavioral Interview",
+};
+
+const getInterviewTypeLabel = (interviewType: InterviewType): string =>
+  INTERVIEW_TYPE_LABELS[interviewType];
+
 const getInterviewTypeGuidance = (interviewType: InterviewType): string => {
   switch (interviewType) {
-    case "Technical Interview":
+    case "technicalInterview":
       return "Focus on core technical knowledge, frameworks, tools, debugging, and role-specific concepts.";
-    case "Coding Interview":
+    case "codingInterview":
       return "Focus on algorithms, data structures, problem decomposition, complexity analysis, and verbal walkthroughs of code solutions.";
-    case "System Design":
+    case "systemDesign":
       return "Focus on architecture, scalability, reliability, trade-offs, APIs, databases, caching, and distributed systems.";
-    case "HR Interview":
+    case "hrInterview":
       return "Focus on career goals, role fit, communication, motivation, expectations, and professional background.";
-    case "Behavioral Interview":
+    case "behavioralInterview":
       return "Focus on past experiences using STAR-style prompts, teamwork, conflict resolution, ownership, and soft skills.";
     default:
       return "Tailor questions to the stated interview type and candidate background.";
@@ -37,12 +46,12 @@ const getInterviewTypeGuidance = (interviewType: InterviewType): string => {
 };
 
 const buildCandidateSection = (
+  documentsOnly: boolean,
   resumeAnalysis?: ResumeAnalysis,
-  userProfile?: UserProfile,
   technology?: string,
   experienceLevel?: string
 ): string => {
-  if (resumeAnalysis) {
+  if (documentsOnly && resumeAnalysis) {
     return `Candidate Profile (from resume):
 - Technical Skills: ${resumeAnalysis.skills.slice(0, 15).join(", ") || "Not specified"}
 - Experience: ${resumeAnalysis.experience.slice(0, 3).join(" | ") || "Not specified"}
@@ -50,35 +59,7 @@ const buildCandidateSection = (
 - Education: ${resumeAnalysis.education.slice(0, 3).join(" | ") || "Not specified"}`;
   }
 
-  if (userProfile) {
-    const skills =
-      userProfile.skills?.map((s) => s.name).filter(Boolean).slice(0, 15).join(", ") ||
-      "Not specified";
-    const workHistory =
-      userProfile.experiences
-        ?.slice(0, 5)
-        .map(
-          (e) =>
-            `${e.title} at ${e.company}${e.period ? ` (${e.period})` : ""}${e.description ? `: ${e.description}` : ""}`
-        )
-        .join(" | ") || "Not specified";
-    const designation = userProfile.professionalDetails?.designation ?? technology ?? "Not specified";
-    const years =
-      userProfile.professionalDetails?.yearsOfExperience ?? experienceLevel ?? "Not specified";
-    const industry = userProfile.professionalDetails?.industry ?? "Not specified";
-    const bio = userProfile.professionalSummary?.bio ?? "Not specified";
-
-    return `Candidate Profile (from user profile):
-- Name: ${userProfile.name ?? "Not specified"}
-- Current Designation: ${designation}
-- Years of Experience: ${years}
-- Industry: ${industry}
-- Technical Skills: ${skills}
-- Work History: ${workHistory}
-- Professional Summary: ${bio}`;
-  }
-
-  return `Candidate Profile:
+  return `Candidate Profile (from interview setup):
 - Target Technology/Role: ${technology ?? "Not specified"}
 - Experience Level: ${experienceLevel ?? "Not specified"}`;
 };
@@ -86,51 +67,33 @@ const buildCandidateSection = (
 const buildRequirementsSection = (
   interviewType: InterviewType,
   difficultyLevel: DifficultyLevel,
+  documentsOnly: boolean,
   jdAnalysis?: JDAnalysis,
   resumeAnalysis?: ResumeAnalysis,
-  userProfile?: UserProfile,
   technology?: string
 ): string => {
-  if (jdAnalysis) {
+  const interviewTypeLabel = getInterviewTypeLabel(interviewType);
+
+  if (documentsOnly && jdAnalysis) {
     return `Job Requirements (from job description):
 - Required Skills: ${jdAnalysis.requiredSkills.slice(0, 10).join(", ") || "Not specified"}
 - Core Responsibilities: ${jdAnalysis.responsibilities.slice(0, 5).join(" | ") || "Not specified"}
 - Experience Needed: ${jdAnalysis.experience.slice(0, 3).join(" | ") || "Not specified"}
-- Interview Type: ${interviewType}
+- Interview Type: ${interviewTypeLabel}
 - Difficulty Level: ${difficultyLevel}`;
   }
 
-  if (resumeAnalysis) {
+  if (documentsOnly && resumeAnalysis) {
     return `Role Context (from resume):
 - Relevant Skills: ${resumeAnalysis.skills.slice(0, 10).join(", ") || "Not specified"}
 - Experience Highlights: ${resumeAnalysis.experience.slice(0, 3).join(" | ") || "Not specified"}
-- Interview Type: ${interviewType}
+- Interview Type: ${interviewTypeLabel}
 - Difficulty Level: ${difficultyLevel}`;
   }
 
-  if (userProfile) {
-    const techStacks =
-      userProfile.interviewPreferences?.favoriteTechStacks
-        ?.map((t) => t.label)
-        .filter(Boolean)
-        .join(", ") || "Not specified";
-    const personality =
-      userProfile.interviewPreferences?.aiPersonality ?? "Balanced";
-    const targetRole = userProfile.professionalDetails?.designation ?? technology ?? "Not specified";
-    const company = userProfile.professionalDetails?.company ?? "Not specified";
-
-    return `Interview Focus (from user preferences & profile):
-- Target Role: ${targetRole}
-- Current Company: ${company}
-- Preferred Tech Stacks: ${techStacks}
-- Interviewer Style: ${personality}
-- Interview Type: ${interviewType}
-- Difficulty Level: ${difficultyLevel}`;
-  }
-
-  return `Interview Focus:
+  return `Interview Focus (from interview setup):
 - Target Technology/Role: ${technology ?? "Not specified"}
-- Interview Type: ${interviewType}
+- Interview Type: ${interviewTypeLabel}
 - Difficulty Level: ${difficultyLevel}`;
 };
 
@@ -138,7 +101,6 @@ export const buildQuestionGeneratorPrompt = (params: QuestionGeneratorParams): s
   const {
     resumeAnalysis,
     jdAnalysis,
-    userProfile,
     technology,
     experienceLevel,
     difficultyLevel,
@@ -148,33 +110,36 @@ export const buildQuestionGeneratorPrompt = (params: QuestionGeneratorParams): s
   } = params;
 
   const questionDifficulty = toQuestionDifficulty(difficultyLevel);
+  const interviewTypeLabel = getInterviewTypeLabel(interviewType);
   const interviewTypeGuidance = getInterviewTypeGuidance(interviewType);
 
   const candidateSection = buildCandidateSection(
+    documentsOnly,
     resumeAnalysis,
-    documentsOnly ? undefined : userProfile,
     technology,
     experienceLevel
   );
   const requirementsSection = buildRequirementsSection(
     interviewType,
     difficultyLevel,
+    documentsOnly,
     jdAnalysis,
     resumeAnalysis,
-    documentsOnly ? undefined : userProfile,
     technology
   );
 
   const sourceNote = documentsOnly
-    ? "Base all questions only on the uploaded resume and job description analysis above."
-    : resumeAnalysis || jdAnalysis
-      ? "Use resume/JD data where provided; supplement with user profile details."
-      : "Base all questions on the candidate profile and interview preferences above.";
+    ? "Base all questions only on the interview settings above and the uploaded resume and/or job description analysis. Do not assume any other candidate details."
+    : "Base all questions only on the interview setup fields above (technology, experience level, interview type, and difficulty). Do not assume resume, job description, or profile data.";
 
   const interviewIntro = documentsOnly
-    ? `You are a senior interviewer conducting a ${interviewType} based only on the candidate resume and job description provided.`
-    : `You are a senior interviewer conducting a ${interviewType} for a ${technology} position.
+    ? `You are a senior interviewer conducting a ${interviewTypeLabel} based on the uploaded resume and/or job description and the configured interview settings.`
+    : `You are a senior interviewer conducting a ${interviewTypeLabel} for a ${technology} position.
 The candidate has ${experienceLevel} of experience.`;
+
+  const tailoringGuideline = documentsOnly
+    ? "- Tailor questions to the resume and/or job description content and the configured interview settings"
+    : "- Tailor questions to the technology, experience level, and interview settings provided above";
 
   return `
 ${interviewIntro}
@@ -193,8 +158,8 @@ Every question MUST be at the ${difficultyLevel} difficulty level.
 Set the "difficulty" field to "${questionDifficulty}" for every question.
 
 Guidelines:
-- Tailor questions to the resume and job description content
-- All questions must fit the selected interview type (${interviewType})
+${tailoringGuideline}
+- All questions must fit the selected interview type (${interviewTypeLabel})
 - Do not mix easier or harder questions — keep all at ${difficultyLevel} level
 - For Coding Interview: include algorithmic and implementation-style questions
 - For System Design: include scalability, component design, and trade-off questions

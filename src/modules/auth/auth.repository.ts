@@ -86,17 +86,63 @@ const isValidInterviewSettings = (
   );
 };
 
-export const getUserInterviewSettings = async (uid: string): Promise<UserInterviewSettings> => {
-  const user = await requireUserById(uid);
+const normalizeInterviewSettings = (settings: unknown): UserInterviewSettings | null => {
+  if (!settings || typeof settings !== "object") return null;
 
-  if (!isValidInterviewSettings(user.settings)) {
+  const value = settings as Record<string, unknown>;
+  const durationMinutes =
+    typeof value.durationMinutes === "number"
+      ? value.durationMinutes
+      : Number(value.durationMinutes);
+  const questionCount =
+    typeof value.questionCount === "number" ? value.questionCount : Number(value.questionCount);
+
+  const normalized: Partial<UserInterviewSettings> = {
+    difficultyLevel:
+      typeof value.difficultyLevel === "string"
+        ? (value.difficultyLevel as UserInterviewSettings["difficultyLevel"])
+        : undefined,
+    interviewType:
+      typeof value.interviewType === "string"
+        ? (value.interviewType as UserInterviewSettings["interviewType"])
+        : undefined,
+    durationMinutes: Number.isFinite(durationMinutes) ? durationMinutes : undefined,
+    questionCount: Number.isFinite(questionCount) ? questionCount : undefined,
+  };
+
+  return isValidInterviewSettings(normalized) ? normalized : null;
+};
+
+export const getUserInterviewSettings = async (uid: string): Promise<UserInterviewSettings> => {
+  const settingsDoc = await db
+    .collection(COLLECTIONS.USERS)
+    .doc(uid)
+    .collection("settings")
+    .doc("settings")
+    .get();
+
+  if (settingsDoc.exists) {
+    const data = settingsDoc.data() as Record<string, unknown>;
+    const rawPreference =
+      data.interviewPreferene ?? data.interviewPreference ?? data.interviewPreferences;
+    const normalized = normalizeInterviewSettings(rawPreference);
+
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  const user = await requireUserById(uid);
+  const fallback = normalizeInterviewSettings(user.settings);
+
+  if (!fallback) {
     throw new AppError(
       400,
-      "Interview settings are missing. Please set difficultyLevel, durationMinutes, interviewType, and questionCount in your user settings."
+      "Interview settings are missing. Please set difficultyLevel, durationMinutes, interviewType, and questionCount in settings under interviewPreferene."
     );
   }
 
-  return user.settings;
+  return fallback;
 };
 
 export const incrementTotalInterviews = async (uid: string): Promise<void> => {

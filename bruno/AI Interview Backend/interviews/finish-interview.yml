@@ -1,30 +1,59 @@
 info:
   name: Finish Interview
   type: http
-  seq: 9
+  seq: 8
 
 http:
   method: POST
   url: "{{baseUrl}}/interviews/{{interviewId}}/finish"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "answers": [
+          {
+            "questionId": "{{questionId1}}",
+            "answer": "React is a JavaScript library for building UIs using components and hooks."
+          },
+          {
+            "questionId": "{{questionId2}}",
+            "answer": ""
+          },
+           {
+            "questionId": "{{questionId3}}",
+            "answer": ""
+          }
+        ]
+      }
   auth:
     type: bearer
     token: "{{token}}"
 
+runtime:
+  variables:
+    - name: questionId1
+      value: 9983eaea-a43d-45b2-99a4-d23fd499d760
+    - name: questionId2
+      value: 792014a6-8802-4db9-a901-abd513a058bd
+    - name: questionId3
+      value: 4992deb7-7cdc-4b94-9e23-f102a269b35e
+
 settings:
   encodeUrl: true
-  timeout: 120000
+  timeout: 300000
   followRedirects: true
   maxRedirects: 5
 
 docs: |-
-  Finish the interview and generate the embedded report.
+  Submit all interview answers and finish the interview in one request.
+  Empty answers are allowed for skipped questions.
 
   Response (`data`):
-  - `overallScore`
-  - `strengths`, `weaknesses`, `recommendations`
-  - `summary`
-  - `generatedAt`
-
-  Also updates user stats: `completedInterviews`, `averageScore`, `bestScore`.
+  - `results` — per-question evaluation (score, feedback)
+  - `overallScore`, `answeredCount`
+  - `report` — `overallScore`, `strengths`, `weaknesses`, `recommendations`, `summary`, `generatedAt`
 
   May take 30–60 seconds (Gemini AI).

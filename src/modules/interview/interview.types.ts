@@ -22,15 +22,8 @@ export enum QuestionDifficulty {
   EXPERT = "expert",
 }
 
-export const toQuestionDifficulty = (difficultyLevel: DifficultyLevel): QuestionDifficulty => {
-  const map: Record<DifficultyLevel, QuestionDifficulty> = {
-    Easy: QuestionDifficulty.EASY,
-    Medium: QuestionDifficulty.MEDIUM,
-    Hard: QuestionDifficulty.HARD,
-    Expert: QuestionDifficulty.EXPERT,
-  };
-  return map[difficultyLevel];
-};
+export const toQuestionDifficulty = (difficultyLevel: DifficultyLevel): QuestionDifficulty =>
+  difficultyLevel as QuestionDifficulty;
 
 // ─── Embedded interview document models ───────────────────────────────────────
 
@@ -131,6 +124,10 @@ export interface SubmitAnswersResult {
   results: SubmitAnswerResult[];
   overallScore: number;
   answeredCount: number;
+}
+
+export interface FinishInterviewResult extends SubmitAnswersResult {
+  report: InterviewReport;
 }
 
 // ─── AI Raw Outputs ───────────────────────────────────────────────────────────

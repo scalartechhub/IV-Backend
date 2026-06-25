@@ -44,16 +44,11 @@ export const generateQuestions = async (req: Request, res: Response): Promise<vo
   sendSuccess(res, { questions, total: questions.length }, "Questions generated successfully");
 };
 
-export const submitAnswers = async (req: Request, res: Response): Promise<void> => {
-  const result = await interviewService.submitAnswers(
+export const finishInterview = async (req: Request, res: Response): Promise<void> => {
+  const result = await interviewService.finishInterview(
     req.user!.uid,
     param(req, "id"),
     req.body
   );
-  sendSuccess(res, result, "Answers submitted and evaluated");
-};
-
-export const finishInterview = async (req: Request, res: Response): Promise<void> => {
-  const report = await interviewService.finishInterview(req.user!.uid, param(req, "id"));
-  sendSuccess(res, report, "Interview completed. Report generated successfully");
+  sendSuccess(res, result, "Interview completed. Answers evaluated and report generated.");
 };

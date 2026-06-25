@@ -50,7 +50,6 @@ app.use("/api", globalLimiter);
 app.use("/api/interviews/create-with-documents", aiLimiter);
 app.use("/api/interviews/resume-analysis", aiLimiter);
 app.use("/api/interviews/:id/generate-questions", aiLimiter);
-app.use("/api/interviews/:id/answer", aiLimiter);
 app.use("/api/interviews/:id/finish", aiLimiter);
 app.use("/api/chat", aiLimiter);
 
