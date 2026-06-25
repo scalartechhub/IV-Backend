@@ -10,8 +10,6 @@ import type {
   DifficultyLevel,
 } from "../interview/interview.types";
 import { toQuestionDifficulty } from "../interview/interview.types";
-import type { UserProfile } from "../auth/auth.types";
-
 interface GenerateQuestionsParams {
   technology?: string;
   experienceLevel?: string;
@@ -20,7 +18,6 @@ interface GenerateQuestionsParams {
   questionCount: number;
   resumeAnalysis?: ResumeAnalysis;
   jdAnalysis?: JDAnalysis;
-  userProfile?: UserProfile;
   documentsOnly?: boolean;
 }
 
@@ -33,7 +30,6 @@ export const generateQuestions = async (params: GenerateQuestionsParams): Promis
     documentsOnly: Boolean(params.documentsOnly),
     hasResume: Boolean(params.resumeAnalysis),
     hasJD: Boolean(params.jdAnalysis),
-    hasUserProfile: Boolean(params.userProfile),
   });
 
   const prompt = buildQuestionGeneratorPrompt(params);

@@ -22,15 +22,15 @@ export const FILE_LIMITS = {
 
 export const DEFAULT_QUESTION_COUNT = 10;
 
-export const DIFFICULTY_LEVELS = ["Easy", "Medium", "Hard", "Expert"] as const;
+export const DIFFICULTY_LEVELS = ["easy", "medium", "hard", "expert"] as const;
 export type DifficultyLevel = (typeof DIFFICULTY_LEVELS)[number];
 
 export const INTERVIEW_TYPES = [
-  "Technical Interview",
-  "Coding Interview",
-  "System Design",
-  "HR Interview",
-  "Behavioral Interview",
+  "technicalInterview",
+  "codingInterview",
+  "systemDesign",
+  "hrInterview",
+  "behavioralInterview",
 ] as const;
 export type InterviewType = (typeof INTERVIEW_TYPES)[number];
 

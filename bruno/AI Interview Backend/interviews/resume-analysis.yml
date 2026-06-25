@@ -11,7 +11,8 @@ http:
     data:
       - name: file
         type: file
-        value: []
+        value:
+          - C:\Users\Scala\Downloads\angular_resume_demo.pdf
   auth:
     type: bearer
     token: "{{token}}"
