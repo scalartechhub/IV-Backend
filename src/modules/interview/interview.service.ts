@@ -243,6 +243,13 @@ export const generateInterviewQuestions = async (
   return questions;
 };
 
+const buildAnswersFromInterview = (interview: Interview): SubmitAnswersInput => ({
+  answers: interview.questions.map((q) => ({
+    questionId: q.id,
+    answer: (q.answer ?? "").trim(),
+  })),
+});
+
 const EMPTY_ANSWER_EVALUATION: RawEvaluation = {
   technical: 0,
   communication: 0,
@@ -348,8 +355,7 @@ const evaluateSubmittedAnswers = async (
 
 export const finishInterview = async (
   userId: string,
-  interviewId: string,
-  input: SubmitAnswersInput
+  interviewId: string
 ): Promise<FinishInterviewResult> => {
   const interview = await repo.requireOwnedInterview(interviewId, userId);
 
@@ -366,11 +372,23 @@ export const finishInterview = async (
     );
   }
 
-  const submission =
-    input.answers.length > 0
-      ? await evaluateSubmittedAnswers(interview, input)
-      : {
-          results: [],
+  const answersInput = buildAnswersFromInterview(interview);
+  const hasUnevaluatedAnswers = interview.questions.some(
+    (q) => (q.answer ?? "").trim().length > 0 && q.score === undefined
+  );
+
+  const submission = hasUnevaluatedAnswers
+  ? await evaluateSubmittedAnswers(interview, answersInput)
+    : {
+        results: interview.questions
+          .filter((q) => q.score !== undefined)
+          .map((q) => ({
+            questionId: q.id,
+            answer: q.answer ?? "",
+            score: q.score!,
+            feedback: q.feedback ?? "",
+            answeredAt: q.answeredAt ?? Timestamp.now(),
+          })),
           overallScore: calculateInterviewOverallScore(interview.questions),
           answeredCount: countAnsweredQuestions(interview.questions),
         };
