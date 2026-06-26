@@ -6,7 +6,7 @@ import { generateQuestions } from "../ai/question-generator.service";
 import { evaluateAnswersBatch } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
 import { uploadFile } from "../storage/storage.service";
-import { getUserInterviewSettings } from "../auth/auth.repository";
+import { getUserInterviewSettings, getUserNotificationPreferences } from "../auth/auth.repository";
 import { createNotification } from "../notification/notification.repository";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
@@ -86,6 +86,9 @@ export const createInterview = async (
   });
 
   const interview = await repo.createInterview(userId, input);
+
+  const notificationPrefs = await getUserNotificationPreferences(userId);
+  if (notificationPrefs.interviewReminders) {
   await createNotification({
     userId,
     interviewId: interview.id,
@@ -94,6 +97,7 @@ export const createInterview = async (
     type: "interview",
     read: false,
   });
+  }
 
   return interview;
 };
@@ -128,6 +132,8 @@ export const createInterviewWithDocuments = async (
       ...(parsed.jdAnalysis && { jdAnalysis: parsed.jdAnalysis }),
     });
 
+    const notificationPrefs = await getUserNotificationPreferences(userId);
+    if (notificationPrefs.interviewReminders) {
     await createNotification({
       userId,
       interviewId: interview.id,
@@ -136,6 +142,7 @@ export const createInterviewWithDocuments = async (
       type: "interview",
       read: false,
     });
+    }
     return interview;
   } catch (error) {
     if (interview?.id) {
@@ -399,15 +406,19 @@ export const finishInterview = async (
     };
 
     await repo.completeInterview(interviewId, report, overallScore);
-    await createNotification({
-      userId,
-      interviewId,
-      title: "Interview Report Ready",
-      description: "Your interview report has been generated successfully.",
-      type: "report",
-      actionUrl: `/dashboard/reports/interview/${interviewId}`,
-      read: false,
-    });
+
+    const notificationPrefs = await getUserNotificationPreferences(userId);
+    if (notificationPrefs.feedbackReports) {
+      await createNotification({
+        userId,
+        interviewId,
+        title: "Interview Report Ready",
+        description: "Your interview report has been generated successfully.",
+        type: "report",
+        actionUrl: `/dashboard/reports/interview/${interviewId}`,
+        read: false,
+      });
+    }
 
     logger.info(`[interview.service] interview completed interviewId=${interviewId}`, {
       overallScore,

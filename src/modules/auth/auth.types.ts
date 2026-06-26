@@ -11,6 +11,11 @@ export interface UserInterviewSettings {
   questionCount: number;
 }
 
+export interface UserNotificationPreferences {
+  feedbackReports: boolean;
+  interviewReminders: boolean;
+}
+
 export interface User {
   uid: string;
   email?: string;

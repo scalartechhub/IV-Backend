@@ -1,10 +1,11 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { db } from "../../config/firebase";
-import { COLLECTIONS } from "../../shared/constants";
+import { COLLECTIONS, USER_SETTINGS } from "../../shared/constants";
 import { AppError } from "../../shared/utils";
 import {
   type User,
   type UserInterviewSettings,
+  type UserNotificationPreferences,
   type UserProfile,
   type UserResumeAnalysisEntry,
 } from "./auth.types";
@@ -94,11 +95,12 @@ const normalizeInterviewSettings = (settings: unknown): UserInterviewSettings | 
       : Number(value.durationMinutes);
   const questionCount =
     typeof value.questionCount === "number" ? value.questionCount : Number(value.questionCount);
+  const rawDifficulty = value.difficultyLevel ?? value.difficulty;
 
   const normalized: Partial<UserInterviewSettings> = {
     difficultyLevel:
-      typeof value.difficultyLevel === "string"
-        ? (value.difficultyLevel as UserInterviewSettings["difficultyLevel"])
+      typeof rawDifficulty === "string"
+        ? (rawDifficulty as UserInterviewSettings["difficultyLevel"])
         : undefined,
     interviewType:
       typeof value.interviewType === "string"
@@ -111,13 +113,16 @@ const normalizeInterviewSettings = (settings: unknown): UserInterviewSettings | 
   return isValidInterviewSettings(normalized) ? normalized : null;
 };
 
-export const getUserInterviewSettings = async (uid: string): Promise<UserInterviewSettings> => {
-  const settingsDoc = await db
+const getUserPreferenceDoc = (uid: string) =>
+  db
     .collection(COLLECTIONS.USERS)
     .doc(uid)
-    .collection("settings")
-    .doc("settings")
+    .collection(USER_SETTINGS.COLLECTION)
+    .doc(USER_SETTINGS.PREFERENCE_DOC)
     .get();
+
+export const getUserInterviewSettings = async (uid: string): Promise<UserInterviewSettings> => {
+  const settingsDoc = await getUserPreferenceDoc(uid);
 
   if (settingsDoc.exists) {
     const data = settingsDoc.data() as Record<string, unknown>;
@@ -136,11 +141,35 @@ export const getUserInterviewSettings = async (uid: string): Promise<UserIntervi
   if (!fallback) {
     throw new AppError(
       400,
-      "Interview settings are missing. Please set difficultyLevel, durationMinutes, interviewType, and questionCount in settings under interviewPreferene."
+      "Interview settings are missing. Please set difficulty, durationMinutes, interviewType, and questionCount in settings/preference under interviewPreference."
     );
   }
 
   return fallback;
+};
+
+export const getUserNotificationPreferences = async (
+  uid: string
+): Promise<UserNotificationPreferences> => {
+  const settingsDoc = await getUserPreferenceDoc(uid);
+
+  if (!settingsDoc.exists) {
+    return { feedbackReports: false, interviewReminders: false };
+  }
+
+  const data = settingsDoc.data() as Record<string, unknown>;
+  const rawPreference = data.notificationPreference;
+
+  if (!rawPreference || typeof rawPreference !== "object") {
+    return { feedbackReports: false, interviewReminders: false };
+  }
+
+  const prefs = rawPreference as Record<string, unknown>;
+
+  return {
+    feedbackReports: prefs.feedbackReports === true,
+    interviewReminders: prefs.interviewReminders === true,
+  };
 };
 
 export const updateUserResumeUrl = async (uid: string, resumeUrl: string): Promise<void> => {
