@@ -8,6 +8,7 @@ import { generateReport } from "../ai/report.service";
 import { uploadFile } from "../storage/storage.service";
 import { getUserInterviewSettings } from "../auth/auth.repository";
 import { userStatsService } from "../auth/user-stats.service";
+import { createNotification } from "../notification/notification.repository";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
 import { DEFAULT_QUESTION_COUNT } from "../../shared/constants";
@@ -87,6 +88,14 @@ export const createInterview = async (
 
   const interview = await repo.createInterview(userId, input);
   await userStatsService.onInterviewCreated(userId);
+  await createNotification({
+    userId,
+    interviewId: interview.id,
+    title: "Interview Created",
+    description: "Your interview has been created successfully.",
+    type: "interview",
+    read: false,
+  });
 
   return interview;
 };
@@ -122,6 +131,14 @@ export const createInterviewWithDocuments = async (
     });
 
     await userStatsService.onInterviewCreated(userId);
+    await createNotification({
+      userId,
+      interviewId: interview.id,
+      title: "Interview Created",
+      description: "Your interview has been created successfully.",
+      type: "interview",
+      read: false,
+    });
     return interview;
   } catch (error) {
     if (interview?.id) {
@@ -386,6 +403,15 @@ export const finishInterview = async (
 
     await repo.completeInterview(interviewId, report, overallScore);
     await userStatsService.onInterviewCompleted(userId, overallScore);
+    await createNotification({
+      userId,
+      interviewId,
+      title: "Interview Report Ready",
+      description: "Your interview report has been generated successfully.",
+      type: "report",
+      actionUrl: `dashboard/interview/result?interviewId=${interviewId}`,
+      read: false,
+    });
 
     logger.info(`[interview.service] interview completed interviewId=${interviewId}`, {
       overallScore,
