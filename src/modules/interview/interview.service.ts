@@ -409,7 +409,7 @@ export const finishInterview = async (
       title: "Interview Report Ready",
       description: "Your interview report has been generated successfully.",
       type: "report",
-      actionUrl: `dashboard/interview/result?interviewId=${interviewId}`,
+      actionUrl: `/dashboard/reports/interview/${interviewId}`,
       read: false,
     });
 
