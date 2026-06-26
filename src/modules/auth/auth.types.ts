@@ -22,10 +22,6 @@ export interface User {
   resumeUrl?: string;
   resumeAnalyses?: UserResumeAnalysisEntry[];
   settings?: UserInterviewSettings;
-  totalInterviews: number;
-  completedInterviews: number;
-  averageScore: number;
-  bestScore: number;
   /** @deprecated Use displayName — kept for auth backward compatibility */
   name?: string;
   phoneNumber?: string;
@@ -53,10 +49,6 @@ export interface UserResponse {
   technologies?: string[];
   resumeUrl?: string;
   resumeAnalyses?: UserResumeAnalysisEntry[];
-  totalInterviews: number;
-  completedInterviews: number;
-  averageScore: number;
-  bestScore: number;
   provider?: AuthProvider;
   isActive?: boolean;
 }
@@ -131,10 +123,3 @@ export interface UserProfile {
   provider?: AuthProvider;
   role?: string;
 }
-
-export const DEFAULT_USER_STATS = {
-  totalInterviews: 0,
-  completedInterviews: 0,
-  averageScore: 0,
-  bestScore: 0,
-} as const;

@@ -7,7 +7,6 @@ import { evaluateAnswersBatch } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
 import { uploadFile } from "../storage/storage.service";
 import { getUserInterviewSettings } from "../auth/auth.repository";
-import { userStatsService } from "../auth/user-stats.service";
 import { createNotification } from "../notification/notification.repository";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
@@ -87,7 +86,6 @@ export const createInterview = async (
   });
 
   const interview = await repo.createInterview(userId, input);
-  await userStatsService.onInterviewCreated(userId);
   await createNotification({
     userId,
     interviewId: interview.id,
@@ -130,7 +128,6 @@ export const createInterviewWithDocuments = async (
       ...(parsed.jdAnalysis && { jdAnalysis: parsed.jdAnalysis }),
     });
 
-    await userStatsService.onInterviewCreated(userId);
     await createNotification({
       userId,
       interviewId: interview.id,
@@ -402,7 +399,6 @@ export const finishInterview = async (
     };
 
     await repo.completeInterview(interviewId, report, overallScore);
-    await userStatsService.onInterviewCompleted(userId, overallScore);
     await createNotification({
       userId,
       interviewId,
