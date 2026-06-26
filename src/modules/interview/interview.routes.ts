@@ -9,7 +9,6 @@ import {
 } from "../../middleware/upload.middleware";
 import {
   createInterviewSchema,
-  finishInterviewSchema,
   interviewIdParamSchema,
 } from "./interview.validation";
 
@@ -40,7 +39,6 @@ router.post(
 router.post(
   "/:id/finish",
   validate(interviewIdParamSchema, "params"),
-  validate(finishInterviewSchema),
   asyncHandler(interviewController.finishInterview)
 );
 

@@ -1,11 +1,11 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { db } from "../../config/firebase";
-import { COLLECTIONS } from "../../shared/constants";
+import { COLLECTIONS, USER_SETTINGS } from "../../shared/constants";
 import { AppError } from "../../shared/utils";
 import {
-  DEFAULT_USER_STATS,
   type User,
   type UserInterviewSettings,
+  type UserNotificationPreferences,
   type UserProfile,
   type UserResumeAnalysisEntry,
 } from "./auth.types";
@@ -33,7 +33,6 @@ export const upsertUser = async (
 
   if (!snapshot.exists) {
     await ref.set({
-      ...DEFAULT_USER_STATS,
       ...payload,
       uid,
       isActive: true,
@@ -96,11 +95,12 @@ const normalizeInterviewSettings = (settings: unknown): UserInterviewSettings | 
       : Number(value.durationMinutes);
   const questionCount =
     typeof value.questionCount === "number" ? value.questionCount : Number(value.questionCount);
+  const rawDifficulty = value.difficultyLevel ?? value.difficulty;
 
   const normalized: Partial<UserInterviewSettings> = {
     difficultyLevel:
-      typeof value.difficultyLevel === "string"
-        ? (value.difficultyLevel as UserInterviewSettings["difficultyLevel"])
+      typeof rawDifficulty === "string"
+        ? (rawDifficulty as UserInterviewSettings["difficultyLevel"])
         : undefined,
     interviewType:
       typeof value.interviewType === "string"
@@ -113,13 +113,16 @@ const normalizeInterviewSettings = (settings: unknown): UserInterviewSettings | 
   return isValidInterviewSettings(normalized) ? normalized : null;
 };
 
-export const getUserInterviewSettings = async (uid: string): Promise<UserInterviewSettings> => {
-  const settingsDoc = await db
+const getUserPreferenceDoc = (uid: string) =>
+  db
     .collection(COLLECTIONS.USERS)
     .doc(uid)
-    .collection("settings")
-    .doc("settings")
+    .collection(USER_SETTINGS.COLLECTION)
+    .doc(USER_SETTINGS.PREFERENCE_DOC)
     .get();
+
+export const getUserInterviewSettings = async (uid: string): Promise<UserInterviewSettings> => {
+  const settingsDoc = await getUserPreferenceDoc(uid);
 
   if (settingsDoc.exists) {
     const data = settingsDoc.data() as Record<string, unknown>;
@@ -138,51 +141,35 @@ export const getUserInterviewSettings = async (uid: string): Promise<UserIntervi
   if (!fallback) {
     throw new AppError(
       400,
-      "Interview settings are missing. Please set difficultyLevel, durationMinutes, interviewType, and questionCount in settings under interviewPreferene."
+      "Interview settings are missing. Please set difficulty, durationMinutes, interviewType, and questionCount in settings/preference under interviewPreference."
     );
   }
 
   return fallback;
 };
 
-export const incrementTotalInterviews = async (uid: string): Promise<void> => {
-  const ref = db.collection(COLLECTIONS.USERS).doc(uid);
-  await ref.update({
-    totalInterviews: FieldValue.increment(1),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-};
+export const getUserNotificationPreferences = async (
+  uid: string
+): Promise<UserNotificationPreferences> => {
+  const settingsDoc = await getUserPreferenceDoc(uid);
 
-export const updateUserStatsOnCompletion = async (
-  uid: string,
-  interviewScore: number
-): Promise<User> => {
-  const ref = db.collection(COLLECTIONS.USERS).doc(uid);
+  if (!settingsDoc.exists) {
+    return { feedbackReports: false, interviewReminders: false };
+  }
 
-  return db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists) throw new AppError(404, "User account not found.");
+  const data = settingsDoc.data() as Record<string, unknown>;
+  const rawPreference = data.notificationPreference;
 
-    const user = snap.data() as User;
-    const completedInterviews = (user.completedInterviews ?? 0) + 1;
-    const previousTotal = (user.averageScore ?? 0) * (user.completedInterviews ?? 0);
-    const averageScore = Math.round((previousTotal + interviewScore) / completedInterviews);
-    const bestScore = Math.max(user.bestScore ?? 0, interviewScore);
+  if (!rawPreference || typeof rawPreference !== "object") {
+    return { feedbackReports: false, interviewReminders: false };
+  }
 
-    tx.update(ref, {
-      completedInterviews,
-      averageScore,
-      bestScore,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+  const prefs = rawPreference as Record<string, unknown>;
 
-    return {
-      ...user,
-      completedInterviews,
-      averageScore,
-      bestScore,
-    };
-  });
+  return {
+    feedbackReports: prefs.feedbackReports === true,
+    interviewReminders: prefs.interviewReminders === true,
+  };
 };
 
 export const updateUserResumeUrl = async (uid: string, resumeUrl: string): Promise<void> => {

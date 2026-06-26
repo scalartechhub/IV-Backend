@@ -4,6 +4,11 @@ export const COLLECTIONS = {
   NOTIFICATIONS: "notifications",
 } as const;
 
+export const USER_SETTINGS = {
+  COLLECTION: "settings",
+  PREFERENCE_DOC: "preference",
+} as const;
+
 /** Chat module Firestore collection names */
 export const CHAT_COLLECTIONS = {
   CONVERSATIONS: "chatConversations",

@@ -45,10 +45,6 @@ export const generateQuestions = async (req: Request, res: Response): Promise<vo
 };
 
 export const finishInterview = async (req: Request, res: Response): Promise<void> => {
-  const result = await interviewService.finishInterview(
-    req.user!.uid,
-    param(req, "id"),
-    req.body
-  );
+  const result = await interviewService.finishInterview(req.user!.uid, param(req, "id"));
   sendSuccess(res, result, "Interview completed. Answers evaluated and report generated.");
 };

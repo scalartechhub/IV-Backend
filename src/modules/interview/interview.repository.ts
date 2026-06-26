@@ -169,13 +169,6 @@ export const applyAnswerEvaluations = async (
       const update = updateById.get(q.id);
       if (!update) return q;
 
-      if (q.answer && q.answer.length > 0) {
-        throw new AppError(
-          409,
-          `An answer has already been submitted for question ${q.id}. Each question can only be answered once.`
-        );
-      }
-
       return {
         ...q,
         answer: update.answer,

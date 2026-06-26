@@ -6,8 +6,7 @@ import { generateQuestions } from "../ai/question-generator.service";
 import { evaluateAnswersBatch } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
 import { uploadFile } from "../storage/storage.service";
-import { getUserInterviewSettings } from "../auth/auth.repository";
-import { userStatsService } from "../auth/user-stats.service";
+import { getUserInterviewSettings, getUserNotificationPreferences } from "../auth/auth.repository";
 import { createNotification } from "../notification/notification.repository";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
@@ -87,7 +86,9 @@ export const createInterview = async (
   });
 
   const interview = await repo.createInterview(userId, input);
-  await userStatsService.onInterviewCreated(userId);
+
+  const notificationPrefs = await getUserNotificationPreferences(userId);
+  if (notificationPrefs.interviewReminders) {
   await createNotification({
     userId,
     interviewId: interview.id,
@@ -96,6 +97,7 @@ export const createInterview = async (
     type: "interview",
     read: false,
   });
+  }
 
   return interview;
 };
@@ -130,7 +132,8 @@ export const createInterviewWithDocuments = async (
       ...(parsed.jdAnalysis && { jdAnalysis: parsed.jdAnalysis }),
     });
 
-    await userStatsService.onInterviewCreated(userId);
+    const notificationPrefs = await getUserNotificationPreferences(userId);
+    if (notificationPrefs.interviewReminders) {
     await createNotification({
       userId,
       interviewId: interview.id,
@@ -139,6 +142,7 @@ export const createInterviewWithDocuments = async (
       type: "interview",
       read: false,
     });
+    }
     return interview;
   } catch (error) {
     if (interview?.id) {
@@ -238,6 +242,13 @@ export const generateInterviewQuestions = async (
   );
   return questions;
 };
+
+const buildAnswersFromInterview = (interview: Interview): SubmitAnswersInput => ({
+  answers: interview.questions.map((q) => ({
+    questionId: q.id,
+    answer: (q.answer ?? "").trim(),
+  })),
+});
 
 const EMPTY_ANSWER_EVALUATION: RawEvaluation = {
   technical: 0,
@@ -344,8 +355,7 @@ const evaluateSubmittedAnswers = async (
 
 export const finishInterview = async (
   userId: string,
-  interviewId: string,
-  input: SubmitAnswersInput
+  interviewId: string
 ): Promise<FinishInterviewResult> => {
   const interview = await repo.requireOwnedInterview(interviewId, userId);
 
@@ -362,11 +372,23 @@ export const finishInterview = async (
     );
   }
 
-  const submission =
-    input.answers.length > 0
-      ? await evaluateSubmittedAnswers(interview, input)
-      : {
-          results: [],
+  const answersInput = buildAnswersFromInterview(interview);
+  const hasUnevaluatedAnswers = interview.questions.some(
+    (q) => (q.answer ?? "").trim().length > 0 && q.score === undefined
+  );
+
+  const submission = hasUnevaluatedAnswers
+  ? await evaluateSubmittedAnswers(interview, answersInput)
+    : {
+        results: interview.questions
+          .filter((q) => q.score !== undefined)
+          .map((q) => ({
+            questionId: q.id,
+            answer: q.answer ?? "",
+            score: q.score!,
+            feedback: q.feedback ?? "",
+            answeredAt: q.answeredAt ?? Timestamp.now(),
+          })),
           overallScore: calculateInterviewOverallScore(interview.questions),
           answeredCount: countAnsweredQuestions(interview.questions),
         };
@@ -402,16 +424,19 @@ export const finishInterview = async (
     };
 
     await repo.completeInterview(interviewId, report, overallScore);
-    await userStatsService.onInterviewCompleted(userId, overallScore);
-    await createNotification({
-      userId,
-      interviewId,
-      title: "Interview Report Ready",
-      description: "Your interview report has been generated successfully.",
-      type: "report",
-      actionUrl: `/dashboard/reports/interview/${interviewId}`,
-      read: false,
-    });
+
+    const notificationPrefs = await getUserNotificationPreferences(userId);
+    if (notificationPrefs.feedbackReports) {
+      await createNotification({
+        userId,
+        interviewId,
+        title: "Interview Report Ready",
+        description: "Your interview report has been generated successfully.",
+        type: "report",
+        actionUrl: `/dashboard/reports/interview/${interviewId}`,
+        read: false,
+      });
+    }
 
     logger.info(`[interview.service] interview completed interviewId=${interviewId}`, {
       overallScore,

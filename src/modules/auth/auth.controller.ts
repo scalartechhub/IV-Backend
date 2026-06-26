@@ -13,10 +13,6 @@ const toUserResponse = (user: User): UserResponse => ({
   ...(user.technologies && { technologies: user.technologies }),
   ...(user.resumeUrl && { resumeUrl: user.resumeUrl }),
   ...(user.resumeAnalyses && { resumeAnalyses: user.resumeAnalyses }),
-  totalInterviews: user.totalInterviews ?? 0,
-  completedInterviews: user.completedInterviews ?? 0,
-  averageScore: user.averageScore ?? 0,
-  bestScore: user.bestScore ?? 0,
   ...(user.provider && { provider: user.provider }),
   ...(user.isActive !== undefined && { isActive: user.isActive }),
 });
