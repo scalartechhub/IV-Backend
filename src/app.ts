@@ -8,6 +8,11 @@ import { errorMiddleware, notFoundMiddleware } from "./middleware/error.middlewa
 import { logger } from "./shared/logger";
 import { RATE_LIMIT } from "./shared/constants";
 import { appConfig } from "./config/app.config";
+import { isCloudRuntime } from "./shared/runtime";
+
+/** On Firebase Functions the function name is `api`, so routes mount at `/` not `/api`. */
+const API_PREFIX = isCloudRuntime() ? "" : "/api";
+const apiPath = (suffix: string): string => `${API_PREFIX}${suffix}`;
 
 const parseCorsOrigin = (): cors.CorsOptions["origin"] => {
   const raw = appConfig.corsOrigin;
@@ -46,19 +51,19 @@ const aiLimiter = rateLimit({
   },
 });
 
-app.use("/api", globalLimiter);
-app.use("/api/interviews/create-with-documents", aiLimiter);
-app.use("/api/interviews/resume-analysis", aiLimiter);
-app.use("/api/interviews/:id/generate-questions", aiLimiter);
-app.use("/api/interviews/:id/finish", aiLimiter);
-app.use("/api/chat", aiLimiter);
+app.use(apiPath("") || "/", globalLimiter);
+app.use(apiPath("/interviews/create-with-documents"), aiLimiter);
+app.use(apiPath("/interviews/resume-analysis"), aiLimiter);
+app.use(apiPath("/interviews/:id/generate-questions"), aiLimiter);
+app.use(apiPath("/interviews/:id/finish"), aiLimiter);
+app.use(apiPath("/chat"), aiLimiter);
 
 app.use((req, _res, next) => {
   logger.info(`→ ${req.method} ${req.path}`);
   next();
 });
 
-app.use("/api", apiRoutes);
+app.use(apiPath("") || "/", apiRoutes);
 
 app.use(notFoundMiddleware);
 app.use(errorMiddleware);

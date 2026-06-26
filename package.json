@@ -5,7 +5,12 @@
   "scripts": {
     "dev": "nodemon",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "prepare:functions": "npm run build && node scripts/prepare-functions.js",
+    "build:functions": "npm run prepare:functions && npm --prefix functions run build",
+    "deploy": "firebase deploy --only functions",
+    "sync:secrets": "node scripts/sync-firebase-secrets.js",
+    "deploy:functions": "npm run build:functions && firebase deploy --only functions"
   },
   "dependencies": {
     "@google/genai": "^2.8.0",

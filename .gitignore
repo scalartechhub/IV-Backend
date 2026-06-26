@@ -3,6 +3,8 @@ node_modules/
 
 # Build output
 dist/
+functions/dist/
+functions/lib/
 
 # Environment & secrets
 .env

@@ -10,6 +10,7 @@ import {
 import { Auth, getAuth } from "firebase-admin/auth";
 import { Firestore, getFirestore } from "firebase-admin/firestore";
 
+import { isCloudRuntime } from "../shared/runtime";
 import { appConfig } from "./app.config";
 import { secretService } from "./secrets";
 
@@ -39,25 +40,28 @@ export const initializeFirebase = (): void => {
     return;
   }
 
-  const credentials = secretService.getFirebaseCredentials();
-
   _storageBucket = appConfig.firebaseStorageBucket?.replace(/^gs:\/\//, "");
 
-  const adminApp: App = initializeApp({
-    credential: localServiceAccount
-      ? cert(localServiceAccount)
-      : cert({
-          projectId: credentials.projectId,
-          clientEmail: credentials.clientEmail,
-          privateKey: credentials.privateKey,
-        }),
+  let adminApp: App;
 
-    projectId: localServiceAccount?.project_id ?? credentials.projectId,
-
-    ...(_storageBucket && {
-      storageBucket: _storageBucket,
-    }),
-  });
+  if (isCloudRuntime()) {
+    adminApp = initializeApp({
+      ...(_storageBucket && { storageBucket: _storageBucket }),
+    });
+  } else {
+    const credentials = secretService.getFirebaseCredentials();
+    adminApp = initializeApp({
+      credential: localServiceAccount
+        ? cert(localServiceAccount)
+        : cert({
+            projectId: credentials.projectId,
+            clientEmail: credentials.clientEmail,
+            privateKey: credentials.privateKey,
+          }),
+      projectId: localServiceAccount?.project_id ?? credentials.projectId,
+      ...(_storageBucket && { storageBucket: _storageBucket }),
+    });
+  }
 
   db = getFirestore(adminApp);
   auth = getAuth(adminApp);

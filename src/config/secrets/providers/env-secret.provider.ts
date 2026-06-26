@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
 import type { ServiceAccount } from "firebase-admin/app";
 import type { AppSecrets, FirebaseCredentials } from "../secret.types";
+import { isCloudRuntime } from "../../../shared/runtime";
 import type { SecretProvider } from "./secret-provider.interface";
 
 const normalizePrivateKey = (key: string): string => key.replace(/\\n/g, "\n");
@@ -41,6 +42,17 @@ const resolveServiceAccountPath = (): string | null => {
 };
 
 const loadFirebaseCredentials = (): FirebaseCredentials => {
+  if (isCloudRuntime()) {
+    return {
+      projectId:
+        process.env.GCLOUD_PROJECT?.trim() ||
+        process.env.FIREBASE_PROJECT_ID?.trim() ||
+        "",
+      clientEmail: "",
+      privateKey: "",
+    };
+  }
+
   const projectId = process.env.FIREBASE_PROJECT_ID?.trim();
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim();
   const privateKeyRaw = process.env.FIREBASE_PRIVATE_KEY?.trim();

@@ -1,3 +1,4 @@
+import { isCloudRuntime } from "../../shared/runtime";
 import type { AppSecrets } from "./secret.types";
 import { REQUIRED_SECRET_KEYS } from "./secret.types";
 
@@ -16,9 +17,12 @@ export const validateSecrets = (secrets: AppSecrets): void => {
 
   if (!secrets.geminiApiKey) missing.push("GEMINI_API_KEY");
   if (!secrets.firebaseApiKey) missing.push("FIREBASE_API_KEY");
-  if (!secrets.firebase.projectId) missing.push("FIREBASE_PROJECT_ID");
-  if (!secrets.firebase.clientEmail) missing.push("FIREBASE_CLIENT_EMAIL");
-  if (!secrets.firebase.privateKey) missing.push("FIREBASE_PRIVATE_KEY");
+
+  if (!isCloudRuntime()) {
+    if (!secrets.firebase.projectId) missing.push("FIREBASE_PROJECT_ID");
+    if (!secrets.firebase.clientEmail) missing.push("FIREBASE_CLIENT_EMAIL");
+    if (!secrets.firebase.privateKey) missing.push("FIREBASE_PRIVATE_KEY");
+  }
 
   if (missing.length === 0) return;
 
