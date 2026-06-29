@@ -35,15 +35,23 @@ runtime:
         if (body?.data?.id) {
           bru.setEnvVar("interviewId", body.data.id);
         }
+        const questions = body?.data?.questions;
+        if (Array.isArray(questions) && questions.length > 0) {
+          bru.setEnvVar("questionId", questions[0].id);
+          bru.setEnvVar(
+            "questionIds",
+            JSON.stringify(questions.map((q) => q.id))
+          );
+        }
 
 settings:
   encodeUrl: true
-  timeout: 0
+  timeout: 120000
   followRedirects: true
   maxRedirects: 5
 
 docs: |-
-  Create a new interview.
+  Create a new interview and generate questions in a single request.
 
   Body fields:
   - `technology` — role/stack focus (e.g. "Frontend Developer")
@@ -53,6 +61,7 @@ docs: |-
   - `durationMinutes` — interview duration in minutes (validated on frontend)
   - `questionCount` — how many questions to generate (validated on frontend)
 
-  `difficultyLevel` and `interviewType` are stored on the interview and used by **Generate Questions**.
+  Questions are generated from the payload fields above and embedded in the interview document.
+  May take 30–60 seconds (Gemini AI).
 
-  Auto-saves `interviewId` to environment.
+  Auto-saves `interviewId`, `questionId` (first), and `questionIds` (JSON array) to environment.
