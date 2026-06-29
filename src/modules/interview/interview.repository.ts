@@ -49,8 +49,6 @@ export const createInterviewWithDocuments = async (
   fields: {
     resumeAnalysis?: ResumeAnalysis;
     jdAnalysis?: JDAnalysis;
-    resumeUrl?: string;
-    jdUrl?: string;
   }
 ): Promise<Interview> => {
   const ref = db.collection(COLLECTIONS.INTERVIEWS).doc();
@@ -63,8 +61,6 @@ export const createInterviewWithDocuments = async (
     questionCount: 0,
     status: InterviewStatus.DRAFT,
     questions: [],
-    ...(fields.resumeUrl && { resumeUrl: fields.resumeUrl }),
-    ...(fields.jdUrl && { jdUrl: fields.jdUrl }),
     ...(fields.resumeAnalysis && { resumeAnalysis: fields.resumeAnalysis }),
     ...(fields.jdAnalysis && { jdAnalysis: fields.jdAnalysis }),
     version: INTERVIEW_DOCUMENT_VERSION,

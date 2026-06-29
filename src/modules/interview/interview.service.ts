@@ -5,7 +5,6 @@ import { parseJD } from "../ai/jd-parser.service";
 import { generateQuestions } from "../ai/question-generator.service";
 import { evaluateAnswersBatch } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
-import { uploadFile } from "../storage/storage.service";
 import { getUserInterviewSettings, getUserNotificationPreferences } from "../auth/auth.repository";
 import { createNotification } from "../notification/notification.repository";
 import { AppError } from "../../shared/utils";
@@ -40,40 +39,22 @@ const getInterviewExperienceLevel = (interview: Interview): string =>
   interview.jdAnalysis?.experience?.[0] ??
   "Based on resume and job description";
 
-const parseInterviewDocuments = async (
-  interviewId: string,
-  files: { resumeBuffer?: Buffer; jdBuffer?: Buffer }
-) => {
+const parseInterviewDocuments = async (files: {
+  resumeBuffer?: Buffer;
+  jdBuffer?: Buffer;
+}) => {
   let resumeAnalysis;
   let jdAnalysis;
-  let resumeUrl: string | undefined;
-  let jdUrl: string | undefined;
 
   if (files.resumeBuffer) {
     resumeAnalysis = await parseResume(files.resumeBuffer);
-    try {
-      resumeUrl = await uploadFile(interviewId, "resume", files.resumeBuffer);
-    } catch (storageError) {
-      logger.warn(
-        `[interview.service] resume storage upload failed interviewId=${interviewId}`,
-        storageError
-      );
-    }
   }
 
   if (files.jdBuffer) {
     jdAnalysis = await parseJD(files.jdBuffer);
-    try {
-      jdUrl = await uploadFile(interviewId, "jd", files.jdBuffer);
-    } catch (storageError) {
-      logger.warn(
-        `[interview.service] JD storage upload failed interviewId=${interviewId}`,
-        storageError
-      );
-    }
   }
 
-  return { resumeAnalysis, jdAnalysis, resumeUrl, jdUrl };
+  return { resumeAnalysis, jdAnalysis };
 };
 
 export const createInterview = async (
@@ -123,11 +104,9 @@ export const createInterviewWithDocuments = async (
   try {
     interview = await repo.createInterviewWithDocuments(userId, {});
 
-    const parsed = await parseInterviewDocuments(interview.id, files);
+    const parsed = await parseInterviewDocuments(files);
 
     interview = await repo.updateInterview(interview.id, {
-      ...(parsed.resumeUrl && { resumeUrl: parsed.resumeUrl }),
-      ...(parsed.jdUrl && { jdUrl: parsed.jdUrl }),
       ...(parsed.resumeAnalysis && { resumeAnalysis: parsed.resumeAnalysis }),
       ...(parsed.jdAnalysis && { jdAnalysis: parsed.jdAnalysis }),
     });
