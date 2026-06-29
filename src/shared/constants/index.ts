@@ -16,8 +16,6 @@ export const CHAT_COLLECTIONS = {
 } as const;
 
 export const STORAGE_PATHS = {
-  RESUME: (interviewId: string) => `interviews/${interviewId}/resume.pdf`,
-  JD: (interviewId: string) => `interviews/${interviewId}/jd.pdf`,
   USER_RESUME: (uid: string, fileKey: string) => `users/${uid}/resumes/${fileKey}.pdf`,
 } as const;
 
