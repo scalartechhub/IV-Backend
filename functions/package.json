@@ -1,14 +1,17 @@
 {
   "name": "iv-backend-functions",
+  "version": "1.0.0",
   "private": true,
-  "engines": {
-    "node": "22"
-  },
   "main": "lib/index.js",
   "scripts": {
     "build": "tsc",
     "serve": "npm run build && firebase emulators:start --only functions",
-    "deploy": "firebase deploy --only functions"
+    "start": "firebase emulators:start --project=interview-89e09 --only functions",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "engines": {
+    "node": "22"
   },
   "dependencies": {
     "@google/genai": "^2.8.0",
