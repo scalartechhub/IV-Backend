@@ -31,12 +31,6 @@ router.post(
 );
 
 router.post(
-  "/:id/generate-questions",
-  validate(interviewIdParamSchema, "params"),
-  asyncHandler(interviewController.generateQuestions)
-);
-
-router.post(
   "/:id/finish",
   validate(interviewIdParamSchema, "params"),
   asyncHandler(interviewController.finishInterview)
