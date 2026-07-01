@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "fs";
 import { resolve } from "path";
+import * as admin from "firebase-admin";
 
 import {
   App,
@@ -16,6 +17,7 @@ import { secretService } from "./secrets";
 
 export let db: Firestore;
 export let auth: Auth;
+export { admin };
 
 let _storageBucket: string | undefined;
 let _initialized = false;
