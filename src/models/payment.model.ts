@@ -2,6 +2,7 @@ export interface Plan {
   id: string;
   name: string;
   amount: number;
+  currency: string;
   duration: number;
   interviewCredits: number;
 }
