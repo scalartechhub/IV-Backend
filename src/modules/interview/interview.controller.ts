@@ -17,7 +17,7 @@ const getUploadedDocumentBuffers = (
 
 export const createInterview = async (req: Request, res: Response): Promise<void> => {
   const interview = await interviewService.createInterview(req.user!.uid, req.body);
-  sendCreated(res, interview, "Interview created successfully");
+  sendCreated(res, interview, "Interview created and questions generated successfully");
 };
 
 export const createInterviewWithDocuments = async (req: Request, res: Response): Promise<void> => {
@@ -25,7 +25,7 @@ export const createInterviewWithDocuments = async (req: Request, res: Response):
     req.user!.uid,
     getUploadedDocumentBuffers(req)
   );
-  sendCreated(res, interview, "Interview created with documents successfully");
+  sendCreated(res, interview, "Interview created with documents and questions generated successfully");
 };
 
 export const resumeAnalysis = async (req: Request, res: Response): Promise<void> => {
@@ -34,14 +34,6 @@ export const resumeAnalysis = async (req: Request, res: Response): Promise<void>
     req.file!.buffer
   );
   sendSuccess(res, resumeAnalysisEntry, "Resume uploaded and analyzed successfully");
-};
-
-export const generateQuestions = async (req: Request, res: Response): Promise<void> => {
-  const questions = await interviewService.generateInterviewQuestions(
-    req.user!.uid,
-    param(req, "id")
-  );
-  sendSuccess(res, { questions, total: questions.length }, "Questions generated successfully");
 };
 
 export const finishInterview = async (req: Request, res: Response): Promise<void> => {

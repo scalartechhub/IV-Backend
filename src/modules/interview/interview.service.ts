@@ -80,7 +80,8 @@ export const createInterview = async (
   });
   }
 
-  return interview;
+  await generateInterviewQuestions(userId, interview.id);
+  return repo.requireOwnedInterview(interview.id, userId);
 };
 
 export const createInterviewWithDocuments = async (
@@ -122,7 +123,9 @@ export const createInterviewWithDocuments = async (
       read: false,
     });
     }
-    return interview;
+
+    await generateInterviewQuestions(userId, interview.id);
+    return repo.requireOwnedInterview(interview.id, userId);
   } catch (error) {
     if (interview?.id) {
       await repo.updateInterview(interview.id, { status: InterviewStatus.CANCELLED });
@@ -347,7 +350,7 @@ export const finishInterview = async (
   if (interview.questions.length === 0) {
     throw new AppError(
       400,
-      "No questions are available yet. Please generate questions before finishing the interview."
+      "No questions are available yet. Please create the interview again."
     );
   }
 

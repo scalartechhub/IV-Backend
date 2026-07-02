@@ -1,17 +1,21 @@
 {
   "name": "ai-interviewer-backend",
   "version": "1.0.0",
+  "description": "AI Interview Platform backend",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "nodemon",
+    "dev": "node -r ts-node/register src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "prepare:functions": "npm run build && node scripts/prepare-functions.js",
     "build:functions": "npm run prepare:functions && npm --prefix functions run build",
-    "deploy": "firebase deploy --only functions",
-    "sync:secrets": "node scripts/sync-firebase-secrets.js",
-    "deploy:functions": "npm run build:functions && firebase deploy --only functions"
+    "deploy-firestore": "firebase deploy --only firestore --project=interview-89e09",
+    "deploy-functions": "firebase deploy --only functions --force --project=interview-89e09",
+    "emulators:start": "firebase emulators:start --project=interview-89e09",
+    "sync:secrets": "node scripts/sync-firebase-secrets.js"
   },
+  "author": "",
+  "license": "ISC",
   "dependencies": {
     "@google/genai": "^2.8.0",
     "cors": "^2.8.6",
@@ -33,7 +37,6 @@
     "@types/node": "^25.9.2",
     "@types/pdf-parse": "^1.1.5",
     "@types/uuid": "^10.0.0",
-    "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
   }
