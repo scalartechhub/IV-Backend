@@ -15,6 +15,7 @@ const appConfigSchema = z.object({
     .transform((v) => parseInt(v, 10))
     .pipe(z.number().int().min(5000).max(300_000)),
   CORS_ORIGIN: z.string().optional(),
+  GROQ_MODEL: z.string().default("llama-3.3-70b-versatile"), 
 });
 
 const parsed = appConfigSchema.safeParse(process.env);
@@ -34,6 +35,7 @@ export const appConfig = {
   isDevelopment: data.NODE_ENV === "development",
   firebaseStorageBucket: data.FIREBASE_STORAGE_BUCKET,
   geminiModel: data.GEMINI_MODEL,
+  groqModel: data.GROQ_MODEL,
   geminiTimeoutMs: data.GEMINI_TIMEOUT_MS,
   corsOrigin: data.CORS_ORIGIN,
 } as const;
