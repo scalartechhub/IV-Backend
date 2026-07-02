@@ -1,7 +1,8 @@
-import express, { Application } from "express";
+import express, { Application, Request } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import morgan from "morgan";
 
 import apiRoutes from "./routes";
 import { errorMiddleware, notFoundMiddleware } from "./middleware/error.middleware";
@@ -29,7 +30,15 @@ const app: Application = express();
 
 app.use(helmet());
 app.use(cors({ origin: parseCorsOrigin(), credentials: true }));
-app.use(express.json({ limit: "1mb" }));
+app.use(morgan("combined"));
+app.use(
+  express.json({
+    limit: "1mb",
+    verify: (req, _res, buf) => {
+      (req as Request).rawBody = buf;
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 const globalLimiter = rateLimit({

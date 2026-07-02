@@ -1,0 +1,45 @@
+info:
+  name: Razorpay Webhook
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: "{{baseUrl}}/payment/webhook"
+  headers:
+    - name: Content-Type
+      value: application/json
+    - name: x-razorpay-signature
+      value: "{{webhookSignature}}"
+  body:
+    type: json
+    data: |-
+      {
+        "event": "payment.captured",
+        "payload": {
+          "payment": {
+            "entity": {
+              "id": "{{razorpayPaymentId}}",
+              "order_id": "{{razorpayOrderId}}",
+              "amount": 49900,
+              "currency": "INR",
+              "status": "captured",
+              "method": "card",
+              "notes": {
+                "userId": "{{webhookUserId}}",
+                "planId": "{{planId}}"
+              }
+            }
+          }
+        }
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Manual webhook trigger for local testing.
+  Use a valid webhook signature generated using `RAZORPAY_WEBHOOK_SECRET`.

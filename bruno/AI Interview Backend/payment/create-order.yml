@@ -1,0 +1,42 @@
+info:
+  name: Create Order
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/payment/create-order"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "planId": "{{planId}}"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  variables:
+    - name: planId
+      value: NBUWkbawfwueySBWRrw5
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body?.data?.orderId) {
+          bru.setEnvVar("razorpayOrderId", body.data.orderId);
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Create Razorpay order for selected plan.
+  Auto-saves `razorpayOrderId` from response for payment verification.
