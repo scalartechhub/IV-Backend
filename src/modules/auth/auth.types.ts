@@ -1,6 +1,6 @@
 import { Timestamp } from "firebase-admin/firestore";
 import type { ResumeAnalysis } from "../interview/interview.types";
-import type { DifficultyLevel, InterviewType } from "../../shared/constants";
+import type { DifficultyLevel, InterviewType, SubscriptionPlan } from "../../shared/constants";
 
 export type AuthProvider = "email";
 
@@ -16,6 +16,14 @@ export interface UserNotificationPreferences {
   interviewReminders: boolean;
 }
 
+export interface UserSubscription {
+  plan: SubscriptionPlan;
+  status?: string;
+  expiresAt?: string;
+  purchaseDate?: string;
+  interviewCredits?: number;
+}
+
 export interface User {
   uid: string;
   email?: string;
@@ -27,6 +35,7 @@ export interface User {
   resumeUrl?: string;
   resumeAnalyses?: UserResumeAnalysisEntry[];
   settings?: UserInterviewSettings;
+  subscription?: UserSubscription;
   /** @deprecated Use displayName — kept for auth backward compatibility */
   name?: string;
   phoneNumber?: string;

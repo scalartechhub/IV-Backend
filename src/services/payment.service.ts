@@ -1,8 +1,11 @@
 import { Timestamp } from "firebase-admin/firestore";
 import { db } from "../config/firebase";
 import { razorpay, razorpayConfig } from "../config/razorpay";
-import { PLAN_DEFAULTS, PLAN_IDS, SUBSCRIPTION_STATUS } from "../constants/payment.constants";
+import { PLAN_DEFAULTS, PLAN_IDS, PLAN_MONTHLY_INTERVIEW_LIMITS, SUBSCRIPTION_STATUS } from "../constants/payment.constants";
 import type { PaymentRecord, Plan, UserSubscription } from "../models/payment.model";
+import { countInterviewsCreatedThisMonth } from "../modules/auth/auth.repository";
+import type { User } from "../modules/auth/auth.types";
+import { getStartOfNextMonth, resolveBillingPlan } from "../shared/plan.utils";
 import { AppError } from "../shared/utils";
 import { verifyPaymentSignature, verifyWebhookSignature } from "../utils/verifySignature";
 
@@ -156,23 +159,41 @@ export const getPaymentHistory = async (userId: string): Promise<PaymentRecord[]
 
 export const getSubscription = async (userId: string) => {
   const userSnap = await getUsersCollection().doc(userId).get();
+  const emptyQuota = {
+    monthlyInterviewLimit: PLAN_MONTHLY_INTERVIEW_LIMITS[PLAN_IDS.FREE],
+    interviewsUsedThisMonth: 0,
+    interviewsRemainingThisMonth: PLAN_MONTHLY_INTERVIEW_LIMITS[PLAN_IDS.FREE],
+    quotaResetsAt: getStartOfNextMonth().toISOString(),
+  };
+
   if (!userSnap.exists) {
     return {
       plan: PLAN_IDS.FREE,
       status: SUBSCRIPTION_STATUS.ACTIVE,
       expiry: null,
       remainingDays: null,
+      ...emptyQuota,
     };
   }
 
-  const user = userSnap.data() as { subscription?: UserSubscription };
+  const user = { ...(userSnap.data() as User), uid: userId };
   const subscription = user.subscription;
+  const billingPlan = resolveBillingPlan(user);
+  const monthlyLimit = PLAN_MONTHLY_INTERVIEW_LIMITS[billingPlan];
+  const interviewsUsedThisMonth = await countInterviewsCreatedThisMonth(userId);
+  const interviewsRemainingThisMonth =
+    monthlyLimit === null ? null : Math.max(0, monthlyLimit - interviewsUsedThisMonth);
+
   if (!subscription) {
     return {
       plan: PLAN_IDS.FREE,
       status: SUBSCRIPTION_STATUS.ACTIVE,
       expiry: null,
       remainingDays: null,
+      monthlyInterviewLimit: monthlyLimit,
+      interviewsUsedThisMonth,
+      interviewsRemainingThisMonth,
+      quotaResetsAt: getStartOfNextMonth().toISOString(),
     };
   }
 
@@ -184,10 +205,14 @@ export const getSubscription = async (userId: string) => {
   }
 
   return {
-    plan: subscription.plan,
+    plan: billingPlan,
     status: subscription.status,
     expiry,
     remainingDays,
+    monthlyInterviewLimit: monthlyLimit,
+    interviewsUsedThisMonth,
+    interviewsRemainingThisMonth,
+    quotaResetsAt: getStartOfNextMonth().toISOString(),
   };
 };
 

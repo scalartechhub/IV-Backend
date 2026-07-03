@@ -1,7 +1,10 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { db } from "../../config/firebase";
 import { COLLECTIONS, USER_SETTINGS } from "../../shared/constants";
+import { assertInterviewCreationAllowed } from "../../shared/entitlements";
+import { getStartOfCurrentMonth, resolveBillingPlan } from "../../shared/plan.utils";
 import { AppError } from "../../shared/utils";
+import type { Interview } from "../interview/interview.types";
 import {
   type User,
   type UserInterviewSettings,
@@ -9,7 +12,12 @@ import {
   type UserProfile,
   type UserResumeAnalysisEntry,
 } from "./auth.types";
-import { DIFFICULTY_LEVELS, INTERVIEW_TYPES } from "../../shared/constants";
+import {
+  DIFFICULTY_LEVELS,
+  INTERVIEW_TYPES,
+  type SubscriptionPlan,
+} from "../../shared/constants";
+import { PLAN_IDS } from "../../constants/payment.constants";
 
 const normalizeUserFields = (
   fields: Partial<Omit<User, "isActive" | "createdAt" | "updatedAt">>
@@ -58,6 +66,50 @@ export const requireUserById = async (uid: string): Promise<User> => {
   const user = await findUserById(uid);
   if (!user) throw new AppError(404, "User account not found.");
   return user;
+};
+
+
+export const getUserSubscriptionPlan = async (uid: string): Promise<SubscriptionPlan> => {
+  const user = await requireUserById(uid);
+  const billingPlan = resolveBillingPlan(user);
+
+  if (billingPlan === PLAN_IDS.ENTERPRISE || billingPlan === PLAN_IDS.PRO) {
+    return "pro";
+  }
+
+  return "starter";
+};
+
+export const countInterviewsCreatedThisMonth = async (uid: string): Promise<number> => {
+  const startOfMonth = getStartOfCurrentMonth();
+  const startMs = startOfMonth.getTime();
+
+  const snapshot = await db
+    .collection(COLLECTIONS.INTERVIEWS)
+    .where("userId", "==", uid)
+    .where("isDeleted", "==", false)
+    .get();
+
+  return snapshot.docs.filter((doc) => {
+    const interview = doc.data() as Interview;
+    const createdAt = interview.createdAt;
+    if (!createdAt) return false;
+
+    const createdDate =
+      typeof (createdAt as { toDate?: () => Date }).toDate === "function"
+        ? (createdAt as { toDate: () => Date }).toDate()
+        : new Date(createdAt as unknown as string);
+
+    return createdDate.getTime() >= startMs;
+  }).length;
+};
+
+export const assertUserCanCreateInterview = async (uid: string): Promise<void> => {
+  const user = await requireUserById(uid);
+  const billingPlan = resolveBillingPlan(user);
+  const usedThisMonth = await countInterviewsCreatedThisMonth(uid);
+
+  assertInterviewCreationAllowed(billingPlan, usedThisMonth);
 };
 
 export const getUserProfile = async (uid: string): Promise<UserProfile> => {
