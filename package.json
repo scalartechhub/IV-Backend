@@ -9,7 +9,7 @@
     "start": "node dist/server.js",
     "prepare:functions": "npm run build && node scripts/prepare-functions.js",
     "build:functions": "npm run prepare:functions && npm --prefix functions run build",
-    "deploy-firestore": "firebase deploy --only firestore --project=interview-89e09",
+    "deploy-firestore": "firebase deploy --only firestore:indexes --project=interview-89e09",
     "deploy-functions": "firebase deploy --only functions --force --project=interview-89e09",
     "emulators:start": "firebase emulators:start --project=interview-89e09",
     "sync:secrets": "node scripts/sync-firebase-secrets.js"

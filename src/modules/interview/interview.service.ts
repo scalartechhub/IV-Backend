@@ -5,14 +5,11 @@ import { parseJD } from "../ai/jd-parser.service";
 import { generateQuestions } from "../ai/question-generator.service";
 import { evaluateAnswersBatch } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
-import { getUserInterviewSettings, getUserNotificationPreferences } from "../auth/auth.repository";
+import { getUserInterviewSettings, getUserNotificationPreferences, getUserSubscriptionPlan, assertUserCanCreateInterview } from "../auth/auth.repository";
 import { createNotification } from "../notification/notification.repository";
-import {
-  assertActiveSubscription,
-  assertCanCreateInterview,
-  recordInterviewUsage,
-} from "../subscription/subscription.service";
+import { assertActiveSubscription } from "../subscription/subscription.service";
 import { AppError } from "../../shared/utils";
+import { assertDifficultyAllowedForPlan } from "../../shared/entitlements";
 import { logger } from "../../shared/logger";
 import { DEFAULT_QUESTION_COUNT } from "../../shared/constants";
 import type {
@@ -71,10 +68,11 @@ export const createInterview = async (
     creationMode: InterviewCreationMode.PAYLOAD,
   });
 
-  await assertCanCreateInterview(userId);
+  const plan = await getUserSubscriptionPlan(userId);
+  assertDifficultyAllowedForPlan(plan, input.difficultyLevel);
+  await assertUserCanCreateInterview(userId);
 
   const interview = await repo.createInterview(userId, input);
-  await recordInterviewUsage(userId);
 
   const notificationPrefs = await getUserNotificationPreferences(userId);
   if (notificationPrefs.interviewReminders) {
@@ -108,13 +106,17 @@ export const createInterviewWithDocuments = async (
     hasJD: Boolean(files.jdBuffer),
   });
 
-  await assertCanCreateInterview(userId);
+  const [plan, interviewSettings] = await Promise.all([
+    getUserSubscriptionPlan(userId),
+    getUserInterviewSettings(userId),
+  ]);
+  assertDifficultyAllowedForPlan(plan, interviewSettings.difficultyLevel);
+  await assertUserCanCreateInterview(userId);
 
   let interview: Interview | undefined;
 
   try {
     interview = await repo.createInterviewWithDocuments(userId, {});
-    await recordInterviewUsage(userId);
 
     const parsed = await parseInterviewDocuments(files);
 
@@ -196,6 +198,9 @@ export const generateInterviewQuestions = async (
       "Cannot generate questions because no resume or job description was uploaded for this interview."
     );
   }
+
+  const plan = await getUserSubscriptionPlan(userId);
+  assertDifficultyAllowedForPlan(plan, questionConfig.difficultyLevel);
 
   logger.info(`[interview.service] generating questions interviewId=${interviewId}`, {
     creationMode: interview.creationMode,

@@ -1,10 +1,13 @@
 import { Timestamp } from "firebase-admin/firestore";
 import { db } from "../config/firebase";
 import { getRazorpay, getRazorpayConfig, isRazorpayConfigured } from "../config/razorpay";
-import { PLAN_DEFAULTS, PLAN_IDS, SUBSCRIPTION_STATUS } from "../constants/payment.constants";
+import { PLAN_DEFAULTS, PLAN_IDS, PLAN_MONTHLY_INTERVIEW_LIMITS, SUBSCRIPTION_STATUS } from "../constants/payment.constants";
 import * as userRepo from "../modules/auth/auth.repository";
+import { countInterviewsCreatedThisMonth } from "../modules/auth/auth.repository";
 import { isSubscriptionExpired } from "../modules/subscription/subscription.service";
 import type { PaymentRecord, Plan, UserSubscription } from "../models/payment.model";
+import type { User } from "../modules/auth/auth.types";
+import { getStartOfNextMonth, resolveBillingPlan } from "../shared/plan.utils";
 import { AppError } from "../shared/utils";
 import { logger } from "../shared/logger";
 import { verifyPaymentSignature, verifyWebhookSignature } from "../utils/verifySignature";
@@ -284,30 +287,35 @@ export const getPaymentHistory = async (userId: string): Promise<PaymentRecord[]
 
 export const getSubscription = async (userId: string) => {
   const userSnap = await getUsersCollection().doc(userId).get();
+  const freeCredits = PLAN_DEFAULTS[PLAN_IDS.FREE].interviewCredits;
+  const emptyQuota = {
+    monthlyInterviewLimit: PLAN_MONTHLY_INTERVIEW_LIMITS[PLAN_IDS.FREE],
+    interviewsUsedThisMonth: 0,
+    interviewsRemainingThisMonth: PLAN_MONTHLY_INTERVIEW_LIMITS[PLAN_IDS.FREE],
+    quotaResetsAt: getStartOfNextMonth().toISOString(),
+  };
+
   if (!userSnap.exists) {
     return {
       plan: PLAN_IDS.FREE,
       status: SUBSCRIPTION_STATUS.ACTIVE,
       expiry: null,
       remainingDays: null,
-      interviewCredits: PLAN_DEFAULTS[PLAN_IDS.FREE].interviewCredits,
+      interviewCredits: freeCredits,
+      ...emptyQuota,
     };
   }
 
-  const user = userSnap.data() as { subscription?: UserSubscription };
-  let subscription = user.subscription;
-
-  if (!subscription) {
-    return {
-      plan: PLAN_IDS.FREE,
-      status: SUBSCRIPTION_STATUS.ACTIVE,
-      expiry: null,
-      remainingDays: null,
-      interviewCredits: PLAN_DEFAULTS[PLAN_IDS.FREE].interviewCredits,
-    };
-  }
+  const user = { ...(userSnap.data() as User), uid: userId };
+  let subscription = user.subscription as UserSubscription | undefined;
+  const billingPlan = resolveBillingPlan(user);
+  const monthlyLimit = PLAN_MONTHLY_INTERVIEW_LIMITS[billingPlan];
+  const interviewsUsedThisMonth = await countInterviewsCreatedThisMonth(userId);
+  const interviewsRemainingThisMonth =
+    monthlyLimit === null ? null : Math.max(0, monthlyLimit - interviewsUsedThisMonth);
 
   if (
+    subscription &&
     subscription.status === SUBSCRIPTION_STATUS.ACTIVE &&
     subscription.plan !== PLAN_IDS.FREE &&
     isSubscriptionExpired(subscription.expiresAt)
@@ -315,10 +323,24 @@ export const getSubscription = async (userId: string) => {
     subscription = {
       plan: PLAN_IDS.FREE,
       status: SUBSCRIPTION_STATUS.EXPIRED,
-      expiresAt: subscription.expiresAt,
-      purchaseDate: subscription.purchaseDate,
-      interviewCredits: PLAN_DEFAULTS[PLAN_IDS.FREE].interviewCredits,
+      expiresAt: subscription.expiresAt ?? null,
+      purchaseDate: subscription.purchaseDate ?? null,
+      interviewCredits: freeCredits,
       currentPaymentId: subscription.currentPaymentId ?? null,
+    };
+  }
+
+  if (!subscription) {
+    return {
+      plan: PLAN_IDS.FREE,
+      status: SUBSCRIPTION_STATUS.ACTIVE,
+      expiry: null,
+      remainingDays: null,
+      interviewCredits: freeCredits,
+      monthlyInterviewLimit: monthlyLimit,
+      interviewsUsedThisMonth,
+      interviewsRemainingThisMonth,
+      quotaResetsAt: getStartOfNextMonth().toISOString(),
     };
   }
 
@@ -330,11 +352,15 @@ export const getSubscription = async (userId: string) => {
   }
 
   return {
-    plan: subscription.plan,
+    plan: billingPlan,
     status: subscription.status,
     expiry,
     remainingDays,
     interviewCredits: subscription.interviewCredits,
+    monthlyInterviewLimit: monthlyLimit,
+    interviewsUsedThisMonth,
+    interviewsRemainingThisMonth,
+    quotaResetsAt: getStartOfNextMonth().toISOString(),
   };
 };
 
