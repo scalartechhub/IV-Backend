@@ -1,9 +1,9 @@
 import { Router } from "express";
-import verifyToken from "../middleware/auth.middleware";
-import { asyncHandler } from "../middleware/async.middleware";
-import { checkRequestValidation } from "../middleware/request-validation.middleware";
-import * as paymentController from "../controllers/payment.controller";
-import { createOrderValidator, verifyPaymentValidator } from "../validators/payment.validator";
+import verifyToken from "../../middleware/auth.middleware";
+import { asyncHandler } from "../../middleware/async.middleware";
+import { checkRequestValidation } from "../../middleware/request-validation.middleware";
+import * as paymentController from "./payment.controller";
+import { createOrderValidator, verifyPaymentValidator } from "./payment.validation";
 
 const router = Router();
 
@@ -12,7 +12,7 @@ router.post(
   verifyToken,
   createOrderValidator,
   checkRequestValidation,
-  asyncHandler(paymentController.createOrder),
+  asyncHandler(paymentController.createOrder)
 );
 
 router.post(
@@ -27,9 +27,6 @@ router.get("/history", verifyToken, asyncHandler(paymentController.paymentHistor
 
 router.get("/subscription", verifyToken, asyncHandler(paymentController.subscription));
 
-router.post(
-  "/webhook",
-  asyncHandler(paymentController.webhook)
-);
+router.post("/webhook", asyncHandler(paymentController.webhook));
 
 export default router;

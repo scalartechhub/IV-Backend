@@ -5,10 +5,23 @@ import { db } from "../../config/firebase";
 import { CHAT_COLLECTIONS } from "../../shared/constants";
 import { AppError } from "../../shared/utils";
 
-// Initialize Groq Client
-const groqClient = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+let groqClient: Groq | null = null;
+
+const getGroqClient = (): Groq => {
+  const apiKey = process.env.GROQ_API_KEY?.trim();
+  if (!apiKey) {
+    throw new AppError(
+      503,
+      "Chat service is not configured. Set GROQ_API_KEY in your .env file."
+    );
+  }
+
+  if (!groqClient) {
+    groqClient = new Groq({ apiKey });
+  }
+
+  return groqClient;
+};
 
 interface SendMessageInput {
   conversationId?: string;
@@ -93,7 +106,7 @@ export const sendMessage = async (
 
   let completion;
   try {
-    completion = await groqClient.chat.completions.create({
+    completion = await getGroqClient().chat.completions.create({
       messages,
       model: appConfig.groqModel,
       temperature: 0.5,

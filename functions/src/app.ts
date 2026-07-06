@@ -4,7 +4,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import morgan from "morgan";
 
-import apiRoutes from "./routes";
+import apiRoutes from "./api/routes";
 import { errorMiddleware, notFoundMiddleware } from "./middleware/error.middleware";
 import { logger } from "./shared/logger";
 import { RATE_LIMIT } from "./shared/constants";

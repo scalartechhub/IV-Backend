@@ -16,6 +16,18 @@ export const validate =
       return;
     }
 
-    req[target] = result.data;
+    if (target === "body") {
+      req.body = result.data;
+      next();
+      return;
+    }
+
+    // Express 5 exposes read-only query/params getters — shadow with parsed values.
+    Object.defineProperty(req, target, {
+      value: result.data,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
     next();
   };

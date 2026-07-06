@@ -1,15 +1,12 @@
-import "dotenv/config";
+import "./load-env";
 import { appConfig } from "./config/app.config";
-import { secretService, SecretValidationError } from "./config/secrets";
-import { initializeFirebase, isStorageConfigured } from "./config/firebase";
-import { initializeGemini } from "./config/gemini";
+import { bootstrapApplication, SecretValidationError } from "./bootstrap";
+import { isStorageConfigured } from "./config/firebase";
 import app from "./app";
 import { logger } from "./shared/logger";
 
 try {
-  secretService.initialize();
-  initializeFirebase();
-  initializeGemini();
+  bootstrapApplication();
 } catch (error) {
   if (error instanceof SecretValidationError) {
     console.error(error.message);
@@ -29,6 +26,9 @@ const server = app.listen(appConfig.port, () => {
   logger.info(`Environment: ${appConfig.nodeEnv}`);
   if (!isStorageConfigured()) {
     logger.warn("FIREBASE_STORAGE_BUCKET not set — PDF files will be parsed but not stored");
+  }
+  if (!process.env.GROQ_API_KEY?.trim()) {
+    logger.warn("GROQ_API_KEY is not set — chat endpoints will be unavailable");
   }
 });
 

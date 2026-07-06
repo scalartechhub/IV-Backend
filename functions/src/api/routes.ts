@@ -2,7 +2,7 @@ import { Router } from "express";
 import authRoutes from "../modules/auth/auth.routes";
 import interviewRoutes from "../modules/interview/interview.routes";
 import chatRoutes from "../modules/chat/chat.routes";
-import paymentRoutes from "./payment.routes";
+import paymentRoutes from "../modules/payment/payment.routes";
 
 const router = Router();
 

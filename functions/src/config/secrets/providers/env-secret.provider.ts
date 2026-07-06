@@ -32,11 +32,19 @@ const readServiceAccountFile = (filePath: string): FirebaseCredentials => {
 };
 
 const resolveServiceAccountPath = (): string | null => {
-  const configured = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  const configured = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim();
   if (configured && existsSync(configured)) return configured;
 
-  const defaultPath = resolve(process.cwd(), "firebase-service-account.json");
-  if (existsSync(defaultPath)) return defaultPath;
+  const candidates = [
+    resolve(process.cwd(), "firebase-service-account.json"),
+    resolve(process.cwd(), "../firebase-service-account.json"),
+    resolve(__dirname, "../../../../firebase-service-account.json"),
+    resolve(__dirname, "../../../firebase-service-account.json"),
+  ];
+
+  for (const filePath of candidates) {
+    if (existsSync(filePath)) return filePath;
+  }
 
   return null;
 };

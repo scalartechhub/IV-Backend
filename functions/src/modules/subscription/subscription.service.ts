@@ -1,7 +1,7 @@
 import { Timestamp } from "firebase-admin/firestore";
 import { db } from "../../config/firebase";
 import { PLAN_DEFAULTS, PLAN_IDS, SUBSCRIPTION_STATUS } from "../../constants/payment.constants";
-import type { UserSubscription } from "../../models/payment.model";
+import type { UserSubscription } from "../payment/payment.model";
 import { AppError } from "../../shared/utils";
 
 const getUsersCollection = () => db.collection("users");

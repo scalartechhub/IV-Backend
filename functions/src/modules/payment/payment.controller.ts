@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
-import * as paymentService from "../services/payment.service";
-import { sendSuccess } from "../shared/responses";
+import * as paymentService from "./payment.service";
+import { sendSuccess } from "../../shared/responses";
 
 export const createOrder = async (req: Request, res: Response): Promise<void> => {
   const data = await paymentService.createOrder({

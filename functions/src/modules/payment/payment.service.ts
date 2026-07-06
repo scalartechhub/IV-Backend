@@ -1,17 +1,17 @@
 import { Timestamp } from "firebase-admin/firestore";
-import { db } from "../config/firebase";
-import { getRazorpay, getRazorpayConfig, isRazorpayConfigured } from "../config/razorpay";
-import { PLAN_DEFAULTS, PLAN_IDS, PLAN_MONTHLY_INTERVIEW_LIMITS, SUBSCRIPTION_STATUS } from "../constants/payment.constants";
-import * as userRepo from "../modules/auth/auth.repository";
-import { countInterviewsCreatedThisMonth } from "../modules/auth/auth.repository";
-import { isSubscriptionExpired } from "../modules/subscription/subscription.service";
-import type { PaymentRecord, Plan, UserSubscription } from "../models/payment.model";
-import type { User } from "../modules/auth/auth.types";
-import { COLLECTIONS } from "../shared/constants";
-import { getStartOfNextMonth, resolveBillingPlan } from "../shared/plan.utils";
-import { AppError } from "../shared/utils";
-import { logger } from "../shared/logger";
-import { verifyPaymentSignature, verifyWebhookSignature } from "../utils/verifySignature";
+import { db } from "../../config/firebase";
+import { getRazorpay, getRazorpayConfig, isRazorpayConfigured } from "../../config/razorpay";
+import { PLAN_DEFAULTS, PLAN_IDS, PLAN_MONTHLY_INTERVIEW_LIMITS, SUBSCRIPTION_STATUS } from "../../constants/payment.constants";
+import * as userRepo from "../auth/auth.repository";
+import { countInterviewsCreatedThisMonth } from "../auth/auth.repository";
+import { isSubscriptionExpired } from "../subscription/subscription.service";
+import type { PaymentRecord, Plan, UserSubscription } from "./payment.model";
+import type { User } from "../auth/auth.types";
+import { COLLECTIONS } from "../../shared/constants";
+import { getStartOfNextMonth, resolveBillingPlan } from "../../shared/plan.utils";
+import { AppError } from "../../shared/utils";
+import { logger } from "../../shared/logger";
+import { verifyPaymentSignature, verifyWebhookSignature } from "../../utils/verifySignature";
 
 interface CreateOrderInput {
   userId: string;

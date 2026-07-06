@@ -22,18 +22,30 @@ export { admin };
 let _storageBucket: string | undefined;
 let _initialized = false;
 
-const localServiceAccountPath = resolve(
-  __dirname,
-  "../../firebase-service-account.json",
-);
+const findServiceAccountPath = (): string | null => {
+  const configured = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim();
+  if (configured && existsSync(configured)) return configured;
 
-const useLocalServiceAccount =
-  !process.env.GOOGLE_APPLICATION_CREDENTIALS &&
-  existsSync(localServiceAccountPath);
+  const candidates = [
+    resolve(process.cwd(), "firebase-service-account.json"),
+    resolve(process.cwd(), "../firebase-service-account.json"),
+    resolve(__dirname, "../../firebase-service-account.json"),
+    resolve(__dirname, "../../../firebase-service-account.json"),
+  ];
+
+  for (const filePath of candidates) {
+    if (existsSync(filePath)) return filePath;
+  }
+
+  return null;
+};
+
+const localServiceAccountPath = findServiceAccountPath();
+const useLocalServiceAccount = Boolean(localServiceAccountPath);
 
 const localServiceAccount:
   | (ServiceAccount & { project_id?: string })
-  | undefined = useLocalServiceAccount
+  | undefined = useLocalServiceAccount && localServiceAccountPath
   ? JSON.parse(readFileSync(localServiceAccountPath, "utf-8"))
   : undefined;
 
