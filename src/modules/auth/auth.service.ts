@@ -7,6 +7,7 @@ import { mapFirebaseLoginError } from "../../shared/errors";
 import { parseResume } from "../ai/resume-parser.service";
 import { uploadUserResumeFile } from "../storage/storage.service";
 import * as userRepo from "./auth.repository";
+import { assertCanUploadResume } from "../subscription/subscription.service";
 import type {
   AuthProvider,
   LoginResult,
@@ -103,6 +104,8 @@ export const uploadResumeAnalysis = async (
   fileBuffer: Buffer
 ): Promise<UserResumeAnalysisEntry> => {
   logger.info(`[auth.service] user resume upload uid=${uid}`);
+
+  await assertCanUploadResume(uid);
 
   const analysis = await parseResume(fileBuffer);
 

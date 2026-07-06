@@ -1,18 +1,47 @@
 import Razorpay from "razorpay";
+import { AppError } from "../shared/utils";
 
-const keyId = process.env.RAZORPAY_KEY_ID?.trim();
-const keySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
+let razorpayInstance: Razorpay | null = null;
 
-if (!keyId || !keySecret) {
-  throw new Error("Missing Razorpay credentials. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.");
-}
+export const isRazorpayConfigured = (): boolean =>
+  Boolean(process.env.RAZORPAY_KEY_ID?.trim() && process.env.RAZORPAY_KEY_SECRET?.trim());
 
-export const razorpay = new Razorpay({
-  key_id: keyId,
-  key_secret: keySecret,
+export const getRazorpayConfig = () => ({
+  keyId: process.env.RAZORPAY_KEY_ID?.trim() ?? "",
+  keySecret: process.env.RAZORPAY_KEY_SECRET?.trim() ?? "",
+  webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET?.trim() ?? "",
 });
 
+/** Lazily initialized so the app can start when Razorpay env vars are unset (non-payment routes). */
+export const getRazorpay = (): Razorpay => {
+  if (razorpayInstance) return razorpayInstance;
+
+  const { keyId, keySecret } = getRazorpayConfig();
+  if (!keyId || !keySecret) {
+    throw new AppError(503, "Payment service is not configured. Please try again later.");
+  }
+
+  razorpayInstance = new Razorpay({
+    key_id: keyId,
+    key_secret: keySecret,
+  });
+
+  return razorpayInstance;
+};
+
+/** @deprecated Use getRazorpay() — kept for gradual migration */
+export const razorpay = new Proxy({} as Razorpay, {
+  get(_target, prop) {
+    return Reflect.get(getRazorpay(), prop, getRazorpay());
+  },
+});
+
+/** @deprecated Use getRazorpayConfig() */
 export const razorpayConfig = {
-  keyId,
-  webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET?.trim() ?? "",
-} as const;
+  get keyId() {
+    return getRazorpayConfig().keyId;
+  },
+  get webhookSecret() {
+    return getRazorpayConfig().webhookSecret;
+  },
+};

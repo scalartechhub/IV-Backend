@@ -7,6 +7,7 @@ import { evaluateAnswersBatch } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
 import { getUserInterviewSettings, getUserNotificationPreferences, getUserSubscriptionPlan, assertUserCanCreateInterview } from "../auth/auth.repository";
 import { createNotification } from "../notification/notification.repository";
+import { assertActiveSubscription } from "../subscription/subscription.service";
 import { AppError } from "../../shared/utils";
 import { assertDifficultyAllowedForPlan } from "../../shared/entitlements";
 import { logger } from "../../shared/logger";
@@ -354,6 +355,8 @@ export const finishInterview = async (
   userId: string,
   interviewId: string
 ): Promise<FinishInterviewResult> => {
+  await assertActiveSubscription(userId);
+
   const interview = await repo.requireOwnedInterview(interviewId, userId);
 
   if (interview.status === InterviewStatus.COMPLETED) {
