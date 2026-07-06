@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import * as interviewService from "./interview.service";
 import * as authService from "../auth/auth.service";
 import { sendSuccess, sendCreated } from "../../shared/responses";
+import type { ListInterviewsQuery } from "./interview.validation";
 
 const param = (req: Request, key: string): string => String(req.params[key]);
 
@@ -18,6 +19,17 @@ const getUploadedDocumentBuffers = (
 export const createInterview = async (req: Request, res: Response): Promise<void> => {
   const interview = await interviewService.createInterview(req.user!.uid, req.body);
   sendCreated(res, interview, "Interview created and questions generated successfully");
+};
+
+export const listInterviews = async (req: Request, res: Response): Promise<void> => {
+  const { limit, startAfter } = req.query as unknown as ListInterviewsQuery;
+  const result = await interviewService.listInterviews(req.user!.uid, { limit, startAfter });
+  sendSuccess(res, result, "Interviews fetched successfully");
+};
+
+export const getInterview = async (req: Request, res: Response): Promise<void> => {
+  const interview = await interviewService.getInterviewById(req.user!.uid, param(req, "id"));
+  sendSuccess(res, interview, "Interview fetched successfully");
 };
 
 export const createInterviewWithDocuments = async (req: Request, res: Response): Promise<void> => {

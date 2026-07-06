@@ -5,7 +5,7 @@ import { parseJD } from "../ai/jd-parser.service";
 import { generateQuestions } from "../ai/question-generator.service";
 import { evaluateAnswersBatch } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
-import { getUserInterviewSettings, getUserNotificationPreferences, getUserSubscriptionPlan, assertUserCanCreateInterview } from "../auth/auth.repository";
+import { getUserInterviewSettings, getUserNotificationPreferences, getUserSubscriptionPlan, assertUserCanCreateInterview, incrementTotalInterviews, updateStatsOnInterviewFinish } from "../auth/auth.repository";
 import { createNotification } from "../notification/notification.repository";
 import { assertActiveSubscription } from "../subscription/subscription.service";
 import { AppError } from "../../shared/utils";
@@ -15,6 +15,7 @@ import { DEFAULT_QUESTION_COUNT } from "../../shared/constants";
 import type {
   CreateInterviewInput,
   Interview,
+  InterviewListResult,
   InterviewQuestion,
   InterviewReport,
   FinishInterviewResult,
@@ -22,7 +23,8 @@ import type {
   SubmitAnswersResult,
   RawEvaluation,
 } from "./interview.types";
-import { InterviewCreationMode, InterviewStatus } from "./interview.types";
+import { InterviewMode, InterviewStatus } from "./interview.types";
+import { buildInterviewDocuments } from "./interview.document";
 import {
   calculateInterviewOverallScore,
   countAnsweredQuestions,
@@ -31,32 +33,32 @@ import {
 
 const getInterviewTechnology = (interview: Interview): string =>
   interview.technology ??
-  interview.resumeAnalysis?.skills?.[0] ??
-  interview.jdAnalysis?.requiredSkills?.[0] ??
+  interview.documents?.resume?.parsed?.skills?.[0] ??
+  interview.documents?.jd?.parsed?.requiredSkills?.[0] ??
   "Interview";
 
 const getInterviewExperienceLevel = (interview: Interview): string =>
   interview.experienceLevel ??
-  interview.resumeAnalysis?.experience?.[0] ??
-  interview.jdAnalysis?.experience?.[0] ??
+  interview.documents?.resume?.parsed?.experience?.[0] ??
+  interview.documents?.jd?.parsed?.experience?.[0] ??
   "Based on resume and job description";
 
 const parseInterviewDocuments = async (files: {
   resumeBuffer?: Buffer;
   jdBuffer?: Buffer;
 }) => {
-  let resumeAnalysis;
-  let jdAnalysis;
+  let resumeParsed;
+  let jdParsed;
 
   if (files.resumeBuffer) {
-    resumeAnalysis = await parseResume(files.resumeBuffer);
+    resumeParsed = await parseResume(files.resumeBuffer);
   }
 
   if (files.jdBuffer) {
-    jdAnalysis = await parseJD(files.jdBuffer);
+    jdParsed = await parseJD(files.jdBuffer);
   }
 
-  return { resumeAnalysis, jdAnalysis };
+  return { resumeParsed, jdParsed };
 };
 
 export const createInterview = async (
@@ -65,7 +67,7 @@ export const createInterview = async (
 ): Promise<Interview> => {
   logger.info(`[interview.service] create interview userId=${userId}`, {
     technology: input.technology,
-    creationMode: InterviewCreationMode.PAYLOAD,
+    mode: InterviewMode.PAYLOAD,
   });
 
   const plan = await getUserSubscriptionPlan(userId);
@@ -73,6 +75,7 @@ export const createInterview = async (
   await assertUserCanCreateInterview(userId);
 
   const interview = await repo.createInterview(userId, input);
+  await incrementTotalInterviews(userId);
 
   const notificationPrefs = await getUserNotificationPreferences(userId);
   if (notificationPrefs.interviewReminders) {
@@ -116,13 +119,13 @@ export const createInterviewWithDocuments = async (
   let interview: Interview | undefined;
 
   try {
-    interview = await repo.createInterviewWithDocuments(userId, {});
+    interview = await repo.createInterviewWithDocuments(userId);
+    await incrementTotalInterviews(userId);
 
     const parsed = await parseInterviewDocuments(files);
 
     interview = await repo.updateInterview(interview.id, {
-      ...(parsed.resumeAnalysis && { resumeAnalysis: parsed.resumeAnalysis }),
-      ...(parsed.jdAnalysis && { jdAnalysis: parsed.jdAnalysis }),
+      documents: buildInterviewDocuments(parsed),
     });
 
     const notificationPrefs = await getUserNotificationPreferences(userId);
@@ -163,11 +166,7 @@ export const generateInterviewQuestions = async (
     );
   }
 
-  const usesDocuments =
-    interview.creationMode === InterviewCreationMode.DOCUMENTS ||
-    (Boolean(interview.resumeAnalysis || interview.jdAnalysis) &&
-      interview.creationMode !== InterviewCreationMode.PAYLOAD &&
-      !interview.difficultyLevel);
+  const usesDocuments = interview.mode === InterviewMode.DOCUMENTS;
 
   const questionConfig = usesDocuments
     ? await getUserInterviewSettings(userId)
@@ -187,12 +186,16 @@ export const generateInterviewQuestions = async (
     throw new AppError(
       400,
       usesDocuments
-        ? "Interview settings are missing. Please set difficultyLevel, durationMinutes, interviewType, and questionCount in your user settings."
+        ? "Interview settings are missing. Please set difficultyLevel, durationMinutes, interviewType, and questionCount in users.preferences.interview."
         : "Interview configuration is incomplete. Please create the interview again with technology, experienceLevel, difficultyLevel, interviewType, durationMinutes, and questionCount."
     );
   }
 
-  if (usesDocuments && !interview.resumeAnalysis && !interview.jdAnalysis) {
+  if (
+    usesDocuments &&
+    !interview.documents?.resume?.parsed &&
+    !interview.documents?.jd?.parsed
+  ) {
     throw new AppError(
       400,
       "Cannot generate questions because no resume or job description was uploaded for this interview."
@@ -203,19 +206,19 @@ export const generateInterviewQuestions = async (
   assertDifficultyAllowedForPlan(plan, questionConfig.difficultyLevel);
 
   logger.info(`[interview.service] generating questions interviewId=${interviewId}`, {
-    creationMode: interview.creationMode,
+    mode: interview.mode,
     questionCount: questionConfig.questionCount,
     difficultyLevel: questionConfig.difficultyLevel,
     interviewType: questionConfig.interviewType,
-    hasResume: Boolean(interview.resumeAnalysis),
-    hasJD: Boolean(interview.jdAnalysis),
+    hasResume: Boolean(interview.documents?.resume?.parsed),
+    hasJD: Boolean(interview.documents?.jd?.parsed),
   });
 
   const questionCount = questionConfig.questionCount ?? DEFAULT_QUESTION_COUNT;
 
   const rawQuestions = await generateQuestions({
-    resumeAnalysis: interview.resumeAnalysis,
-    jdAnalysis: interview.jdAnalysis,
+    resumeAnalysis: interview.documents?.resume?.parsed,
+    jdAnalysis: interview.documents?.jd?.parsed,
     documentsOnly: usesDocuments,
     technology: usesDocuments ? undefined : interview.technology,
     experienceLevel: usesDocuments ? undefined : interview.experienceLevel,
@@ -424,6 +427,7 @@ export const finishInterview = async (
     };
 
     await repo.completeInterview(interviewId, report, overallScore);
+    await updateStatsOnInterviewFinish(userId, overallScore);
 
     const notificationPrefs = await getUserNotificationPreferences(userId);
     if (notificationPrefs.feedbackReports) {
@@ -452,3 +456,24 @@ export const finishInterview = async (
     throw error;
   }
 };
+
+export const listInterviews = async (
+  userId: string,
+  options: { limit: number; startAfter?: string }
+): Promise<InterviewListResult> => {
+  const { items, hasMore } = await repo.listInterviewsByUser(userId, {
+    limit: options.limit,
+    startAfterId: options.startAfter,
+  });
+
+  return {
+    items,
+    hasMore,
+    nextCursor: hasMore && items.length > 0 ? items[items.length - 1].id : undefined,
+  };
+};
+
+export const getInterviewById = async (
+  userId: string,
+  interviewId: string
+): Promise<Interview> => repo.requireOwnedInterview(interviewId, userId);

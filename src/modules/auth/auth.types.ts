@@ -1,14 +1,18 @@
 import { Timestamp } from "firebase-admin/firestore";
 import type { ResumeAnalysis } from "../interview/interview.types";
-import type { DifficultyLevel, InterviewType, SubscriptionPlan } from "../../shared/constants";
+import type { DifficultyLevel, InterviewType } from "../../shared/constants";
+import { PLAN_IDS } from "../../constants/payment.constants";
+import { SUBSCRIPTION_STATUS } from "../../constants/payment.constants";
 
-export type AuthProvider = "email";
+export type AuthProvider = "email" | "google" | "github" | "phone";
 
 export interface UserInterviewSettings {
   difficultyLevel: DifficultyLevel;
   interviewType: InterviewType;
   durationMinutes: number;
   questionCount: number;
+  aiPersonality?: string;
+  techStacks?: Array<{ label: string }>;
 }
 
 export interface UserNotificationPreferences {
@@ -16,12 +20,56 @@ export interface UserNotificationPreferences {
   interviewReminders: boolean;
 }
 
+export interface UserPreferences {
+  interview?: UserInterviewSettings;
+  notifications?: UserNotificationPreferences;
+}
+
+export interface UserStats {
+  totalInterviews: number;
+  completedInterviews: number;
+  averageScore: number;
+  bestScore: number;
+}
+
 export interface UserSubscription {
-  plan: SubscriptionPlan;
+  plan: string;
   status?: string;
-  expiresAt?: string;
+  expiresAt?: string | null;
   purchaseDate?: string;
   interviewCredits?: number;
+}
+
+export interface UserResumeAnalysisEntry {
+  no: number;
+  url?: string;
+  parsed: ResumeAnalysis;
+  uploadedAt: Timestamp;
+}
+
+export interface UserResume {
+  url?: string;
+  analyses: UserResumeAnalysisEntry[];
+}
+
+export interface UserProfileDetails {
+  phone?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  designation?: string;
+  company?: string;
+  industry?: string;
+  yearsOfExperience?: string;
+  location?: { country?: string; state?: string; city?: string };
+  bio?: string;
+  skills?: Array<{ name: string }>;
+  experiences?: Array<{
+    id?: number;
+    title: string;
+    company: string;
+    period?: string;
+    description?: string;
+  }>;
 }
 
 export interface User {
@@ -29,42 +77,51 @@ export interface User {
   email?: string;
   displayName: string;
   photoURL?: string;
-  currentRole?: string;
-  experience?: number;
-  technologies?: string[];
-  resumeUrl?: string;
-  resumeAnalyses?: UserResumeAnalysisEntry[];
-  settings?: UserInterviewSettings;
-  subscription?: UserSubscription;
-  /** @deprecated Use displayName — kept for auth backward compatibility */
-  name?: string;
-  phoneNumber?: string;
   provider?: AuthProvider;
+  role?: "candidate" | "admin";
   isActive?: boolean;
+  profile?: UserProfileDetails;
+  preferences?: UserPreferences;
+  stats?: UserStats;
+  subscription?: UserSubscription;
+  resume?: UserResume;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  lastLoginAt?: Timestamp;
 }
 
-export interface UserResumeAnalysisEntry {
-  no: number;
-  resumeUrl?: string;
-  analysis: ResumeAnalysis;
-  uploadedAt: Timestamp;
-}
+export const DEFAULT_USER_PREFERENCES: UserPreferences = {
+  interview: {
+    difficultyLevel: "medium",
+    interviewType: "technicalInterview",
+    durationMinutes: 30,
+    questionCount: 10,
+  },
+  notifications: {
+    interviewReminders: true,
+    feedbackReports: true,
+  },
+};
+
+export const DEFAULT_USER_SUBSCRIPTION: UserSubscription = {
+  plan: PLAN_IDS.FREE,
+  status: SUBSCRIPTION_STATUS.ACTIVE,
+  interviewCredits: 3,
+};
 
 export interface UserResponse {
   uid: string;
   displayName: string;
   email?: string;
-  phoneNumber?: string;
   photoURL?: string;
-  currentRole?: string;
-  experience?: number;
-  technologies?: string[];
-  resumeUrl?: string;
-  resumeAnalyses?: UserResumeAnalysisEntry[];
   provider?: AuthProvider;
+  role?: string;
   isActive?: boolean;
+  profile?: UserProfileDetails;
+  preferences?: UserPreferences;
+  stats?: UserStats;
+  subscription?: UserSubscription;
+  resume?: UserResume;
 }
 
 export interface RegisterInput {
@@ -85,55 +142,4 @@ export interface RegisterResult {
 export interface LoginResult {
   user: User;
   idToken: string;
-}
-
-// ─── Extended Firestore user profile (candidate app) ─────────────────────────
-
-export interface UserSkill {
-  name: string;
-  isCustom?: boolean;
-}
-
-export interface UserExperienceEntry {
-  id?: number;
-  company: string;
-  title: string;
-  period?: string;
-  description?: string;
-  iconVariant?: string;
-}
-
-export interface FavoriteTechStack {
-  label: string;
-  isCustom?: boolean;
-}
-
-export interface InterviewPreferences {
-  aiPersonality?: string;
-  difficultyLevel?: string;
-  favoriteTechStacks?: FavoriteTechStack[];
-}
-
-export interface ProfessionalDetails {
-  company?: string;
-  designation?: string;
-  industry?: string;
-  yearsOfExperience?: string;
-}
-
-export interface UserProfile {
-  uid: string;
-  displayName?: string;
-  name?: string;
-  email?: string;
-  currentRole?: string;
-  experience?: number;
-  technologies?: string[];
-  skills?: UserSkill[];
-  experiences?: UserExperienceEntry[];
-  interviewPreferences?: InterviewPreferences;
-  professionalDetails?: ProfessionalDetails;
-  professionalSummary?: { bio?: string };
-  provider?: AuthProvider;
-  role?: string;
 }

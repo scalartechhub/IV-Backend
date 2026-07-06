@@ -5,16 +5,17 @@ import type { User, UserResponse } from "./auth.types";
 
 const toUserResponse = (user: User): UserResponse => ({
   uid: user.uid,
-  displayName: user.displayName ?? user.name ?? "",
+  displayName: user.displayName,
   ...(user.email && { email: user.email }),
   ...(user.photoURL && { photoURL: user.photoURL }),
-  ...(user.currentRole && { currentRole: user.currentRole }),
-  ...(user.experience !== undefined && { experience: user.experience }),
-  ...(user.technologies && { technologies: user.technologies }),
-  ...(user.resumeUrl && { resumeUrl: user.resumeUrl }),
-  ...(user.resumeAnalyses && { resumeAnalyses: user.resumeAnalyses }),
   ...(user.provider && { provider: user.provider }),
+  ...(user.role && { role: user.role }),
   ...(user.isActive !== undefined && { isActive: user.isActive }),
+  ...(user.profile && { profile: user.profile }),
+  ...(user.preferences && { preferences: user.preferences }),
+  ...(user.stats && { stats: user.stats }),
+  ...(user.subscription && { subscription: user.subscription }),
+  ...(user.resume && { resume: user.resume }),
 });
 
 export const register = async (req: Request, res: Response): Promise<void> => {

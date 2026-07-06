@@ -8,13 +8,13 @@ import type {
   Interview,
   InterviewQuestion,
   InterviewReport,
+  InterviewSummary,
   RawQuestion,
   DifficultyLevel,
   InterviewType,
-  ResumeAnalysis,
-  JDAnalysis,
 } from "./interview.types";
-import { InterviewCreationMode, InterviewStatus, toQuestionDifficulty } from "./interview.types";
+import { InterviewStatus, toQuestionDifficulty } from "./interview.types";
+import { InterviewMode } from "./interview.types";
 
 export const createInterview = async (
   userId: string,
@@ -28,7 +28,7 @@ export const createInterview = async (
     userId,
     technology: input.technology,
     experienceLevel: input.experienceLevel,
-    creationMode: InterviewCreationMode.PAYLOAD,
+    mode: InterviewMode.PAYLOAD,
     difficultyLevel: input.difficultyLevel,
     interviewType: input.interviewType,
     durationMinutes: input.durationMinutes,
@@ -44,25 +44,17 @@ export const createInterview = async (
   return (await ref.get()).data() as Interview;
 };
 
-export const createInterviewWithDocuments = async (
-  userId: string,
-  fields: {
-    resumeAnalysis?: ResumeAnalysis;
-    jdAnalysis?: JDAnalysis;
-  }
-): Promise<Interview> => {
+export const createInterviewWithDocuments = async (userId: string): Promise<Interview> => {
   const ref = db.collection(COLLECTIONS.INTERVIEWS).doc();
   const now = FieldValue.serverTimestamp();
 
   await ref.set({
     id: ref.id,
     userId,
-    creationMode: InterviewCreationMode.DOCUMENTS,
+    mode: InterviewMode.DOCUMENTS,
     questionCount: 0,
     status: InterviewStatus.DRAFT,
     questions: [],
-    ...(fields.resumeAnalysis && { resumeAnalysis: fields.resumeAnalysis }),
-    ...(fields.jdAnalysis && { jdAnalysis: fields.jdAnalysis }),
     version: INTERVIEW_DOCUMENT_VERSION,
     isDeleted: false,
     createdAt: now,
@@ -80,6 +72,58 @@ export const findInterviewById = async (interviewId: string): Promise<Interview 
   if (interview.isDeleted) return null;
 
   return interview;
+};
+
+export const toInterviewSummary = (interview: Interview): InterviewSummary => ({
+  id: interview.id,
+  userId: interview.userId,
+  mode: interview.mode,
+  technology: interview.technology,
+  experienceLevel: interview.experienceLevel,
+  difficultyLevel: interview.difficultyLevel,
+  interviewType: interview.interviewType,
+  status: interview.status,
+  overallScore: interview.overallScore,
+  questionCount: interview.questionCount,
+  durationMinutes: interview.durationMinutes,
+  createdAt: interview.createdAt,
+  completedAt: interview.completedAt,
+  updatedAt: interview.updatedAt,
+});
+
+export const listInterviewsByUser = async (
+  userId: string,
+  options: { limit: number; startAfterId?: string }
+): Promise<{ items: InterviewSummary[]; hasMore: boolean }> => {
+  let query = db
+    .collection(COLLECTIONS.INTERVIEWS)
+    .where("userId", "==", userId)
+    .where("isDeleted", "==", false)
+    .orderBy("createdAt", "desc")
+    .limit(options.limit + 1);
+
+  if (options.startAfterId) {
+    const cursorDoc = await db.collection(COLLECTIONS.INTERVIEWS).doc(options.startAfterId).get();
+    if (!cursorDoc.exists) {
+      throw new AppError(400, "Invalid pagination cursor. Interview not found.");
+    }
+
+    const cursorInterview = cursorDoc.data() as Interview;
+    if (cursorInterview.userId !== userId || cursorInterview.isDeleted) {
+      throw new AppError(400, "Invalid pagination cursor.");
+    }
+
+    query = query.startAfter(cursorDoc);
+  }
+
+  const snapshot = await query.get();
+  const hasMore = snapshot.docs.length > options.limit;
+  const pageDocs = hasMore ? snapshot.docs.slice(0, options.limit) : snapshot.docs;
+
+  return {
+    items: pageDocs.map((doc) => toInterviewSummary(doc.data() as Interview)),
+    hasMore,
+  };
 };
 
 export const requireInterview = async (interviewId: string): Promise<Interview> => {

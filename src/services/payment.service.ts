@@ -7,6 +7,7 @@ import { countInterviewsCreatedThisMonth } from "../modules/auth/auth.repository
 import { isSubscriptionExpired } from "../modules/subscription/subscription.service";
 import type { PaymentRecord, Plan, UserSubscription } from "../models/payment.model";
 import type { User } from "../modules/auth/auth.types";
+import { COLLECTIONS } from "../shared/constants";
 import { getStartOfNextMonth, resolveBillingPlan } from "../shared/plan.utils";
 import { AppError } from "../shared/utils";
 import { logger } from "../shared/logger";
@@ -28,9 +29,9 @@ interface VerifyPaymentInput {
 const CAPTURED_STATUS = "captured";
 const WEBHOOK_ACTIVATION_EVENTS = new Set(["payment.captured", "order.paid"]);
 
-const getPlansCollection = () => db.collection("plans");
-const getPaymentsCollection = () => db.collection("payments");
-const getUsersCollection = () => db.collection("users");
+const getPlansCollection = () => db.collection(COLLECTIONS.PLANS);
+const getPaymentsCollection = () => db.collection(COLLECTIONS.PAYMENTS);
+const getUsersCollection = () => db.collection(COLLECTIONS.USERS);
 
 const tsToIso = (value: Timestamp | string | null | undefined): string | null => {
   if (!value) return null;

@@ -10,11 +10,24 @@ import {
 import {
   createInterviewSchema,
   interviewIdParamSchema,
+  listInterviewsQuerySchema,
 } from "./interview.validation";
 
 const router = Router();
 
 router.use(verifyToken);
+
+router.get(
+  "/",
+  validate(listInterviewsQuerySchema, "query"),
+  asyncHandler(interviewController.listInterviews)
+);
+
+router.get(
+  "/:id",
+  validate(interviewIdParamSchema, "params"),
+  asyncHandler(interviewController.getInterview)
+);
 
 router.post("/create", validate(createInterviewSchema), asyncHandler(interviewController.createInterview));
 

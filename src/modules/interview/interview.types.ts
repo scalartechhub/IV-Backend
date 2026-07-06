@@ -8,7 +8,7 @@ export enum InterviewStatus {
   CANCELLED = "cancelled",
 }
 
-export enum InterviewCreationMode {
+export enum InterviewMode {
   PAYLOAD = "payload",
   DOCUMENTS = "documents",
 }
@@ -46,7 +46,6 @@ export interface InterviewReport {
   generatedAt: Timestamp;
 }
 
-/** Optional AI context persisted during resume/JD upload (not required for list views). */
 export interface ResumeAnalysis {
   skills: string[];
   projects: string[];
@@ -60,12 +59,17 @@ export interface JDAnalysis {
   experience: string[];
 }
 
+export interface InterviewDocuments {
+  resume?: { parsed: ResumeAnalysis };
+  jd?: { parsed: JDAnalysis };
+}
+
 export interface Interview {
   id: string;
   userId: string;
+  mode: InterviewMode;
   technology?: string;
   experienceLevel?: string;
-  creationMode: InterviewCreationMode;
   difficultyLevel?: DifficultyLevel;
   interviewType?: InterviewType;
   status: InterviewStatus;
@@ -74,12 +78,8 @@ export interface Interview {
   durationMinutes?: number;
   questions: InterviewQuestion[];
   report?: InterviewReport;
-  /** Internal flag while report AI generation is in progress */
+  documents?: InterviewDocuments;
   reportGenerating?: boolean;
-  resumeUrl?: string;
-  jdUrl?: string;
-  resumeAnalysis?: ResumeAnalysis;
-  jdAnalysis?: JDAnalysis;
   createdAt: Timestamp;
   completedAt?: Timestamp;
   updatedAt: Timestamp;
@@ -128,6 +128,29 @@ export interface SubmitAnswersResult {
 
 export interface FinishInterviewResult extends SubmitAnswersResult {
   report: InterviewReport;
+}
+
+export interface InterviewSummary {
+  id: string;
+  userId: string;
+  mode: InterviewMode;
+  technology?: string;
+  experienceLevel?: string;
+  difficultyLevel?: DifficultyLevel;
+  interviewType?: InterviewType;
+  status: InterviewStatus;
+  overallScore?: number;
+  questionCount: number;
+  durationMinutes?: number;
+  createdAt: Timestamp;
+  completedAt?: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface InterviewListResult {
+  items: InterviewSummary[];
+  hasMore: boolean;
+  nextCursor?: string;
 }
 
 // ─── AI Raw Outputs ───────────────────────────────────────────────────────────

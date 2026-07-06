@@ -32,5 +32,11 @@ export const interviewIdParamSchema = z.object({
   id: z.string().min(1, "Interview ID is required"),
 });
 
+export const listInterviewsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+  startAfter: z.string().min(1).optional(),
+});
+
 export type CreateInterviewInput = z.infer<typeof createInterviewSchema>;
 export type InterviewIdParams = z.infer<typeof interviewIdParamSchema>;
+export type ListInterviewsQuery = z.infer<typeof listInterviewsQuerySchema>;

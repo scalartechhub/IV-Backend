@@ -117,8 +117,8 @@ export const uploadResumeAnalysis = async (
   }
 
   const entry = await userRepo.appendUserResumeAnalysis(uid, {
-    resumeUrl,
-    analysis,
+    url: resumeUrl,
+    parsed: analysis,
     uploadedAt: Timestamp.now(),
   });
 

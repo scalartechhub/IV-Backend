@@ -2,11 +2,9 @@ export const COLLECTIONS = {
   USERS: "users",
   INTERVIEWS: "interviews",
   NOTIFICATIONS: "notifications",
-} as const;
-
-export const USER_SETTINGS = {
-  COLLECTION: "settings",
-  PREFERENCE_DOC: "preference",
+  PLANS: "plans",
+  PAYMENTS: "payments",
+  FAQS: "faqs",
 } as const;
 
 /** Chat module Firestore collection names */

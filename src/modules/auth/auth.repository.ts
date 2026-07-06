@@ -1,16 +1,18 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { db } from "../../config/firebase";
-import { COLLECTIONS, USER_SETTINGS } from "../../shared/constants";
+import { COLLECTIONS } from "../../shared/constants";
 import { assertInterviewCreationAllowed } from "../../shared/entitlements";
 import { getStartOfCurrentMonth, resolveBillingPlan } from "../../shared/plan.utils";
 import { AppError } from "../../shared/utils";
 import type { Interview } from "../interview/interview.types";
 import {
+  DEFAULT_USER_PREFERENCES,
+  DEFAULT_USER_SUBSCRIPTION,
   type User,
   type UserInterviewSettings,
   type UserNotificationPreferences,
-  type UserProfile,
   type UserResumeAnalysisEntry,
+  type UserStats,
 } from "./auth.types";
 import {
   DIFFICULTY_LEVELS,
@@ -20,7 +22,7 @@ import {
 import { PLAN_IDS } from "../../constants/payment.constants";
 
 const normalizeUserFields = (
-  fields: Partial<Omit<User, "isActive" | "createdAt" | "updatedAt">>
+  fields: Partial<Omit<User, "isActive" | "createdAt" | "updatedAt">> & { name?: string }
 ): Record<string, unknown> => {
   const normalized = { ...fields } as Record<string, unknown>;
 
@@ -33,7 +35,7 @@ const normalizeUserFields = (
 
 export const upsertUser = async (
   uid: string,
-  fields: Partial<Omit<User, "isActive" | "createdAt" | "updatedAt">>
+  fields: Partial<Omit<User, "isActive" | "createdAt" | "updatedAt">> & { name?: string }
 ): Promise<User> => {
   const ref = db.collection(COLLECTIONS.USERS).doc(uid);
   const snapshot = await ref.get();
@@ -43,13 +45,24 @@ export const upsertUser = async (
     await ref.set({
       ...payload,
       uid,
+      role: "candidate",
       isActive: true,
+      preferences: DEFAULT_USER_PREFERENCES,
+      subscription: DEFAULT_USER_SUBSCRIPTION,
+      stats: {
+        totalInterviews: 0,
+        completedInterviews: 0,
+        averageScore: 0,
+        bestScore: 0,
+      },
+      resume: { analyses: [] },
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
   } else {
     await ref.update({
       ...payload,
+      lastLoginAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
   }
@@ -67,7 +80,6 @@ export const requireUserById = async (uid: string): Promise<User> => {
   if (!user) throw new AppError(404, "User account not found.");
   return user;
 };
-
 
 export const getUserSubscriptionPlan = async (uid: string): Promise<SubscriptionPlan> => {
   const user = await requireUserById(uid);
@@ -112,11 +124,7 @@ export const assertUserCanCreateInterview = async (uid: string): Promise<void> =
   assertInterviewCreationAllowed(billingPlan, usedThisMonth);
 };
 
-export const getUserProfile = async (uid: string): Promise<UserProfile> => {
-  const snapshot = await db.collection(COLLECTIONS.USERS).doc(uid).get();
-  if (!snapshot.exists) throw new AppError(404, "User profile not found. Please complete your profile first.");
-  return snapshot.data() as UserProfile;
-};
+export const getUserProfile = async (uid: string): Promise<User> => requireUserById(uid);
 
 const isValidInterviewSettings = (
   settings: unknown
@@ -165,58 +173,34 @@ const normalizeInterviewSettings = (settings: unknown): UserInterviewSettings | 
   return isValidInterviewSettings(normalized) ? normalized : null;
 };
 
-const getUserPreferenceDoc = (uid: string) =>
-  db
-    .collection(COLLECTIONS.USERS)
-    .doc(uid)
-    .collection(USER_SETTINGS.COLLECTION)
-    .doc(USER_SETTINGS.PREFERENCE_DOC)
-    .get();
+const DEFAULT_NOTIFICATION_PREFERENCES: UserNotificationPreferences = {
+  feedbackReports: false,
+  interviewReminders: false,
+};
 
 export const getUserInterviewSettings = async (uid: string): Promise<UserInterviewSettings> => {
-  const settingsDoc = await getUserPreferenceDoc(uid);
-
-  if (settingsDoc.exists) {
-    const data = settingsDoc.data() as Record<string, unknown>;
-    const rawPreference =
-      data.interviewPreferene ?? data.interviewPreference ?? data.interviewPreferences;
-    const normalized = normalizeInterviewSettings(rawPreference);
-
-    if (normalized) {
-      return normalized;
-    }
-  }
-
   const user = await requireUserById(uid);
-  const fallback = normalizeInterviewSettings(user.settings);
+  const settings = normalizeInterviewSettings(user.preferences?.interview);
 
-  if (!fallback) {
+  if (!settings) {
     throw new AppError(
       400,
-      "Interview settings are missing. Please set difficulty, durationMinutes, interviewType, and questionCount in settings/preference under interviewPreference."
+      "Interview settings are missing. Please set difficulty, durationMinutes, interviewType, and questionCount in users.preferences.interview."
     );
   }
 
-  return fallback;
+  return settings;
 };
 
 export const getUserNotificationPreferences = async (
   uid: string
 ): Promise<UserNotificationPreferences> => {
-  const settingsDoc = await getUserPreferenceDoc(uid);
+  const user = await requireUserById(uid);
+  const prefs = user.preferences?.notifications;
 
-  if (!settingsDoc.exists) {
-    return { feedbackReports: false, interviewReminders: false };
+  if (!prefs) {
+    return DEFAULT_NOTIFICATION_PREFERENCES;
   }
-
-  const data = settingsDoc.data() as Record<string, unknown>;
-  const rawPreference = data.notificationPreference;
-
-  if (!rawPreference || typeof rawPreference !== "object") {
-    return { feedbackReports: false, interviewReminders: false };
-  }
-
-  const prefs = rawPreference as Record<string, unknown>;
 
   return {
     feedbackReports: prefs.feedbackReports === true,
@@ -224,10 +208,62 @@ export const getUserNotificationPreferences = async (
   };
 };
 
-export const updateUserResumeUrl = async (uid: string, resumeUrl: string): Promise<void> => {
-  await db.collection(COLLECTIONS.USERS).doc(uid).update({
-    resumeUrl,
-    updatedAt: FieldValue.serverTimestamp(),
+const defaultUserStats = (): UserStats => ({
+  totalInterviews: 0,
+  completedInterviews: 0,
+  averageScore: 0,
+  bestScore: 0,
+});
+
+export const incrementTotalInterviews = async (uid: string): Promise<void> => {
+  const ref = db.collection(COLLECTIONS.USERS).doc(uid);
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new AppError(404, "User account not found.");
+
+    const user = snap.data() as User;
+    const stats = user.stats ?? defaultUserStats();
+
+    tx.update(ref, {
+      stats: {
+        ...stats,
+        totalInterviews: (stats.totalInterviews ?? 0) + 1,
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+};
+
+export const updateStatsOnInterviewFinish = async (
+  uid: string,
+  overallScore: number
+): Promise<void> => {
+  const ref = db.collection(COLLECTIONS.USERS).doc(uid);
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new AppError(404, "User account not found.");
+
+    const user = snap.data() as User;
+    const stats = user.stats ?? defaultUserStats();
+    const prevCompleted = stats.completedInterviews ?? 0;
+    const completedInterviews = prevCompleted + 1;
+    const prevAverage = stats.averageScore ?? 0;
+    const averageScore =
+      prevCompleted === 0
+        ? overallScore
+        : (prevAverage * prevCompleted + overallScore) / completedInterviews;
+
+    tx.update(ref, {
+      stats: {
+        totalInterviews: stats.totalInterviews ?? 0,
+        completedInterviews,
+        averageScore: Math.round(averageScore * 100) / 100,
+        bestScore: Math.max(stats.bestScore ?? 0, overallScore),
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
   });
 };
 
@@ -242,15 +278,18 @@ export const appendUserResumeAnalysis = async (
     if (!snap.exists) throw new AppError(404, "User account not found.");
 
     const user = snap.data() as User;
-    const resumeAnalyses = Array.isArray(user.resumeAnalyses) ? user.resumeAnalyses : [];
-    const highestNo = resumeAnalyses.reduce((maxNo, item) => Math.max(maxNo, item.no ?? 0), 0);
+    const analyses = user.resume?.analyses ?? [];
+    const highestNo = analyses.reduce((maxNo, item) => Math.max(maxNo, item.no ?? 0), 0);
     const nextEntry: UserResumeAnalysisEntry = {
       no: highestNo + 1,
       ...entry,
     };
 
     tx.update(ref, {
-      resumeAnalyses: [...resumeAnalyses, nextEntry],
+      resume: {
+        url: entry.url ?? user.resume?.url,
+        analyses: [...analyses, nextEntry],
+      },
       updatedAt: FieldValue.serverTimestamp(),
     });
 
