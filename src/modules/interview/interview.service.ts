@@ -7,6 +7,11 @@ import { evaluateAnswersBatch } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
 import { getUserInterviewSettings, getUserNotificationPreferences } from "../auth/auth.repository";
 import { createNotification } from "../notification/notification.repository";
+import {
+  assertActiveSubscription,
+  assertCanCreateInterview,
+  recordInterviewUsage,
+} from "../subscription/subscription.service";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
 import { DEFAULT_QUESTION_COUNT } from "../../shared/constants";
@@ -66,7 +71,10 @@ export const createInterview = async (
     creationMode: InterviewCreationMode.PAYLOAD,
   });
 
+  await assertCanCreateInterview(userId);
+
   const interview = await repo.createInterview(userId, input);
+  await recordInterviewUsage(userId);
 
   const notificationPrefs = await getUserNotificationPreferences(userId);
   if (notificationPrefs.interviewReminders) {
@@ -100,10 +108,13 @@ export const createInterviewWithDocuments = async (
     hasJD: Boolean(files.jdBuffer),
   });
 
+  await assertCanCreateInterview(userId);
+
   let interview: Interview | undefined;
 
   try {
     interview = await repo.createInterviewWithDocuments(userId, {});
+    await recordInterviewUsage(userId);
 
     const parsed = await parseInterviewDocuments(files);
 
@@ -339,6 +350,8 @@ export const finishInterview = async (
   userId: string,
   interviewId: string
 ): Promise<FinishInterviewResult> => {
+  await assertActiveSubscription(userId);
+
   const interview = await repo.requireOwnedInterview(interviewId, userId);
 
   if (interview.status === InterviewStatus.COMPLETED) {

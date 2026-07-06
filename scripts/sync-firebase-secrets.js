@@ -1,5 +1,5 @@
 /**
- * Syncs GEMINI_API_KEY and FIREBASE_API_KEY from .env to Firebase Secret Manager.
+ * Syncs secrets from .env to Firebase Secret Manager.
  * Usage: node scripts/sync-firebase-secrets.js
  */
 const { execSync } = require("child_process");
@@ -31,20 +31,32 @@ for (const line of env.split(/\r?\n/)) {
   values[key] = value;
 }
 
-const secretKeys = ["GEMINI_API_KEY", "FIREBASE_API_KEY"];
+const requiredKeys = ["GEMINI_API_KEY", "FIREBASE_API_KEY"];
+const optionalKeys = ["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "RAZORPAY_WEBHOOK_SECRET"];
 
-for (const key of secretKeys) {
+const syncSecret = (key) => {
   const value = values[key]?.trim();
-  if (!value) {
-    console.error(`Missing ${key} in .env`);
-    process.exit(1);
-  }
+  if (!value) return false;
 
   console.log(`Setting Firebase secret: ${key}`);
   execSync(`firebase functions:secrets:set ${key}`, {
     input: value,
     stdio: ["pipe", "inherit", "inherit"],
   });
+  return true;
+};
+
+for (const key of requiredKeys) {
+  if (!syncSecret(key)) {
+    console.error(`Missing ${key} in .env`);
+    process.exit(1);
+  }
+}
+
+for (const key of optionalKeys) {
+  if (!syncSecret(key)) {
+    console.warn(`Skipping ${key} — not set in .env`);
+  }
 }
 
 console.log("Firebase secrets synced.");
