@@ -4,6 +4,8 @@ import { bootstrapApplication, SecretValidationError } from "./bootstrap";
 import { isStorageConfigured } from "./config/firebase";
 import app from "./app";
 import { logger } from "./shared/logger";
+import { setupLiveInterviewWebSocket } from "./modules/live-interview/live-interview.ws";
+import { isCloudRuntime } from "./shared/runtime";
 
 try {
   bootstrapApplication();
@@ -29,6 +31,9 @@ const server = app.listen(appConfig.port, () => {
   }
   if (!process.env.GROQ_API_KEY?.trim()) {
     logger.warn("GROQ_API_KEY is not set — chat endpoints will be unavailable");
+  }
+  if (!isCloudRuntime()) {
+    setupLiveInterviewWebSocket(server);
   }
 });
 

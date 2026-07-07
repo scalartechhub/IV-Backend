@@ -83,13 +83,13 @@ export const createInterview = async (
     userId,
     interviewId: interview.id,
     title: "Interview Created",
-    description: "Your interview has been created successfully.",
+    description: "Your live interview session is ready.",
     type: "interview",
     read: false,
   });
   }
 
-  await generateInterviewQuestions(userId, interview.id);
+  logger.info(`[interview.service] live-mode interview created interviewId=${interview.id} (questions skipped)`);
   return repo.requireOwnedInterview(interview.id, userId);
 };
 
@@ -134,13 +134,13 @@ export const createInterviewWithDocuments = async (
       userId,
       interviewId: interview.id,
       title: "Interview Created",
-      description: "Your interview has been created successfully.",
+      description: "Your live interview session is ready.",
       type: "interview",
       read: false,
     });
     }
 
-    await generateInterviewQuestions(userId, interview.id);
+    logger.info(`[interview.service] live-mode interview with documents interviewId=${interview.id} (questions skipped)`);
     return repo.requireOwnedInterview(interview.id, userId);
   } catch (error) {
     if (interview?.id) {
@@ -354,6 +354,24 @@ const evaluateSubmittedAnswers = async (
   };
 };
 
+export const prepareLiveSession = async (
+  userId: string,
+  interviewId: string
+): Promise<Interview> => {
+  await assertActiveSubscription(userId);
+
+  const interview = await repo.requireOwnedInterview(interviewId, userId);
+
+  if (interview.status === InterviewStatus.COMPLETED) {
+    throw new AppError(400, "This interview is already completed.");
+  }
+  if (interview.status === InterviewStatus.CANCELLED) {
+    throw new AppError(400, "This interview was cancelled and cannot be continued.");
+  }
+
+  return interview;
+};
+
 export const finishInterview = async (
   userId: string,
   interviewId: string
@@ -371,7 +389,7 @@ export const finishInterview = async (
   if (interview.questions.length === 0) {
     throw new AppError(
       400,
-      "No questions are available yet. Please create the interview again."
+      "No interview transcript is available yet. Complete the live session before finishing."
     );
   }
 
