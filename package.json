@@ -12,5 +12,6 @@
     "emulators:start": "firebase emulators:start --project=interview-89e09",
     "sync:secrets": "node scripts/sync-firebase-secrets.js"
   },
+  "author": "",
   "license": "ISC"
 }

@@ -3,6 +3,7 @@ import * as interviewService from "./interview.service";
 import * as authService from "../auth/auth.service";
 import { sendSuccess, sendCreated } from "../../shared/responses";
 import type { ListInterviewsQuery } from "./interview.validation";
+import { getLiveWsPath } from "../live-interview/live-interview.ws";
 
 const param = (req: Request, key: string): string => String(req.params[key]);
 
@@ -18,7 +19,7 @@ const getUploadedDocumentBuffers = (
 
 export const createInterview = async (req: Request, res: Response): Promise<void> => {
   const interview = await interviewService.createInterview(req.user!.uid, req.body);
-  sendCreated(res, interview, "Interview created and questions generated successfully");
+  sendCreated(res, interview, "Interview created and ready for live session");
 };
 
 export const listInterviews = async (req: Request, res: Response): Promise<void> => {
@@ -37,7 +38,7 @@ export const createInterviewWithDocuments = async (req: Request, res: Response):
     req.user!.uid,
     getUploadedDocumentBuffers(req)
   );
-  sendCreated(res, interview, "Interview created with documents and questions generated successfully");
+  sendCreated(res, interview, "Interview created with documents and ready for live session");
 };
 
 export const resumeAnalysis = async (req: Request, res: Response): Promise<void> => {
@@ -51,4 +52,29 @@ export const resumeAnalysis = async (req: Request, res: Response): Promise<void>
 export const finishInterview = async (req: Request, res: Response): Promise<void> => {
   const result = await interviewService.finishInterview(req.user!.uid, param(req, "id"));
   sendSuccess(res, result, "Interview completed. Answers evaluated and report generated.");
+};
+
+const buildWsUrl = (req: Request, interviewId: string): string => {
+  const forwardedProto = req.get("x-forwarded-proto");
+  const protocol =
+    forwardedProto === "https" || req.protocol === "https" ? "wss" : "ws";
+  const host = req.get("host") ?? "localhost:5000";
+  const authHeader = req.get("authorization") ?? "";
+  const token =
+    authHeader.startsWith("Bearer ") && authHeader.length > "Bearer ".length
+      ? authHeader.slice("Bearer ".length).trim()
+      : "";
+  const query = new URLSearchParams({
+    interviewId,
+    ...(token ? { token } : {}),
+  });
+  return `${protocol}://${host}${getLiveWsPath()}?${query.toString()}`;
+};
+
+export const getLiveSession = async (req: Request, res: Response): Promise<void> => {
+  const interview = await interviewService.prepareLiveSession(req.user!.uid, param(req, "id"));
+  sendSuccess(res, {
+    interviewId: interview.id,
+    wsUrl: buildWsUrl(req, interview.id),
+  });
 };

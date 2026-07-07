@@ -49,4 +49,10 @@ router.post(
   asyncHandler(interviewController.finishInterview)
 );
 
+router.get(
+  "/:id/live-session",
+  validate(interviewIdParamSchema, "params"),
+  asyncHandler(interviewController.getLiveSession)
+);
+
 export default router;
