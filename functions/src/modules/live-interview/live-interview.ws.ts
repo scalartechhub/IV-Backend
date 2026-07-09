@@ -10,6 +10,7 @@ import { InterviewStatus } from "../interview/interview.types";
 import {
   createGeminiLiveBridge,
   forwardAudioToGemini,
+  forwardAudioTurnComplete,
   forwardTextToGemini,
 } from "./live-interview.gemini-bridge";
 import type { LiveClientMessage, LiveTranscriptEntry } from "./live-interview.types";
@@ -130,30 +131,41 @@ export const setupLiveInterviewWebSocket = (server: Server): void => {
       bridgeClose = bridge.close;
 
       clientSocket.on("message", (raw) => {
-        const message = parseClientMessage(raw);
-        if (!message) return;
+        try {
+          const message = parseClientMessage(raw);
+          if (!message) return;
 
-        const geminiSession = sessionState.geminiSession;
-        if (!geminiSession) return;
+          const geminiSession = sessionState.geminiSession;
+          if (!geminiSession) return;
 
-        if (message.type === "audio" && message.data) {
-          forwardAudioToGemini(
-            geminiSession,
-            message.data,
-            message.mimeType ?? "audio/pcm;rate=16000"
-          );
-          return;
-        }
+          if (message.type === "audio" && message.data) {
+            forwardAudioToGemini(
+              geminiSession,
+              message.data,
+              message.mimeType ?? "audio/pcm;rate=16000"
+            );
+            return;
+          }
 
-        if (message.type === "text" && message.text.trim()) {
-          forwardTextToGemini(geminiSession, message.text.trim());
-          return;
-        }
+          if (message.type === "text" && message.text.trim()) {
+            forwardTextToGemini(geminiSession, message.text.trim());
+            return;
+          }
 
-        if (message.type === "end") {
-          sendJson(clientSocket, { type: "ended" });
-          bridge.close();
-          clientSocket.close();
+          if (message.type === "audioComplete") {
+            forwardAudioTurnComplete(geminiSession);
+            return;
+          }
+
+          if (message.type === "end") {
+            sendJson(clientSocket, { type: "ended" });
+            bridge.close();
+            clientSocket.close();
+          }
+        } catch (error) {
+          const errMessage = error instanceof Error ? error.message : "Failed to process live message";
+          logger.error("[live-interview] message handling failed", error);
+          sendJson(clientSocket, { type: "error", message: errMessage });
         }
       });
     } catch (error) {
