@@ -7,10 +7,15 @@ import { SUBSCRIPTION_STATUS } from "../../constants/payment.constants";
 export type AuthProvider = "email" | "google" | "github" | "phone";
 
 export interface UserInterviewSettings {
+  domain: string;
+  category: string;
+  specification: string;
+  targetRole: string;
   difficultyLevel: DifficultyLevel;
   interviewType: InterviewType;
   durationMinutes: number;
   questionCount: number;
+  experienceLevel?: string;
   aiPersonality?: string;
   techStacks?: Array<{ label: string }>;
 }
@@ -92,6 +97,10 @@ export interface User {
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   interview: {
+    domain: "Software Engineering",
+    category: "Backend",
+    specification: "Node.js",
+    targetRole: "Backend Developer",
     difficultyLevel: "medium",
     interviewType: "technicalInterview",
     durationMinutes: 30,

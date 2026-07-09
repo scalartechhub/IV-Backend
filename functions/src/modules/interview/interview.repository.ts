@@ -26,7 +26,10 @@ export const createInterview = async (
   await ref.set({
     id: ref.id,
     userId,
-    technology: input.technology,
+    domain: input.domain,
+    category: input.category,
+    specification: input.specification,
+    targetRole: input.targetRole,
     experienceLevel: input.experienceLevel,
     mode: InterviewMode.PAYLOAD,
     difficultyLevel: input.difficultyLevel,
@@ -44,7 +47,20 @@ export const createInterview = async (
   return (await ref.get()).data() as Interview;
 };
 
-export const createInterviewWithDocuments = async (userId: string): Promise<Interview> => {
+export const createInterviewWithDocuments = async (
+  userId: string,
+  settings: {
+    domain: string;
+    category: string;
+    specification: string;
+    targetRole: string;
+    experienceLevel?: string;
+    difficultyLevel: DifficultyLevel;
+    interviewType: InterviewType;
+    durationMinutes: number;
+    questionCount: number;
+  }
+): Promise<Interview> => {
   const ref = db.collection(COLLECTIONS.INTERVIEWS).doc();
   const now = FieldValue.serverTimestamp();
 
@@ -52,7 +68,15 @@ export const createInterviewWithDocuments = async (userId: string): Promise<Inte
     id: ref.id,
     userId,
     mode: InterviewMode.DOCUMENTS,
-    questionCount: 0,
+    domain: settings.domain,
+    category: settings.category,
+    specification: settings.specification,
+    targetRole: settings.targetRole,
+    experienceLevel: settings.experienceLevel,
+    difficultyLevel: settings.difficultyLevel,
+    interviewType: settings.interviewType,
+    durationMinutes: settings.durationMinutes,
+    questionCount: settings.questionCount,
     status: InterviewStatus.DRAFT,
     questions: [],
     version: INTERVIEW_DOCUMENT_VERSION,
@@ -78,7 +102,10 @@ export const toInterviewSummary = (interview: Interview): InterviewSummary => ({
   id: interview.id,
   userId: interview.userId,
   mode: interview.mode,
-  technology: interview.technology,
+  domain: interview.domain,
+  category: interview.category,
+  specification: interview.specification,
+  targetRole: interview.targetRole,
   experienceLevel: interview.experienceLevel,
   difficultyLevel: interview.difficultyLevel,
   interviewType: interview.interviewType,
