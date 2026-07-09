@@ -134,6 +134,14 @@ const isValidInterviewSettings = (
   const value = settings as Record<string, unknown>;
 
   return (
+    typeof value.domain === "string" &&
+    value.domain.trim().length > 0 &&
+    typeof value.category === "string" &&
+    value.category.trim().length > 0 &&
+    typeof value.specification === "string" &&
+    value.specification.trim().length > 0 &&
+    typeof value.targetRole === "string" &&
+    value.targetRole.trim().length > 0 &&
     typeof value.difficultyLevel === "string" &&
     DIFFICULTY_LEVELS.includes(value.difficultyLevel as UserInterviewSettings["difficultyLevel"]) &&
     typeof value.interviewType === "string" &&
@@ -158,6 +166,11 @@ const normalizeInterviewSettings = (settings: unknown): UserInterviewSettings | 
   const rawDifficulty = value.difficultyLevel ?? value.difficulty;
 
   const normalized: Partial<UserInterviewSettings> = {
+    domain: typeof value.domain === "string" ? value.domain.trim() : undefined,
+    category: typeof value.category === "string" ? value.category.trim() : undefined,
+    specification:
+      typeof value.specification === "string" ? value.specification.trim() : undefined,
+    targetRole: typeof value.targetRole === "string" ? value.targetRole.trim() : undefined,
     difficultyLevel:
       typeof rawDifficulty === "string"
         ? (rawDifficulty as UserInterviewSettings["difficultyLevel"])
@@ -168,6 +181,10 @@ const normalizeInterviewSettings = (settings: unknown): UserInterviewSettings | 
         : undefined,
     durationMinutes: Number.isFinite(durationMinutes) ? durationMinutes : undefined,
     questionCount: Number.isFinite(questionCount) ? questionCount : undefined,
+    experienceLevel:
+      typeof value.experienceLevel === "string" && value.experienceLevel.trim().length > 0
+        ? value.experienceLevel.trim()
+        : undefined,
   };
 
   return isValidInterviewSettings(normalized) ? normalized : null;
@@ -185,7 +202,7 @@ export const getUserInterviewSettings = async (uid: string): Promise<UserIntervi
   if (!settings) {
     throw new AppError(
       400,
-      "Interview settings are missing. Please set difficulty, durationMinutes, interviewType, and questionCount in users.preferences.interview."
+      "Interview settings are missing. Please set domain, category, specification, targetRole, difficulty, durationMinutes, interviewType, and questionCount in users.preferences.interview."
     );
   }
 

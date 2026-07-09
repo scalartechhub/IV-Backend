@@ -68,7 +68,10 @@ export interface Interview {
   id: string;
   userId: string;
   mode: InterviewMode;
-  technology?: string;
+  domain?: string;
+  category?: string;
+  specification?: string;
+  targetRole?: string;
   experienceLevel?: string;
   difficultyLevel?: DifficultyLevel;
   interviewType?: InterviewType;
@@ -90,7 +93,10 @@ export interface Interview {
 // ─── Input / Output DTOs ──────────────────────────────────────────────────────
 
 export interface CreateInterviewInput {
-  technology: string;
+  domain: string;
+  category: string;
+  specification: string;
+  targetRole: string;
   experienceLevel: string;
   difficultyLevel: DifficultyLevel;
   interviewType: InterviewType;
@@ -134,7 +140,10 @@ export interface InterviewSummary {
   id: string;
   userId: string;
   mode: InterviewMode;
-  technology?: string;
+  domain?: string;
+  category?: string;
+  specification?: string;
+  targetRole?: string;
   experienceLevel?: string;
   difficultyLevel?: DifficultyLevel;
   interviewType?: InterviewType;

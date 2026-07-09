@@ -33,7 +33,10 @@ const formatResumeContext = (interview: Interview): string => {
 };
 
 export const buildLiveInterviewSystemInstruction = (interview: Interview): string => {
-  const technology = interview.technology ?? "the target role";
+  const domain = interview.domain ?? "Software Engineering";
+  const category = interview.category ?? "General";
+  const specification = interview.specification ?? "General";
+  const targetRole = interview.targetRole ?? "the target role";
   const experienceLevel = interview.experienceLevel ?? "mid-level";
   const difficulty = interview.difficultyLevel ?? "medium";
   const interviewType = interview.interviewType
@@ -43,9 +46,13 @@ export const buildLiveInterviewSystemInstruction = (interview: Interview): strin
   const questionTarget = interview.questionCount > 0 ? interview.questionCount : 12;
   const resumeContext = truncate(formatResumeContext(interview), 6000);
 
-  return `You are a senior AI interviewer conducting a live ${interviewType} for a ${technology} position.
+  return `You are a senior AI interviewer conducting a live ${interviewType} for a ${targetRole} position.
 
 Candidate context:
+- Domain: ${domain}
+- Category: ${category}
+- Specification: ${specification}
+- Target role: ${targetRole}
 - Experience level: ${experienceLevel}
 - Difficulty: ${difficulty}
 - Target session length: about ${durationMinutes} minutes
