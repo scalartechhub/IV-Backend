@@ -2,7 +2,6 @@ import { Timestamp } from "firebase-admin/firestore";
 import * as repo from "./interview.repository";
 import { parseResume } from "../ai/resume-parser.service";
 import { parseJD } from "../ai/jd-parser.service";
-import { generateQuestions } from "../ai/question-generator.service";
 import { evaluateAnswersBatch } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
 import { getUserInterviewSettings, getUserNotificationPreferences, getUserSubscriptionPlan, assertUserCanCreateInterview, incrementTotalInterviews, updateStatsOnInterviewFinish } from "../auth/auth.repository";
@@ -11,12 +10,10 @@ import { assertActiveSubscription } from "../subscription/subscription.service";
 import { AppError } from "../../shared/utils";
 import { assertDifficultyAllowedForPlan } from "../../shared/entitlements";
 import { logger } from "../../shared/logger";
-import { DEFAULT_QUESTION_COUNT } from "../../shared/constants";
 import type {
   CreateInterviewInput,
   Interview,
   InterviewListResult,
-  InterviewQuestion,
   InterviewReport,
   FinishInterviewResult,
   SubmitAnswersInput,
@@ -148,100 +145,6 @@ export const createInterviewWithDocuments = async (
     }
     throw error;
   }
-};
-
-export const generateInterviewQuestions = async (
-  userId: string,
-  interviewId: string
-): Promise<InterviewQuestion[]> => {
-  const interview = await repo.requireOwnedInterview(interviewId, userId);
-
-  if (
-    interview.status === InterviewStatus.STARTED ||
-    interview.status === InterviewStatus.COMPLETED
-  ) {
-    throw new AppError(
-      400,
-      "Cannot generate questions because this interview is already in progress or completed."
-    );
-  }
-
-  const usesDocuments = interview.mode === InterviewMode.DOCUMENTS;
-
-  const questionConfig = usesDocuments
-    ? await getUserInterviewSettings(userId)
-    : {
-        difficultyLevel: interview.difficultyLevel,
-        interviewType: interview.interviewType,
-        durationMinutes: interview.durationMinutes,
-        questionCount: interview.questionCount,
-      };
-
-  if (
-    !questionConfig.difficultyLevel ||
-    !questionConfig.interviewType ||
-    !questionConfig.durationMinutes ||
-    !questionConfig.questionCount
-  ) {
-    throw new AppError(
-      400,
-      usesDocuments
-        ? "Interview settings are missing. Please set difficultyLevel, durationMinutes, interviewType, and questionCount in users.preferences.interview."
-        : "Interview configuration is incomplete. Please create the interview again with technology, experienceLevel, difficultyLevel, interviewType, durationMinutes, and questionCount."
-    );
-  }
-
-  if (
-    usesDocuments &&
-    !interview.documents?.resume?.parsed &&
-    !interview.documents?.jd?.parsed
-  ) {
-    throw new AppError(
-      400,
-      "Cannot generate questions because no resume or job description was uploaded for this interview."
-    );
-  }
-
-  const plan = await getUserSubscriptionPlan(userId);
-  assertDifficultyAllowedForPlan(plan, questionConfig.difficultyLevel);
-
-  logger.info(`[interview.service] generating questions interviewId=${interviewId}`, {
-    mode: interview.mode,
-    questionCount: questionConfig.questionCount,
-    difficultyLevel: questionConfig.difficultyLevel,
-    interviewType: questionConfig.interviewType,
-    hasResume: Boolean(interview.documents?.resume?.parsed),
-    hasJD: Boolean(interview.documents?.jd?.parsed),
-  });
-
-  const questionCount = questionConfig.questionCount ?? DEFAULT_QUESTION_COUNT;
-
-  const rawQuestions = await generateQuestions({
-    resumeAnalysis: interview.documents?.resume?.parsed,
-    jdAnalysis: interview.documents?.jd?.parsed,
-    documentsOnly: usesDocuments,
-    technology: usesDocuments ? undefined : interview.technology,
-    experienceLevel: usesDocuments ? undefined : interview.experienceLevel,
-    difficultyLevel: questionConfig.difficultyLevel,
-    interviewType: questionConfig.interviewType,
-    questionCount,
-  });
-
-  const questions = await repo.setInterviewQuestions(
-    interviewId,
-    rawQuestions,
-    questionConfig.difficultyLevel,
-    {
-      interviewType: questionConfig.interviewType,
-      durationMinutes: questionConfig.durationMinutes,
-      questionCount,
-    }
-  );
-
-  logger.info(
-    `[interview.service] ${questions.length} questions embedded for interviewId=${interviewId}`
-  );
-  return questions;
 };
 
 const buildAnswersFromInterview = (interview: Interview): SubmitAnswersInput => ({
