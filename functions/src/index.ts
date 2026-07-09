@@ -1,9 +1,9 @@
 import type { Application } from "express";
-import { onRequest } from "firebase-functions/v2/https";
-import { setGlobalOptions } from "firebase-functions/v2";
 import { defineSecret } from "firebase-functions/params";
-import { bootstrapApplication } from "./bootstrap";
+import { setGlobalOptions } from "firebase-functions/v2";
+import { onRequest } from "firebase-functions/v2/https";
 import app from "./app";
+import { bootstrapApplication } from "./bootstrap";
 
 const geminiApiKey = defineSecret("GEMINI_API_KEY");
 const firebaseApiKey = defineSecret("FIREBASE_API_KEY");
@@ -11,6 +11,7 @@ const groqApiKey = defineSecret("GROQ_API_KEY");
 const razorpayKeyId = defineSecret("RAZORPAY_KEY_ID");
 const razorpayKeySecret = defineSecret("RAZORPAY_KEY_SECRET");
 const razorpayWebhookSecret = defineSecret("RAZORPAY_WEBHOOK_SECRET");
+const sendgridApiKey = defineSecret('SENDGRID_API_KEY');
 
 setGlobalOptions({
   region: "us-central1",
@@ -33,6 +34,10 @@ function applyRuntimeEnv(): void {
     process.env.STORAGE_BUCKET ??
     process.env.FIREBASE_STORAGE_BUCKET ??
     "interview-89e09.firebasestorage.app";
+  
+  process.env.SENDGRID_API_KEY = sendgridApiKey.value(); 
+  process.env.SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || "info@scalartechhub.com";
+  process.env.SENDGRID_TO_EMAIL = process.env.SENDGRID_TO_EMAIL || "info@scalartechhub.com";
 }
 
 function getApp(): Application {
@@ -53,6 +58,7 @@ export const api = onRequest(
       razorpayKeyId,
       razorpayKeySecret,
       razorpayWebhookSecret,
+      sendgridApiKey
     ],
     memory: "1GiB",
     timeoutSeconds: 300,

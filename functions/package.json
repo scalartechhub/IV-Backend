@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.8.0",
+    "@sendgrid/mail": "^8.1.6",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
@@ -30,8 +31,8 @@
     "multer": "^2.1.1",
     "pdf-parse": "^2.4.5",
     "razorpay": "^2.9.6",
-    "ws": "^8.21.0",
     "uuid": "^14.0.0",
+    "ws": "^8.21.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
