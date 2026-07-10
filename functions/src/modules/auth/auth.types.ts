@@ -1,6 +1,6 @@
 import { Timestamp } from "firebase-admin/firestore";
 import type { ResumeAnalysis } from "../interview/interview.types";
-import type { DifficultyLevel, InterviewType } from "../../shared/constants";
+import type { DifficultyLevel } from "../../shared/constants";
 import { PLAN_IDS } from "../../constants/payment.constants";
 import { SUBSCRIPTION_STATUS } from "../../constants/payment.constants";
 
@@ -12,7 +12,7 @@ export interface UserInterviewSettings {
   specification: string;
   targetRole: string;
   difficultyLevel: DifficultyLevel;
-  interviewType: InterviewType;
+  interviewType: string;
   durationMinutes: number;
   questionCount: number;
   experienceLevel?: string;
@@ -96,16 +96,6 @@ export interface User {
 }
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
-  interview: {
-    domain: "Software Engineering",
-    category: "Backend",
-    specification: "Node.js",
-    targetRole: "Backend Developer",
-    difficultyLevel: "medium",
-    interviewType: "technicalInterview",
-    durationMinutes: 30,
-    questionCount: 10,
-  },
   notifications: {
     interviewReminders: true,
     feedbackReports: true,

@@ -14,11 +14,7 @@ import {
   type UserResumeAnalysisEntry,
   type UserStats,
 } from "./auth.types";
-import {
-  DIFFICULTY_LEVELS,
-  INTERVIEW_TYPES,
-  type SubscriptionPlan,
-} from "../../shared/constants";
+import { DIFFICULTY_LEVELS, type SubscriptionPlan } from "../../shared/constants";
 import { PLAN_IDS } from "../../constants/payment.constants";
 
 const normalizeUserFields = (
@@ -145,7 +141,7 @@ const isValidInterviewSettings = (
     typeof value.difficultyLevel === "string" &&
     DIFFICULTY_LEVELS.includes(value.difficultyLevel as UserInterviewSettings["difficultyLevel"]) &&
     typeof value.interviewType === "string" &&
-    INTERVIEW_TYPES.includes(value.interviewType as UserInterviewSettings["interviewType"]) &&
+    value.interviewType.trim().length > 0 &&
     typeof value.durationMinutes === "number" &&
     value.durationMinutes > 0 &&
     typeof value.questionCount === "number" &&
@@ -176,8 +172,8 @@ const normalizeInterviewSettings = (settings: unknown): UserInterviewSettings | 
         ? (rawDifficulty as UserInterviewSettings["difficultyLevel"])
         : undefined,
     interviewType:
-      typeof value.interviewType === "string"
-        ? (value.interviewType as UserInterviewSettings["interviewType"])
+      typeof value.interviewType === "string" && value.interviewType.trim().length > 0
+        ? value.interviewType.trim()
         : undefined,
     durationMinutes: Number.isFinite(durationMinutes) ? durationMinutes : undefined,
     questionCount: Number.isFinite(questionCount) ? questionCount : undefined,

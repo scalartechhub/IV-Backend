@@ -33,6 +33,7 @@ export type SubscriptionPlan = (typeof SUBSCRIPTION_PLANS)[number];
 export const STARTER_ALLOWED_DIFFICULTIES: DifficultyLevel[] = ["easy", "medium"];
 export const PRO_ALLOWED_DIFFICULTIES: DifficultyLevel[] = [...DIFFICULTY_LEVELS];
 
+/** Common interview types — domains may define additional values in Firestore. */
 export const INTERVIEW_TYPES = [
   "technicalInterview",
   "codingInterview",
@@ -40,7 +41,7 @@ export const INTERVIEW_TYPES = [
   "hrInterview",
   "behavioralInterview",
 ] as const;
-export type InterviewType = (typeof INTERVIEW_TYPES)[number];
+export type InterviewType = string;
 
 export const RATE_LIMIT = {
   WINDOW_MS: 15 * 60 * 1000, // 15 minutes
