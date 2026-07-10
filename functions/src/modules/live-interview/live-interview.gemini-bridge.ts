@@ -143,9 +143,14 @@ export const createGeminiLiveBridge = async (
       onmessage: handleGeminiMessage,
       onerror: (event) => {
         const errMessage =
-          event instanceof ErrorEvent && event.error instanceof Error
-            ? event.error.message
-            : "Gemini Live session error";
+          event instanceof Error
+            ? event.message
+            : typeof event === "object" &&
+                event !== null &&
+                "message" in event &&
+                typeof (event as { message?: unknown }).message === "string"
+              ? (event as { message: string }).message
+              : "Gemini Live session error";
         logger.error("[live-interview] Gemini error", errMessage);
         sendJson(clientSocket, { type: "error", message: errMessage });
       },
