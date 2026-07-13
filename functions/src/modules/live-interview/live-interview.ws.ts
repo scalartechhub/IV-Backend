@@ -107,6 +107,7 @@ export const setupLiveInterviewWebSocket = (server: Server): void => {
       }
 
       const transcript: LiveTranscriptEntry[] = [];
+      let beginAwaitingUserTranscript: (() => void) | null = null;
       const sessionState: ActiveLiveSession = {
         interviewId,
         userId,
@@ -127,6 +128,7 @@ export const setupLiveInterviewWebSocket = (server: Server): void => {
 
       sessionState.closeBridge = bridge.close;
       sessionState.geminiSession = bridge.session;
+      beginAwaitingUserTranscript = bridge.beginAwaitingUserTranscript;
       activeSessions.set(clientSocket, sessionState);
       bridgeClose = bridge.close;
 
@@ -153,6 +155,8 @@ export const setupLiveInterviewWebSocket = (server: Server): void => {
           }
 
           if (message.type === "audioComplete") {
+            // Hold AI audio/text until user STT is pushed to the client.
+            beginAwaitingUserTranscript?.();
             forwardAudioTurnComplete(geminiSession);
             return;
           }
