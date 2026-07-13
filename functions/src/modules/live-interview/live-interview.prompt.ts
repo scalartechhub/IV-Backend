@@ -1,11 +1,31 @@
-import type { Interview, InterviewType } from "../interview/interview.types";
+import type { Interview } from "../interview/interview.types";
 
-const INTERVIEW_TYPE_LABELS: Record<InterviewType, string> = {
+const INTERVIEW_TYPE_LABELS: Record<string, string> = {
   technicalInterview: "Technical Interview",
   codingInterview: "Coding Interview",
   systemDesign: "System Design Interview",
   hrInterview: "HR Interview",
   behavioralInterview: "Behavioral Interview",
+};
+
+const formatInterviewTypeLabel = (type: string): string => {
+  const known = INTERVIEW_TYPE_LABELS[type];
+  if (known) {
+    return known;
+  }
+
+  const trimmed = type.trim();
+  if (!trimmed) {
+    return "technical interview";
+  }
+
+  if (/[\s-]/.test(trimmed)) {
+    return trimmed;
+  }
+
+  return trimmed
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
 const truncate = (value: string, max: number): string =>
@@ -40,7 +60,7 @@ export const buildLiveInterviewSystemInstruction = (interview: Interview): strin
   const experienceLevel = interview.experienceLevel ?? "mid-level";
   const difficulty = interview.difficultyLevel ?? "medium";
   const interviewType = interview.interviewType
-    ? INTERVIEW_TYPE_LABELS[interview.interviewType]
+    ? formatInterviewTypeLabel(interview.interviewType)
     : "technical interview";
   const durationMinutes = interview.durationMinutes ?? 45;
   const questionTarget = interview.questionCount > 0 ? interview.questionCount : 12;
