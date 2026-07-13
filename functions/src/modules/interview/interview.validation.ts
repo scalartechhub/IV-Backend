@@ -2,10 +2,25 @@ import { z } from "zod";
 import { DIFFICULTY_LEVELS, INTERVIEW_TYPES } from "../../shared/constants";
 
 export const createInterviewSchema = z.object({
-  technology: z
+  domain: z
     .string()
-    .min(2, "Technology must be at least 2 characters")
-    .max(100, "Technology is too long")
+    .min(2, "Domain must be at least 2 characters")
+    .max(100, "Domain is too long")
+    .trim(),
+  category: z
+    .string()
+    .min(2, "Category must be at least 2 characters")
+    .max(100, "Category is too long")
+    .trim(),
+  specification: z
+    .string()
+    .min(2, "Specification must be at least 2 characters")
+    .max(100, "Specification is too long")
+    .trim(),
+  targetRole: z
+    .string()
+    .min(2, "Target role must be at least 2 characters")
+    .max(100, "Target role is too long")
     .trim(),
   experienceLevel: z
     .string()

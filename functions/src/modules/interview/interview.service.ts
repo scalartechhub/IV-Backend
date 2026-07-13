@@ -28,11 +28,21 @@ import {
   getRawEvaluationScore,
 } from "./interview.scoring";
 
-const getInterviewTechnology = (interview: Interview): string =>
-  interview.technology ??
-  interview.documents?.resume?.parsed?.skills?.[0] ??
-  interview.documents?.jd?.parsed?.requiredSkills?.[0] ??
-  "Interview";
+const getInterviewContextLabel = (interview: Interview): string => {
+  const role = interview.targetRole?.trim();
+  const specification = interview.specification?.trim();
+  const category = interview.category?.trim();
+  const domain = interview.domain?.trim();
+  const fallback =
+    interview.documents?.resume?.parsed?.skills?.[0] ??
+    interview.documents?.jd?.parsed?.requiredSkills?.[0] ??
+    "Interview";
+
+  const parts = [role, specification, category, domain].filter(
+    (value): value is string => Boolean(value && value.length > 0)
+  );
+  return parts.length > 0 ? parts.join(" | ") : fallback;
+};
 
 const getInterviewExperienceLevel = (interview: Interview): string =>
   interview.experienceLevel ??
@@ -63,7 +73,10 @@ export const createInterview = async (
   input: CreateInterviewInput
 ): Promise<Interview> => {
   logger.info(`[interview.service] create interview userId=${userId}`, {
-    technology: input.technology,
+    domain: input.domain,
+    category: input.category,
+    specification: input.specification,
+    targetRole: input.targetRole,
     mode: InterviewMode.PAYLOAD,
   });
 
@@ -116,7 +129,7 @@ export const createInterviewWithDocuments = async (
   let interview: Interview | undefined;
 
   try {
-    interview = await repo.createInterviewWithDocuments(userId);
+    interview = await repo.createInterviewWithDocuments(userId, interviewSettings);
     await incrementTotalInterviews(userId);
 
     const parsed = await parseInterviewDocuments(files);
@@ -192,12 +205,12 @@ const evaluateSubmittedAnswers = async (
         question: question.question,
         answer: item.answer,
         difficulty: question.difficulty,
-        category: getInterviewTechnology(interview),
+        category: getInterviewContextLabel(interview),
       };
     });
 
     const batchEvaluations = await evaluateAnswersBatch({
-      technology: getInterviewTechnology(interview),
+      technology: getInterviewContextLabel(interview),
       items: batchItems,
     });
 
@@ -333,7 +346,7 @@ export const finishInterview = async (
     const overallScore = calculateInterviewOverallScore(updatedInterview.questions);
 
     const rawReport = await generateReport({
-      technology: getInterviewTechnology(updatedInterview),
+      technology: getInterviewContextLabel(updatedInterview),
       experienceLevel: getInterviewExperienceLevel(updatedInterview),
       questions: updatedInterview.questions,
     });

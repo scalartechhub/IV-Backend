@@ -1,6 +1,6 @@
 import type WebSocket from "ws";
 
-export type LiveClientMessageType = "audio" | "text" | "end";
+export type LiveClientMessageType = "audio" | "text" | "audioComplete" | "end";
 
 export interface LiveClientAudioMessage {
   type: "audio";
@@ -13,6 +13,10 @@ export interface LiveClientTextMessage {
   text: string;
 }
 
+export interface LiveClientAudioCompleteMessage {
+  type: "audioComplete";
+}
+
 export interface LiveClientEndMessage {
   type: "end";
 }
@@ -20,12 +24,14 @@ export interface LiveClientEndMessage {
 export type LiveClientMessage =
   | LiveClientAudioMessage
   | LiveClientTextMessage
+  | LiveClientAudioCompleteMessage
   | LiveClientEndMessage;
 
 export type LiveServerMessageType =
   | "connected"
   | "audio"
   | "userTranscriptLive"
+  | "aiQuestionLive"
   | "aiQuestion"
   | "userAnswerFinal"
   | "turnComplete"

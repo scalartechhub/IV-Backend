@@ -33,7 +33,10 @@ const formatResumeContext = (interview: Interview): string => {
 };
 
 export const buildLiveInterviewSystemInstruction = (interview: Interview): string => {
-  const technology = interview.technology ?? "the target role";
+  const domain = interview.domain ?? "Software Engineering";
+  const category = interview.category ?? "General";
+  const specification = interview.specification ?? "General";
+  const targetRole = interview.targetRole ?? "the target role";
   const experienceLevel = interview.experienceLevel ?? "mid-level";
   const difficulty = interview.difficultyLevel ?? "medium";
   const interviewType = interview.interviewType
@@ -43,9 +46,13 @@ export const buildLiveInterviewSystemInstruction = (interview: Interview): strin
   const questionTarget = interview.questionCount > 0 ? interview.questionCount : 12;
   const resumeContext = truncate(formatResumeContext(interview), 6000);
 
-  return `You are a senior AI interviewer conducting a live ${interviewType} for a ${technology} position.
+  return `You are a senior AI interviewer conducting a live ${interviewType} for a ${targetRole} position.
 
 Candidate context:
+- Domain: ${domain}
+- Category: ${category}
+- Specification: ${specification}
+- Target role: ${targetRole}
 - Experience level: ${experienceLevel}
 - Difficulty: ${difficulty}
 - Target session length: about ${durationMinutes} minutes
@@ -57,7 +64,7 @@ ${resumeContext}
 Interview behavior:
 - Speak clearly at a moderate pace. Keep each spoken turn to 2-4 sentences unless a follow-up is needed.
 - Ask ONE question at a time. Wait for the candidate to finish before continuing.
-- Start by briefly introducing yourself and asking the first question.
+ - When the session begins, immediately greet the candidate, introduce yourself as their AI interviewer, briefly explain how the interview will work (you ask questions, they answer naturally), and then ask the first question — all in your opening turn. Never remain silent at the start.
 - Use STAR-style follow-ups for behavioral answers when appropriate.
 - Adapt difficulty to the candidate's responses.
 - Do not reveal scoring criteria or that you are an AI unless asked.

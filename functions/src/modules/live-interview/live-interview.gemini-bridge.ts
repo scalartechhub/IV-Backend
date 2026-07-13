@@ -76,6 +76,10 @@ export const createGeminiLiveBridge = async (
 
     if (serverContent.outputTranscription?.text) {
       aiTranscriptBuffer += serverContent.outputTranscription.text;
+      const aiLiveText = aiTranscriptBuffer.trim();
+      if (aiLiveText) {
+        sendJson(clientSocket, { type: "aiQuestionLive", text: aiLiveText });
+      }
     }
 
     const parts = serverContent.modelTurn?.parts ?? [];
@@ -135,16 +139,6 @@ export const createGeminiLiveBridge = async (
           type: "connected",
           message: "Live interview session ready",
         });
-
-        geminiSession?.sendClientContent({
-          turns: [
-            {
-              role: "user",
-              parts: [{ text: "Hello, I am ready for my interview. Please begin." }],
-            },
-          ],
-          turnComplete: true,
-        });
       },
       onmessage: handleGeminiMessage,
       onerror: (event) => {
@@ -161,6 +155,24 @@ export const createGeminiLiveBridge = async (
       },
     },
   });
+
+  try {
+    await geminiSession.sendClientContent({
+      turns: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: "Hello, I am ready for my interview. Please introduce yourself, explain how this interview will work, and ask your first question.",
+            },
+          ],
+        },
+      ],
+      turnComplete: true,
+    });
+  } catch (error) {
+    logger.warn(`[live-interview] Kickoff message failed interviewId=${interview.id}`, error);
+  }
 
   return {
     close: () => closeBridge("client_closed"),
@@ -186,4 +198,9 @@ export const forwardTextToGemini = (session: Session, text: string): void => {
     turns: [{ role: "user", parts: [{ text }] }],
     turnComplete: true,
   });
+};
+
+export const forwardAudioTurnComplete = (session: Session): void => {
+  // Marks end of recorded audio turn so Gemini can respond.
+  session.sendRealtimeInput({ audioStreamEnd: true });
 };
