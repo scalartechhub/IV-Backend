@@ -31,6 +31,7 @@ export type LiveServerMessageType =
   | "connected"
   | "audio"
   | "userTranscriptLive"
+  | "userAnswerPartial"
   | "aiQuestionLive"
   | "aiQuestion"
   | "userAnswerFinal"
