@@ -37,6 +37,49 @@ export interface UserStats {
   bestScore: number;
 }
 
+export interface RadarSkill {
+  skill: string;
+  averageScore: number;
+}
+
+export interface RecentScore {
+  targetTechnology: string;
+  score: number;
+  interviewDate: Timestamp;
+}
+
+export interface DomainPerformance {
+  domain: string;
+  interviews: number;
+  averageScore: number;
+}
+
+export interface InterviewTypeStat {
+  interviewType: string;
+  total: number;
+}
+
+export interface MonthlyPerformance {
+  /** Example: "2026-07" */
+  month: string;
+  interviews: number;
+  averageScore: number;
+}
+
+/** Aggregated dashboard analytics stored on users/{uid}.interview */
+export interface UserAnalytics {
+  completedInterviews: number;
+  averageScore: number;
+  highestScore: number;
+  lowestScore: number;
+  lastInterviewDate: Timestamp;
+  radarSkills: RadarSkill[];
+  recentScores: RecentScore[];
+  domainPerformance: DomainPerformance[];
+  interviewTypes: InterviewTypeStat[];
+  monthlyPerformance: MonthlyPerformance[];
+}
+
 export interface UserSubscription {
   plan: string;
   status?: string;
@@ -88,6 +131,8 @@ export interface User {
   profile?: UserProfileDetails;
   preferences?: UserPreferences;
   stats?: UserStats;
+  /** Dashboard interview analytics (aggregated, not full interview docs) */
+  interview?: UserAnalytics;
   subscription?: UserSubscription;
   resume?: UserResume;
   createdAt: Timestamp;
@@ -119,6 +164,7 @@ export interface UserResponse {
   profile?: UserProfileDetails;
   preferences?: UserPreferences;
   stats?: UserStats;
+  interview?: UserAnalytics;
   subscription?: UserSubscription;
   resume?: UserResume;
 }

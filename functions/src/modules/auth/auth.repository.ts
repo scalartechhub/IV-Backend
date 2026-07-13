@@ -1,4 +1,4 @@
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db } from "../../config/firebase";
 import { COLLECTIONS } from "../../shared/constants";
 import { assertInterviewCreationAllowed } from "../../shared/entitlements";
@@ -9,13 +9,43 @@ import {
   DEFAULT_USER_PREFERENCES,
   DEFAULT_USER_SUBSCRIPTION,
   type User,
+  type UserAnalytics,
   type UserInterviewSettings,
   type UserNotificationPreferences,
   type UserResumeAnalysisEntry,
   type UserStats,
+  type RadarSkill,
+  type DomainPerformance,
+  type InterviewTypeStat,
+  type MonthlyPerformance,
+  type RecentScore,
 } from "./auth.types";
 import { DIFFICULTY_LEVELS, type SubscriptionPlan } from "../../shared/constants";
 import { PLAN_IDS } from "../../constants/payment.constants";
+
+const RECENT_SCORES_LIMIT = 10;
+
+export type InterviewAnalyticsInput = {
+  overallScore: number;
+  domain: string;
+  interviewType: string;
+  targetTechnology: string;
+  skills: string[];
+  interviewDate?: Timestamp;
+};
+
+const defaultUserAnalytics = (): UserAnalytics => ({
+  completedInterviews: 0,
+  averageScore: 0,
+  highestScore: 0,
+  lowestScore: 0,
+  lastInterviewDate: Timestamp.fromMillis(0),
+  radarSkills: [],
+  recentScores: [],
+  domainPerformance: [],
+  interviewTypes: [],
+  monthlyPerformance: [],
+});
 
 const normalizeUserFields = (
   fields: Partial<Omit<User, "isActive" | "createdAt" | "updatedAt">> & { name?: string }
@@ -51,6 +81,7 @@ export const upsertUser = async (
         averageScore: 0,
         bestScore: 0,
       },
+      interview: defaultUserAnalytics(),
       resume: { analyses: [] },
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -228,6 +259,176 @@ const defaultUserStats = (): UserStats => ({
   bestScore: 0,
 });
 
+const roundScore = (value: number): number => Math.round(value * 100) / 100;
+
+const toMonthKey = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+};
+
+const updateRollingAverage = (
+  previousAverage: number,
+  previousCount: number,
+  nextScore: number
+): number => {
+  if (previousCount <= 0) {
+    return roundScore(nextScore);
+  }
+  return roundScore((previousAverage * previousCount + nextScore) / (previousCount + 1));
+};
+
+const updateRadarSkills = (
+  existing: RadarSkill[],
+  skills: string[],
+  score: number
+): RadarSkill[] => {
+  const next = [...existing];
+
+  for (const rawSkill of skills) {
+    const skill = rawSkill.trim();
+    if (!skill) continue;
+
+    const index = next.findIndex(
+      (item) => item.skill.toLowerCase() === skill.toLowerCase()
+    );
+    if (index === -1) {
+      next.push({ skill, averageScore: roundScore(score) });
+      continue;
+    }
+
+    // Approximate prior sample count from domain performance isn't available per skill;
+    // blend toward the latest score so the radar stays responsive.
+    const current = next[index];
+    next[index] = {
+      skill: current.skill,
+      averageScore: roundScore(current.averageScore * 0.7 + score * 0.3),
+    };
+  }
+
+  return next;
+};
+
+const updateDomainPerformance = (
+  existing: DomainPerformance[],
+  domain: string,
+  score: number
+): DomainPerformance[] => {
+  const next = [...existing];
+  const index = next.findIndex((item) => item.domain.toLowerCase() === domain.toLowerCase());
+
+  if (index === -1) {
+    next.push({ domain, interviews: 1, averageScore: roundScore(score) });
+    return next;
+  }
+
+  const current = next[index];
+  next[index] = {
+    domain: current.domain,
+    interviews: current.interviews + 1,
+    averageScore: updateRollingAverage(current.averageScore, current.interviews, score),
+  };
+  return next;
+};
+
+const updateInterviewTypeStats = (
+  existing: InterviewTypeStat[],
+  interviewType: string
+): InterviewTypeStat[] => {
+  const next = [...existing];
+  const index = next.findIndex(
+    (item) => item.interviewType.toLowerCase() === interviewType.toLowerCase()
+  );
+
+  if (index === -1) {
+    next.push({ interviewType, total: 1 });
+    return next;
+  }
+
+  next[index] = {
+    interviewType: next[index].interviewType,
+    total: next[index].total + 1,
+  };
+  return next;
+};
+
+const updateMonthlyPerformance = (
+  existing: MonthlyPerformance[],
+  month: string,
+  score: number
+): MonthlyPerformance[] => {
+  const next = [...existing];
+  const index = next.findIndex((item) => item.month === month);
+
+  if (index === -1) {
+    next.push({ month, interviews: 1, averageScore: roundScore(score) });
+    return next.sort((a, b) => a.month.localeCompare(b.month));
+  }
+
+  const current = next[index];
+  next[index] = {
+    month: current.month,
+    interviews: current.interviews + 1,
+    averageScore: updateRollingAverage(current.averageScore, current.interviews, score),
+  };
+  return next;
+};
+
+const buildUpdatedAnalytics = (
+  existing: UserAnalytics | undefined,
+  input: InterviewAnalyticsInput
+): UserAnalytics => {
+  const current = existing ?? defaultUserAnalytics();
+  const score = roundScore(input.overallScore);
+  const interviewDate = input.interviewDate ?? Timestamp.now();
+  const completedInterviews = (current.completedInterviews ?? 0) + 1;
+  const averageScore = updateRollingAverage(
+    current.averageScore ?? 0,
+    current.completedInterviews ?? 0,
+    score
+  );
+  const highestScore =
+    current.completedInterviews > 0 ? Math.max(current.highestScore ?? 0, score) : score;
+  const lowestScore =
+    current.completedInterviews > 0 ? Math.min(current.lowestScore ?? score, score) : score;
+
+  const recentEntry: RecentScore = {
+    targetTechnology: input.targetTechnology,
+    score,
+    interviewDate,
+  };
+  const recentScores = [recentEntry, ...(current.recentScores ?? [])].slice(
+    0,
+    RECENT_SCORES_LIMIT
+  );
+
+  const month = toMonthKey(interviewDate.toDate());
+
+  return {
+    completedInterviews,
+    averageScore,
+    highestScore,
+    lowestScore,
+    lastInterviewDate: interviewDate,
+    radarSkills: updateRadarSkills(current.radarSkills ?? [], input.skills, score),
+    recentScores,
+    domainPerformance: updateDomainPerformance(
+      current.domainPerformance ?? [],
+      input.domain,
+      score
+    ),
+    interviewTypes: updateInterviewTypeStats(
+      current.interviewTypes ?? [],
+      input.interviewType
+    ),
+    monthlyPerformance: updateMonthlyPerformance(
+      current.monthlyPerformance ?? [],
+      month,
+      score
+    ),
+  };
+};
+
 export const incrementTotalInterviews = async (uid: string): Promise<void> => {
   const ref = db.collection(COLLECTIONS.USERS).doc(uid);
 
@@ -250,7 +451,8 @@ export const incrementTotalInterviews = async (uid: string): Promise<void> => {
 
 export const updateStatsOnInterviewFinish = async (
   uid: string,
-  overallScore: number
+  overallScore: number,
+  analyticsInput?: Omit<InterviewAnalyticsInput, "overallScore">
 ): Promise<void> => {
   const ref = db.collection(COLLECTIONS.USERS).doc(uid);
 
@@ -268,13 +470,27 @@ export const updateStatsOnInterviewFinish = async (
         ? overallScore
         : (prevAverage * prevCompleted + overallScore) / completedInterviews;
 
+    const interviewAnalytics = analyticsInput
+      ? buildUpdatedAnalytics(user.interview, {
+          overallScore,
+          ...analyticsInput,
+        })
+      : buildUpdatedAnalytics(user.interview, {
+          overallScore,
+          domain: "General",
+          interviewType: "technicalInterview",
+          targetTechnology: "General",
+          skills: [],
+        });
+
     tx.update(ref, {
       stats: {
         totalInterviews: stats.totalInterviews ?? 0,
         completedInterviews,
-        averageScore: Math.round(averageScore * 100) / 100,
+        averageScore: roundScore(averageScore),
         bestScore: Math.max(stats.bestScore ?? 0, overallScore),
       },
+      interview: interviewAnalytics,
       updatedAt: FieldValue.serverTimestamp(),
     });
   });

@@ -361,7 +361,30 @@ export const finishInterview = async (
     };
 
     await repo.completeInterview(interviewId, report, overallScore);
-    await updateStatsOnInterviewFinish(userId, overallScore);
+
+    const analyticsScore = report.overallScore ?? overallScore;
+    const targetTechnology =
+      updatedInterview.targetRole?.trim() ||
+      updatedInterview.specification?.trim() ||
+      updatedInterview.category?.trim() ||
+      "General";
+    const domain = updatedInterview.domain?.trim() || "General";
+    const interviewType = updatedInterview.interviewType?.trim() || "technicalInterview";
+    const skills = [
+      updatedInterview.domain,
+      updatedInterview.category,
+      updatedInterview.specification,
+    ]
+      .map((value) => value?.trim() ?? "")
+      .filter((value, index, list) => value.length > 0 && list.indexOf(value) === index);
+
+    await updateStatsOnInterviewFinish(userId, analyticsScore, {
+      domain,
+      interviewType,
+      targetTechnology,
+      skills,
+      interviewDate: Timestamp.now(),
+    });
 
     const notificationPrefs = await getUserNotificationPreferences(userId);
     if (notificationPrefs.feedbackReports) {

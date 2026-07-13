@@ -14,6 +14,7 @@ const toUserResponse = (user: User): UserResponse => ({
   ...(user.profile && { profile: user.profile }),
   ...(user.preferences && { preferences: user.preferences }),
   ...(user.stats && { stats: user.stats }),
+  ...(user.interview && { interview: user.interview }),
   ...(user.subscription && { subscription: user.subscription }),
   ...(user.resume && { resume: user.resume }),
 });
