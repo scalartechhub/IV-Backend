@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DIFFICULTY_LEVELS, INTERVIEW_TYPES } from "../../shared/constants";
+import { DIFFICULTY_LEVELS } from "../../shared/constants";
 
 export const createInterviewSchema = z.object({
   domain: z
@@ -30,9 +30,11 @@ export const createInterviewSchema = z.object({
   difficultyLevel: z.enum(DIFFICULTY_LEVELS, {
     message: `difficultyLevel must be one of: ${DIFFICULTY_LEVELS.join(", ")}`,
   }),
-  interviewType: z.enum(INTERVIEW_TYPES, {
-    message: `interviewType must be one of: ${INTERVIEW_TYPES.join(", ")}`,
-  }),
+  interviewType: z
+    .string()
+    .min(1, "interviewType is required")
+    .max(100, "interviewType is too long")
+    .trim(),
   durationMinutes: z
     .number()
     .int("durationMinutes must be a whole number")
