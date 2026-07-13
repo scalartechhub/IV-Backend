@@ -374,19 +374,11 @@ export const finishInterview = async (
       "General";
     const domain = updatedInterview.domain?.trim() || "General";
     const interviewType = updatedInterview.interviewType?.trim() || "technicalInterview";
-    const skills = [
-      updatedInterview.domain,
-      updatedInterview.category,
-      updatedInterview.specification,
-    ]
-      .map((value) => value?.trim() ?? "")
-      .filter((value, index, list) => value.length > 0 && list.indexOf(value) === index);
 
     await updateStatsOnInterviewFinish(userId, analyticsScore, {
       domain,
       interviewType,
       targetTechnology,
-      skills,
       interviewDate: Timestamp.now(),
     });
 

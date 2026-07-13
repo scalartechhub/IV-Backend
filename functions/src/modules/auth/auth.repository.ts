@@ -30,7 +30,6 @@ export type InterviewAnalyticsInput = {
   domain: string;
   interviewType: string;
   targetTechnology: string;
-  skills: string[];
   interviewDate?: Timestamp;
 };
 
@@ -278,36 +277,12 @@ const updateRollingAverage = (
   return roundScore((previousAverage * previousCount + nextScore) / (previousCount + 1));
 };
 
-const updateRadarSkills = (
-  existing: RadarSkill[],
-  skills: string[],
-  score: number
-): RadarSkill[] => {
-  const next = [...existing];
-
-  for (const rawSkill of skills) {
-    const skill = rawSkill.trim();
-    if (!skill) continue;
-
-    const index = next.findIndex(
-      (item) => item.skill.toLowerCase() === skill.toLowerCase()
-    );
-    if (index === -1) {
-      next.push({ skill, averageScore: roundScore(score) });
-      continue;
-    }
-
-    // Approximate prior sample count from domain performance isn't available per skill;
-    // blend toward the latest score so the radar stays responsive.
-    const current = next[index];
-    next[index] = {
-      skill: current.skill,
-      averageScore: roundScore(current.averageScore * 0.7 + score * 0.3),
-    };
-  }
-
-  return next;
-};
+/** Radar chart points: one entry per domain with that domain's average score. */
+const toRadarSkillsFromDomains = (domains: DomainPerformance[]): RadarSkill[] =>
+  domains.map((item) => ({
+    skill: item.domain,
+    averageScore: item.averageScore,
+  }));
 
 const updateDomainPerformance = (
   existing: DomainPerformance[],
@@ -403,6 +378,11 @@ const buildUpdatedAnalytics = (
   );
 
   const month = toMonthKey(interviewDate.toDate());
+  const domainPerformance = updateDomainPerformance(
+    current.domainPerformance ?? [],
+    input.domain,
+    score
+  );
 
   return {
     completedInterviews,
@@ -410,13 +390,9 @@ const buildUpdatedAnalytics = (
     highestScore,
     lowestScore,
     lastInterviewDate: interviewDate,
-    radarSkills: updateRadarSkills(current.radarSkills ?? [], input.skills, score),
+    radarSkills: toRadarSkillsFromDomains(domainPerformance),
     recentScores,
-    domainPerformance: updateDomainPerformance(
-      current.domainPerformance ?? [],
-      input.domain,
-      score
-    ),
+    domainPerformance,
     interviewTypes: updateInterviewTypeStats(
       current.interviewTypes ?? [],
       input.interviewType
@@ -480,7 +456,6 @@ export const updateStatsOnInterviewFinish = async (
           domain: "General",
           interviewType: "technicalInterview",
           targetTechnology: "General",
-          skills: [],
         });
 
     tx.update(ref, {
