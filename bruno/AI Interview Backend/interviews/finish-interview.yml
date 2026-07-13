@@ -27,7 +27,8 @@ docs: |-
 
   Response (`data`):
   - `results` — per-question evaluation (score, feedback)
-  - `overallScore`, `answeredCount`
-  - `report` — `overallScore`, `strengths`, `weaknesses`, `recommendations`, `summary`, `generatedAt`
+  - `totalScore` — `{ score, outOf }` earned points / maximum (each question 0–10)
+  - `answeredCount`
+  - `report` — `overallScore` (0–100), `strengths`, `weaknesses`, `recommendations`, `summary`, `generatedAt`
 
   May take 30–60 seconds (Gemini AI).
