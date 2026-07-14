@@ -25,6 +25,12 @@ import { PLAN_IDS } from "../../constants/payment.constants";
 
 const RECENT_SCORES_LIMIT = 10;
 
+const toMonthKey = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+};
+
 export type InterviewAnalyticsInput = {
   overallScore: number;
   domain: string;
@@ -65,11 +71,14 @@ export const upsertUser = async (
   const ref = db.collection(COLLECTIONS.USERS).doc(uid);
   const snapshot = await ref.get();
   const payload = normalizeUserFields(fields);
+  const now = Timestamp.now();
+  const monthKey = toMonthKey(now.toDate());
 
   if (!snapshot.exists) {
-    await ref.set({
-      ...payload,
+    const created: User = {
+      ...(payload as Omit<User, "isActive" | "createdAt" | "updatedAt" | "role" | "preferences" | "subscription" | "stats" | "interview" | "resume">),
       uid,
+      displayName: String(payload.displayName ?? fields.name ?? ""),
       role: "candidate",
       isActive: true,
       preferences: DEFAULT_USER_PREFERENCES,
@@ -79,21 +88,38 @@ export const upsertUser = async (
         completedInterviews: 0,
         averageScore: 0,
         bestScore: 0,
+        interviewsCreatedThisMonth: 0,
+        interviewsMonthKey: monthKey,
       },
       interview: defaultUserAnalytics(),
       resume: { analyses: [] },
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await ref.set({
+      ...created,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
-  } else {
-    await ref.update({
-      ...payload,
-      lastLoginAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+
+    return created;
   }
 
-  return (await ref.get()).data() as User;
+  const existing = snapshot.data() as User;
+  await ref.update({
+    ...payload,
+    lastLoginAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  return {
+    ...existing,
+    ...payload,
+    displayName: String(payload.displayName ?? existing.displayName ?? ""),
+    lastLoginAt: now,
+    updatedAt: now,
+  } as User;
 };
 
 export const findUserById = async (uid: string): Promise<User | null> => {
@@ -107,8 +133,7 @@ export const requireUserById = async (uid: string): Promise<User> => {
   return user;
 };
 
-export const getUserSubscriptionPlan = async (uid: string): Promise<SubscriptionPlan> => {
-  const user = await requireUserById(uid);
+export const subscriptionPlanFromUser = (user: User): SubscriptionPlan => {
   const billingPlan = resolveBillingPlan(user);
 
   if (billingPlan === PLAN_IDS.ENTERPRISE || billingPlan === PLAN_IDS.PRO) {
@@ -118,34 +143,116 @@ export const getUserSubscriptionPlan = async (uid: string): Promise<Subscription
   return "starter";
 };
 
-export const countInterviewsCreatedThisMonth = async (uid: string): Promise<number> => {
-  const startOfMonth = getStartOfCurrentMonth();
-  const startMs = startOfMonth.getTime();
-
-  const snapshot = await db
-    .collection(COLLECTIONS.INTERVIEWS)
-    .where("userId", "==", uid)
-    .where("isDeleted", "==", false)
-    .get();
-
-  return snapshot.docs.filter((doc) => {
-    const interview = doc.data() as Interview;
-    const createdAt = interview.createdAt;
-    if (!createdAt) return false;
-
-    const createdDate =
-      typeof (createdAt as { toDate?: () => Date }).toDate === "function"
-        ? (createdAt as { toDate: () => Date }).toDate()
-        : new Date(createdAt as unknown as string);
-
-    return createdDate.getTime() >= startMs;
-  }).length;
+export const getUserSubscriptionPlan = async (uid: string): Promise<SubscriptionPlan> => {
+  const user = await requireUserById(uid);
+  return subscriptionPlanFromUser(user);
 };
 
-export const assertUserCanCreateInterview = async (uid: string): Promise<void> => {
-  const user = await requireUserById(uid);
-  const billingPlan = resolveBillingPlan(user);
-  const usedThisMonth = await countInterviewsCreatedThisMonth(uid);
+const readMonthlyCountFromUser = (user: User | null | undefined, monthKey: string): number | null => {
+  if (
+    user?.stats?.interviewsMonthKey === monthKey &&
+    typeof user.stats.interviewsCreatedThisMonth === "number"
+  ) {
+    return Math.max(0, user.stats.interviewsCreatedThisMonth);
+  }
+  return null;
+};
+
+const isMissingIndexError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error);
+  const code = (error as { code?: number | string })?.code;
+  return (
+    message.includes("FAILED_PRECONDITION") ||
+    message.includes("requires an index") ||
+    code === 9 ||
+    code === "failed-precondition"
+  );
+};
+
+/**
+ * Cheap aggregation count — uses the existing
+ * (userId, isDeleted, createdAt DESC) composite index.
+ */
+const queryInterviewsCreatedThisMonthCount = async (uid: string): Promise<number> => {
+  const startOfMonth = Timestamp.fromDate(getStartOfCurrentMonth());
+
+  try {
+    const snapshot = await db
+      .collection(COLLECTIONS.INTERVIEWS)
+      .where("userId", "==", uid)
+      .where("isDeleted", "==", false)
+      .where("createdAt", ">=", startOfMonth)
+      .orderBy("createdAt", "desc")
+      .count()
+      .get();
+
+    return snapshot.data().count;
+  } catch (error) {
+    if (!isMissingIndexError(error)) throw error;
+
+    // Fallback for environments where the composite index is not ready yet.
+    // Uses the simpler (userId, isDeleted) index, then filters the month in memory once.
+    const startMs = startOfMonth.toMillis();
+    const snapshot = await db
+      .collection(COLLECTIONS.INTERVIEWS)
+      .where("userId", "==", uid)
+      .where("isDeleted", "==", false)
+      .get();
+
+    return snapshot.docs.filter((doc) => {
+      const interview = doc.data() as Interview;
+      const createdAt = interview.createdAt;
+      if (!createdAt) return false;
+
+      const createdMs =
+        typeof (createdAt as { toMillis?: () => number }).toMillis === "function"
+          ? (createdAt as { toMillis: () => number }).toMillis()
+          : new Date(createdAt as unknown as string).getTime();
+
+      return createdMs >= startMs;
+    }).length;
+  }
+};
+
+const persistMonthlyInterviewCount = async (uid: string, count: number, monthKey: string): Promise<void> => {
+  await db.collection(COLLECTIONS.USERS).doc(uid).update({
+    "stats.interviewsCreatedThisMonth": count,
+    "stats.interviewsMonthKey": monthKey,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+};
+
+/**
+ * Monthly interview usage for entitlements / subscription UI.
+ * Prefers the user-doc counter (0 interview reads); backfills via aggregation count once.
+ */
+export const countInterviewsCreatedThisMonth = async (
+  uid: string,
+  user?: User | null
+): Promise<number> => {
+  const monthKey = toMonthKey(new Date());
+  const fromProvided = readMonthlyCountFromUser(user, monthKey);
+  if (fromProvided !== null) return fromProvided;
+
+  const resolved = user ?? (await findUserById(uid));
+  const fromStored = readMonthlyCountFromUser(resolved, monthKey);
+  if (fromStored !== null) return fromStored;
+
+  const count = await queryInterviewsCreatedThisMonthCount(uid);
+  if (resolved) {
+    await persistMonthlyInterviewCount(uid, count, monthKey);
+  }
+
+  return count;
+};
+
+export const assertUserCanCreateInterview = async (
+  uid: string,
+  user?: User
+): Promise<void> => {
+  const resolved = user ?? (await requireUserById(uid));
+  const billingPlan = resolveBillingPlan(resolved);
+  const usedThisMonth = await countInterviewsCreatedThisMonth(uid, resolved);
 
   assertInterviewCreationAllowed(billingPlan, usedThisMonth);
 };
@@ -221,8 +328,7 @@ const DEFAULT_NOTIFICATION_PREFERENCES: UserNotificationPreferences = {
   interviewReminders: false,
 };
 
-export const getUserInterviewSettings = async (uid: string): Promise<UserInterviewSettings> => {
-  const user = await requireUserById(uid);
+export const interviewSettingsFromUser = (user: User): UserInterviewSettings => {
   const settings = normalizeInterviewSettings(user.preferences?.interview);
 
   if (!settings) {
@@ -235,10 +341,14 @@ export const getUserInterviewSettings = async (uid: string): Promise<UserIntervi
   return settings;
 };
 
-export const getUserNotificationPreferences = async (
-  uid: string
-): Promise<UserNotificationPreferences> => {
+export const getUserInterviewSettings = async (uid: string): Promise<UserInterviewSettings> => {
   const user = await requireUserById(uid);
+  return interviewSettingsFromUser(user);
+};
+
+export const notificationPreferencesFromUser = (
+  user: User
+): UserNotificationPreferences => {
   const prefs = user.preferences?.notifications;
 
   if (!prefs) {
@@ -251,20 +361,23 @@ export const getUserNotificationPreferences = async (
   };
 };
 
+export const getUserNotificationPreferences = async (
+  uid: string
+): Promise<UserNotificationPreferences> => {
+  const user = await requireUserById(uid);
+  return notificationPreferencesFromUser(user);
+};
+
 const defaultUserStats = (): UserStats => ({
   totalInterviews: 0,
   completedInterviews: 0,
   averageScore: 0,
   bestScore: 0,
+  interviewsCreatedThisMonth: 0,
+  interviewsMonthKey: toMonthKey(new Date()),
 });
 
 const roundScore = (value: number): number => Math.round(value * 100) / 100;
-
-const toMonthKey = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  return `${year}-${month}`;
-};
 
 const updateRollingAverage = (
   previousAverage: number,
@@ -407,6 +520,7 @@ const buildUpdatedAnalytics = (
 
 export const incrementTotalInterviews = async (uid: string): Promise<void> => {
   const ref = db.collection(COLLECTIONS.USERS).doc(uid);
+  const monthKey = toMonthKey(new Date());
 
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
@@ -414,11 +528,49 @@ export const incrementTotalInterviews = async (uid: string): Promise<void> => {
 
     const user = snap.data() as User;
     const stats = user.stats ?? defaultUserStats();
+    const monthlyUsed =
+      stats.interviewsMonthKey === monthKey ? (stats.interviewsCreatedThisMonth ?? 0) : 0;
 
     tx.update(ref, {
       stats: {
         ...stats,
         totalInterviews: (stats.totalInterviews ?? 0) + 1,
+        interviewsCreatedThisMonth: monthlyUsed + 1,
+        interviewsMonthKey: monthKey,
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+};
+
+/** Keeps monthly quota in sync when a non-deleted interview is soft-deleted. */
+export const decrementMonthlyInterviewCountIfNeeded = async (
+  uid: string,
+  interviewCreatedAt: Timestamp | undefined
+): Promise<void> => {
+  if (!interviewCreatedAt) return;
+
+  const createdDate = interviewCreatedAt.toDate();
+  const interviewMonthKey = toMonthKey(createdDate);
+  const currentMonthKey = toMonthKey(new Date());
+  if (interviewMonthKey !== currentMonthKey) return;
+
+  const ref = db.collection(COLLECTIONS.USERS).doc(uid);
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+
+    const user = snap.data() as User;
+    const stats = user.stats ?? defaultUserStats();
+    if (stats.interviewsMonthKey !== currentMonthKey) return;
+
+    const next = Math.max(0, (stats.interviewsCreatedThisMonth ?? 0) - 1);
+    tx.update(ref, {
+      stats: {
+        ...stats,
+        interviewsCreatedThisMonth: next,
+        interviewsMonthKey: currentMonthKey,
       },
       updatedAt: FieldValue.serverTimestamp(),
     });

@@ -2,8 +2,13 @@ import { Router } from "express";
 import verifyToken from "../../middleware/auth.middleware";
 import { asyncHandler } from "../../middleware/async.middleware";
 import { checkRequestValidation } from "../../middleware/request-validation.middleware";
+import { validate } from "../../middleware/validation.middleware";
 import * as paymentController from "./payment.controller";
-import { createOrderValidator, verifyPaymentValidator } from "./payment.validation";
+import {
+  createOrderValidator,
+  verifyPaymentValidator,
+  paymentHistoryQuerySchema,
+} from "./payment.validation";
 
 const router = Router();
 
@@ -23,7 +28,12 @@ router.post(
   asyncHandler(paymentController.verifyPayment)
 );
 
-router.get("/history", verifyToken, asyncHandler(paymentController.paymentHistory));
+router.get(
+  "/history",
+  verifyToken,
+  validate(paymentHistoryQuerySchema, "query"),
+  asyncHandler(paymentController.paymentHistory)
+);
 
 router.get("/subscription", verifyToken, asyncHandler(paymentController.subscription));
 

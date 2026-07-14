@@ -4,9 +4,20 @@ import { parseResume } from "../ai/resume-parser.service";
 import { parseJD } from "../ai/jd-parser.service";
 import { evaluateAnswersBatch } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
-import { getUserInterviewSettings, getUserNotificationPreferences, getUserSubscriptionPlan, assertUserCanCreateInterview, incrementTotalInterviews, updateStatsOnInterviewFinish } from "../auth/auth.repository";
+import {
+  requireUserById,
+  subscriptionPlanFromUser,
+  interviewSettingsFromUser,
+  notificationPreferencesFromUser,
+  assertUserCanCreateInterview,
+  incrementTotalInterviews,
+  updateStatsOnInterviewFinish,
+} from "../auth/auth.repository";
 import { createNotification } from "../notification/notification.repository";
-import { assertActiveSubscription } from "../subscription/subscription.service";
+import {
+  assertActiveSubscription,
+  assertActiveSubscriptionForUser,
+} from "../subscription/subscription.service";
 import { AppError } from "../../shared/utils";
 import { assertDifficultyAllowedForPlan } from "../../shared/entitlements";
 import { logger } from "../../shared/logger";
@@ -80,27 +91,30 @@ export const createInterview = async (
     mode: InterviewMode.PAYLOAD,
   });
 
-  const plan = await getUserSubscriptionPlan(userId);
+  const user = await requireUserById(userId);
+  const plan = subscriptionPlanFromUser(user);
   assertDifficultyAllowedForPlan(plan, input.difficultyLevel);
-  await assertUserCanCreateInterview(userId);
+  await assertUserCanCreateInterview(userId, user);
 
   const interview = await repo.createInterview(userId, input);
   await incrementTotalInterviews(userId);
 
-  const notificationPrefs = await getUserNotificationPreferences(userId);
+  const notificationPrefs = notificationPreferencesFromUser(user);
   if (notificationPrefs.interviewReminders) {
-  await createNotification({
-    userId,
-    interviewId: interview.id,
-    title: "Interview Created",
-    description: "Your live interview session is ready.",
-    type: "interview",
-    read: false,
-  });
+    await createNotification({
+      userId,
+      interviewId: interview.id,
+      title: "Interview Created",
+      description: "Your live interview session is ready.",
+      type: "interview",
+      read: false,
+    });
   }
 
-  logger.info(`[interview.service] live-mode interview created interviewId=${interview.id} (questions skipped)`);
-  return repo.requireOwnedInterview(interview.id, userId);
+  logger.info(
+    `[interview.service] live-mode interview created interviewId=${interview.id} (questions skipped)`
+  );
+  return interview;
 };
 
 export const createInterviewWithDocuments = async (
@@ -110,7 +124,7 @@ export const createInterviewWithDocuments = async (
   if (!files.resumeBuffer && !files.jdBuffer) {
     throw new AppError(
       400,
-      "Please upload at least one PDF using form-data field \"resume\" and/or \"jd\"."
+      'Please upload at least one PDF using form-data field "resume" and/or "jd".'
     );
   }
 
@@ -119,12 +133,11 @@ export const createInterviewWithDocuments = async (
     hasJD: Boolean(files.jdBuffer),
   });
 
-  const [plan, interviewSettings] = await Promise.all([
-    getUserSubscriptionPlan(userId),
-    getUserInterviewSettings(userId),
-  ]);
+  const user = await requireUserById(userId);
+  const plan = subscriptionPlanFromUser(user);
+  const interviewSettings = interviewSettingsFromUser(user);
   assertDifficultyAllowedForPlan(plan, interviewSettings.difficultyLevel);
-  await assertUserCanCreateInterview(userId);
+  await assertUserCanCreateInterview(userId, user);
 
   let interview: Interview | undefined;
 
@@ -134,27 +147,33 @@ export const createInterviewWithDocuments = async (
 
     const parsed = await parseInterviewDocuments(files);
 
-    interview = await repo.updateInterview(interview.id, {
-      documents: buildInterviewDocuments(parsed),
-    });
+    interview = await repo.updateInterview(
+      interview.id,
+      {
+        documents: buildInterviewDocuments(parsed),
+      },
+      interview
+    );
 
-    const notificationPrefs = await getUserNotificationPreferences(userId);
+    const notificationPrefs = notificationPreferencesFromUser(user);
     if (notificationPrefs.interviewReminders) {
-    await createNotification({
-      userId,
-      interviewId: interview.id,
-      title: "Interview Created",
-      description: "Your live interview session is ready.",
-      type: "interview",
-      read: false,
-    });
+      await createNotification({
+        userId,
+        interviewId: interview.id,
+        title: "Interview Created",
+        description: "Your live interview session is ready.",
+        type: "interview",
+        read: false,
+      });
     }
 
-    logger.info(`[interview.service] live-mode interview with documents interviewId=${interview.id} (questions skipped)`);
-    return repo.requireOwnedInterview(interview.id, userId);
+    logger.info(
+      `[interview.service] live-mode interview with documents interviewId=${interview.id} (questions skipped)`
+    );
+    return interview;
   } catch (error) {
     if (interview?.id) {
-      await repo.updateInterview(interview.id, { status: InterviewStatus.CANCELLED });
+      await repo.updateInterview(interview.id, { status: InterviewStatus.CANCELLED }, interview);
     }
     throw error;
   }
@@ -178,7 +197,7 @@ const EMPTY_ANSWER_EVALUATION: RawEvaluation = {
 const evaluateSubmittedAnswers = async (
   interview: Interview,
   input: SubmitAnswersInput
-): Promise<SubmitAnswersResult> => {
+): Promise<{ submission: SubmitAnswersResult; interview: Interview }> => {
   const questionById = new Map(interview.questions.map((q) => [q.id, q]));
 
   for (const item of input.answers) {
@@ -251,8 +270,7 @@ const evaluateSubmittedAnswers = async (
 
   const updatedInterview = await repo.applyAnswerEvaluations(
     interview.id,
-    answerUpdates,
-    totalScore
+    answerUpdates
   );
 
   const results: SubmitAnswersResult["results"] = answerUpdates.map((update) => ({
@@ -264,9 +282,12 @@ const evaluateSubmittedAnswers = async (
   }));
 
   return {
-    results,
-    totalScore: updatedInterview.totalScore ?? totalScore,
-    answeredCount: countAnsweredQuestions(updatedInterview.questions),
+    submission: {
+      results,
+      totalScore,
+      answeredCount: countAnsweredQuestions(updatedInterview.questions),
+    },
+    interview: updatedInterview,
   };
 };
 
@@ -292,9 +313,10 @@ export const finishInterview = async (
   userId: string,
   interviewId: string
 ): Promise<FinishInterviewResult> => {
-  await assertActiveSubscription(userId);
+  const user = await requireUserById(userId);
+  assertActiveSubscriptionForUser(user);
 
-  const interview = await repo.requireOwnedInterview(interviewId, userId);
+  let interview = await repo.requireOwnedInterview(interviewId, userId);
 
   if (interview.status === InterviewStatus.COMPLETED) {
     throw new AppError(400, "This interview is already completed.");
@@ -314,41 +336,47 @@ export const finishInterview = async (
     (q) => (q.answer ?? "").trim().length > 0 && q.score === undefined
   );
 
-  const submission = hasUnevaluatedAnswers
-  ? await evaluateSubmittedAnswers(interview, answersInput)
-    : {
-        results: interview.questions
-          .filter((q) => q.score !== undefined)
-          .map((q) => ({
-            questionId: q.id,
-            answer: q.answer ?? "",
-            score: q.score!,
-            feedback: q.feedback ?? "",
-            answeredAt: q.answeredAt ?? Timestamp.now(),
-          })),
-          totalScore: calculateInterviewTotalScore(interview.questions),
-          answeredCount: countAnsweredQuestions(interview.questions),
-        };
+  let submission: SubmitAnswersResult;
 
-  const claim = await repo.claimReportGeneration(interviewId);
-  if (claim !== "proceed") {
-    const updatedInterview = await repo.requireOwnedInterview(interviewId, userId);
-    return {
-      ...submission,
-      report: claim,
+  if (hasUnevaluatedAnswers) {
+    const evaluated = await evaluateSubmittedAnswers(interview, answersInput);
+    submission = evaluated.submission;
+    interview = evaluated.interview;
+  } else {
+    submission = {
+      results: interview.questions
+        .filter((q) => q.score !== undefined)
+        .map((q) => ({
+          questionId: q.id,
+          answer: q.answer ?? "",
+          score: q.score!,
+          feedback: q.feedback ?? "",
+          answeredAt: q.answeredAt ?? Timestamp.now(),
+        })),
+      totalScore: calculateInterviewTotalScore(interview.questions),
+      answeredCount: countAnsweredQuestions(interview.questions),
     };
   }
+
+  const claim = await repo.claimReportGeneration(interviewId);
+  if (claim.status === "existing") {
+    return {
+      ...submission,
+      report: claim.report,
+    };
+  }
+
+  interview = claim.interview;
 
   logger.info(`[interview.service] finishing interview interviewId=${interviewId}`);
 
   try {
-    const updatedInterview = await repo.requireOwnedInterview(interviewId, userId);
-    const totalScore = calculateInterviewTotalScore(updatedInterview.questions);
+    const totalScore = calculateInterviewTotalScore(interview.questions);
 
     const rawReport = await generateReport({
-      technology: getInterviewContextLabel(updatedInterview),
-      experienceLevel: getInterviewExperienceLevel(updatedInterview),
-      questions: updatedInterview.questions,
+      technology: getInterviewContextLabel(interview),
+      experienceLevel: getInterviewExperienceLevel(interview),
+      questions: interview.questions,
     });
 
     const report: InterviewReport = {
@@ -360,7 +388,7 @@ export const finishInterview = async (
       generatedAt: Timestamp.now(),
     };
 
-    await repo.completeInterview(interviewId, report, totalScore);
+    await repo.completeInterview(interviewId, report, interview);
 
     const analyticsScore =
       report.overallScore ??
@@ -368,12 +396,12 @@ export const finishInterview = async (
         ? Math.round((totalScore.score / totalScore.outOf) * 100)
         : 0);
     const targetTechnology =
-      updatedInterview.targetRole?.trim() ||
-      updatedInterview.specification?.trim() ||
-      updatedInterview.category?.trim() ||
+      interview.targetRole?.trim() ||
+      interview.specification?.trim() ||
+      interview.category?.trim() ||
       "General";
-    const domain = updatedInterview.domain?.trim() || "General";
-    const interviewType = updatedInterview.interviewType?.trim() || "technicalInterview";
+    const domain = interview.domain?.trim() || "General";
+    const interviewType = interview.interviewType?.trim() || "technicalInterview";
 
     await updateStatsOnInterviewFinish(userId, analyticsScore, {
       domain,
@@ -382,7 +410,7 @@ export const finishInterview = async (
       interviewDate: Timestamp.now(),
     });
 
-    const notificationPrefs = await getUserNotificationPreferences(userId);
+    const notificationPrefs = notificationPreferencesFromUser(user);
     if (notificationPrefs.feedbackReports) {
       await createNotification({
         userId,
@@ -429,4 +457,10 @@ export const listInterviews = async (
 export const getInterviewById = async (
   userId: string,
   interviewId: string
-): Promise<Interview> => repo.requireOwnedInterview(interviewId, userId);
+): Promise<Interview> => {
+  const interview = await repo.requireOwnedInterview(interviewId, userId);
+  return {
+    ...interview,
+    totalScore: calculateInterviewTotalScore(interview.questions ?? []),
+  };
+};

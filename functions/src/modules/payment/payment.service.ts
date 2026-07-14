@@ -277,13 +277,41 @@ export const verifyAndCapturePayment = async ({
   return { success: true };
 };
 
-export const getPaymentHistory = async (userId: string): Promise<PaymentRecord[]> => {
-  const snap = await getPaymentsCollection()
+export const getPaymentHistory = async (
+  userId: string,
+  options: { limit?: number; startAfterId?: string } = {}
+): Promise<{ items: PaymentRecord[]; hasMore: boolean; nextCursor?: string }> => {
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 50);
+
+  let query = getPaymentsCollection()
     .where("userId", "==", userId)
     .orderBy("createdAt", "desc")
-    .get();
+    .limit(limit + 1);
 
-  return snap.docs.map((doc) => doc.data() as PaymentRecord);
+  if (options.startAfterId) {
+    const cursorDoc = await getPaymentsCollection().doc(options.startAfterId).get();
+    if (!cursorDoc.exists) {
+      throw new AppError(400, "Invalid pagination cursor. Payment not found.");
+    }
+
+    const cursorPayment = cursorDoc.data() as PaymentRecord;
+    if (cursorPayment.userId !== userId) {
+      throw new AppError(400, "Invalid pagination cursor.");
+    }
+
+    query = query.startAfter(cursorDoc);
+  }
+
+  const snap = await query.get();
+  const hasMore = snap.docs.length > limit;
+  const pageDocs = hasMore ? snap.docs.slice(0, limit) : snap.docs;
+  const items = pageDocs.map((doc) => doc.data() as PaymentRecord);
+
+  return {
+    items,
+    hasMore,
+    nextCursor: hasMore && items.length > 0 ? items[items.length - 1].paymentId : undefined,
+  };
 };
 
 export const getSubscription = async (userId: string) => {
@@ -311,7 +339,7 @@ export const getSubscription = async (userId: string) => {
   let subscription = user.subscription as UserSubscription | undefined;
   const billingPlan = resolveBillingPlan(user);
   const monthlyLimit = PLAN_MONTHLY_INTERVIEW_LIMITS[billingPlan];
-  const interviewsUsedThisMonth = await countInterviewsCreatedThisMonth(userId);
+  const interviewsUsedThisMonth = await countInterviewsCreatedThisMonth(userId, user);
   const interviewsRemainingThisMonth =
     monthlyLimit === null ? null : Math.max(0, monthlyLimit - interviewsUsedThisMonth);
 

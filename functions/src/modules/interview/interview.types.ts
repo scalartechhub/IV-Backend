@@ -82,7 +82,9 @@ export interface Interview {
   difficultyLevel?: DifficultyLevel;
   interviewType?: InterviewType;
   status: InterviewStatus;
-  /** Earned points / maximum (each question worth 0–10). */
+  /**
+   * Derived from question scores for API responses only — not stored on the interview document.
+   */
   totalScore?: InterviewTotalScore;
   questionCount: number;
   durationMinutes?: number;
