@@ -26,3 +26,36 @@ export const getGenAI = (): GoogleGenAI => {
   }
   return _genai!;
 };
+
+export const geminiModel = {
+  async generateContent(prompt: string): Promise<{ response: { text: () => string } }> {
+    const result = await getGenAI().models.generateContent({
+      model: GEMINI_MODEL,
+      contents: prompt,
+      config: {
+        temperature: 0.7,
+        topP: 0.95,
+        topK: 40,
+        maxOutputTokens: 1024,
+      },
+    });
+
+    const text = result.text ?? "";
+    return { response: { text: () => text } };
+  },
+};
+
+export function parseGeminiJSON(text: string): any {
+  const cleanText = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  try {
+    return JSON.parse(cleanText);
+  } catch {
+    console.error("Failed to parse Gemini JSON:", cleanText);
+    throw new Error("Invalid JSON response from AI");
+  }
+}
