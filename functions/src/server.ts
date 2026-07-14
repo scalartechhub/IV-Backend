@@ -26,6 +26,7 @@ try {
 const server = app.listen(appConfig.port, () => {
   logger.info(`Server running on port ${appConfig.port}`);
   logger.info(`Environment: ${appConfig.nodeEnv}`);
+  logger.info(`Chatbot API available at ${isCloudRuntime() ? "/chat-bot" : "/api/chat-bot"}`);
   if (!isStorageConfigured()) {
     logger.warn("FIREBASE_STORAGE_BUCKET not set — PDF files will be parsed but not stored");
   }
