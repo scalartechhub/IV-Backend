@@ -76,12 +76,14 @@ export const sendMessage = async (
   input: SendMessageInput
 ) => {
   let conversationId = input.conversationId;
+  let isNewConversation = false;
 
   if (conversationId) {
     await requireOwnedConversation(conversationId, userId);
   } else {
     const ref = getConversations().doc();
     conversationId = ref.id;
+    isNewConversation = true;
     await ref.set({
       id: ref.id,
       userId,
@@ -91,7 +93,10 @@ export const sendMessage = async (
     });
   }
 
-  const history = await getRecentMessages(conversationId, HISTORY_LIMIT);
+  // New conversations have no history — skip an empty query read.
+  const history = isNewConversation
+    ? []
+    : await getRecentMessages(conversationId, HISTORY_LIMIT);
 
   // Convert DB messages to Groq/OpenAI format
   // FIX: Explicitly cast roles to satisfy TypeScript strict types

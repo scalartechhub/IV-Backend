@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from "uuid";
 import { db } from "../../config/firebase";
 import { COLLECTIONS, INTERVIEW_DOCUMENT_VERSION } from "../../shared/constants";
 import { AppError } from "../../shared/utils";
+import { decrementMonthlyInterviewCountIfNeeded } from "../auth/auth.repository";
+import { calculateInterviewTotalScore } from "./interview.scoring";
 import type {
   CreateInterviewInput,
   Interview,
@@ -17,14 +19,18 @@ import type {
 import { InterviewStatus, toQuestionDifficulty } from "./interview.types";
 import { InterviewMode } from "./interview.types";
 
+export type ClaimReportResult =
+  | { status: "existing"; report: InterviewReport; interview: Interview }
+  | { status: "proceed"; interview: Interview };
+
 export const createInterview = async (
   userId: string,
   input: CreateInterviewInput
 ): Promise<Interview> => {
   const ref = db.collection(COLLECTIONS.INTERVIEWS).doc();
-  const now = FieldValue.serverTimestamp();
+  const now = Timestamp.now();
 
-  await ref.set({
+  const interview: Interview = {
     id: ref.id,
     userId,
     domain: input.domain,
@@ -43,9 +49,15 @@ export const createInterview = async (
     isDeleted: false,
     createdAt: now,
     updatedAt: now,
+  };
+
+  await ref.set({
+    ...interview,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
-  return (await ref.get()).data() as Interview;
+  return interview;
 };
 
 export const createInterviewWithDocuments = async (
@@ -63,9 +75,9 @@ export const createInterviewWithDocuments = async (
   }
 ): Promise<Interview> => {
   const ref = db.collection(COLLECTIONS.INTERVIEWS).doc();
-  const now = FieldValue.serverTimestamp();
+  const now = Timestamp.now();
 
-  await ref.set({
+  const interview: Interview = {
     id: ref.id,
     userId,
     mode: InterviewMode.DOCUMENTS,
@@ -84,19 +96,27 @@ export const createInterviewWithDocuments = async (
     isDeleted: false,
     createdAt: now,
     updatedAt: now,
+  };
+
+  await ref.set({
+    ...interview,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
-  return (await ref.get()).data() as Interview;
+  return interview;
 };
 
 export const findInterviewById = async (interviewId: string): Promise<Interview | null> => {
   const snap = await db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId).get();
   if (!snap.exists) return null;
 
-  const interview = snap.data() as Interview;
+  const interview = snap.data() as Interview & { totalScore?: InterviewTotalScore };
   if (interview.isDeleted) return null;
 
-  return interview;
+  // totalScore is not persisted; drop any legacy field and compute from questions when needed.
+  const { totalScore: _legacy, ...rest } = interview;
+  return rest;
 };
 
 export const toInterviewSummary = (interview: Interview): InterviewSummary => ({
@@ -111,7 +131,7 @@ export const toInterviewSummary = (interview: Interview): InterviewSummary => ({
   difficultyLevel: interview.difficultyLevel,
   interviewType: interview.interviewType,
   status: interview.status,
-  totalScore: interview.totalScore,
+  totalScore: calculateInterviewTotalScore(interview.questions ?? []),
   questionCount: interview.questionCount,
   durationMinutes: interview.durationMinutes,
   createdAt: interview.createdAt,
@@ -173,11 +193,19 @@ export const requireOwnedInterview = async (
 
 export const updateInterview = async (
   interviewId: string,
-  fields: Partial<Omit<Interview, "id" | "userId" | "createdAt">>
+  fields: Partial<Omit<Interview, "id" | "userId" | "createdAt">>,
+  current?: Interview
 ): Promise<Interview> => {
   const ref = db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId);
+  const updatedAt = Timestamp.now();
   await ref.update({ ...fields, updatedAt: FieldValue.serverTimestamp() });
-  return (await ref.get()).data() as Interview;
+
+  if (current) {
+    return { ...current, ...fields, updatedAt };
+  }
+
+  const snap = await ref.get();
+  return snap.data() as Interview;
 };
 
 export const setInterviewQuestions = async (
@@ -221,8 +249,7 @@ export const applyAnswerEvaluations = async (
     score: number;
     feedback: string;
     answeredAt: Timestamp;
-  }>,
-  totalScore: InterviewTotalScore
+  }>
 ): Promise<Interview> => {
   const ref = db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId);
 
@@ -248,19 +275,21 @@ export const applyAnswerEvaluations = async (
 
     tx.update(ref, {
       questions,
-      totalScore,
+      // totalScore is derived from questions — do not store on the interview doc.
+      totalScore: FieldValue.delete(),
       status: InterviewStatus.STARTED,
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    return { ...interview, questions, totalScore, status: InterviewStatus.STARTED };
+    const { totalScore: _removed, ...rest } = interview;
+    return { ...rest, questions, status: InterviewStatus.STARTED };
   });
 };
 
-/** Returns an existing report, or "proceed" when this caller should generate one. */
+/** Returns an existing report, or signals that this caller should generate one. */
 export const claimReportGeneration = async (
   interviewId: string
-): Promise<InterviewReport | "proceed"> => {
+): Promise<ClaimReportResult> => {
   const ref = db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId);
 
   return db.runTransaction(async (tx) => {
@@ -270,7 +299,7 @@ export const claimReportGeneration = async (
     const interview = snap.data() as Interview;
 
     if (interview.report?.generatedAt) {
-      return interview.report;
+      return { status: "existing" as const, report: interview.report, interview };
     }
 
     if (interview.reportGenerating) {
@@ -285,7 +314,10 @@ export const claimReportGeneration = async (
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    return "proceed";
+    return {
+      status: "proceed" as const,
+      interview: { ...interview, reportGenerating: true },
+    };
   });
 };
 
@@ -300,22 +332,41 @@ export const releaseReportGeneration = async (interviewId: string): Promise<void
 export const completeInterview = async (
   interviewId: string,
   report: InterviewReport,
-  totalScore: InterviewTotalScore
+  current?: Interview
 ): Promise<Interview> => {
   const ref = db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId);
+  const completedAt = Timestamp.now();
+  const updatedAt = completedAt;
 
   await ref.update({
     report,
-    totalScore,
+    // totalScore is derived from questions — do not store on the interview doc.
+    totalScore: FieldValue.delete(),
     status: InterviewStatus.COMPLETED,
     completedAt: FieldValue.serverTimestamp(),
     reportGenerating: FieldValue.delete(),
     updatedAt: FieldValue.serverTimestamp(),
   });
 
-  return (await ref.get()).data() as Interview;
+  if (current) {
+    const { reportGenerating: _ignored, totalScore: _removed, ...rest } = current;
+    return {
+      ...rest,
+      report,
+      status: InterviewStatus.COMPLETED,
+      completedAt,
+      updatedAt,
+    };
+  }
+
+  const snap = await ref.get();
+  const data = snap.data() as Interview;
+  const { totalScore: _removed, ...rest } = data;
+  return rest;
 };
 
 export const softDeleteInterview = async (interviewId: string): Promise<void> => {
-  await updateInterview(interviewId, { isDeleted: true });
+  const interview = await requireInterview(interviewId);
+  await updateInterview(interviewId, { isDeleted: true }, interview);
+  await decrementMonthlyInterviewCountIfNeeded(interview.userId, interview.createdAt);
 };
