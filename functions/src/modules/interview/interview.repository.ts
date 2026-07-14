@@ -9,6 +9,7 @@ import type {
   InterviewQuestion,
   InterviewReport,
   InterviewSummary,
+  InterviewTotalScore,
   RawQuestion,
   DifficultyLevel,
   InterviewType,
@@ -110,7 +111,7 @@ export const toInterviewSummary = (interview: Interview): InterviewSummary => ({
   difficultyLevel: interview.difficultyLevel,
   interviewType: interview.interviewType,
   status: interview.status,
-  overallScore: interview.overallScore,
+  totalScore: interview.totalScore,
   questionCount: interview.questionCount,
   durationMinutes: interview.durationMinutes,
   createdAt: interview.createdAt,
@@ -221,7 +222,7 @@ export const applyAnswerEvaluations = async (
     feedback: string;
     answeredAt: Timestamp;
   }>,
-  overallScore: number
+  totalScore: InterviewTotalScore
 ): Promise<Interview> => {
   const ref = db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId);
 
@@ -247,12 +248,12 @@ export const applyAnswerEvaluations = async (
 
     tx.update(ref, {
       questions,
-      overallScore,
+      totalScore,
       status: InterviewStatus.STARTED,
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    return { ...interview, questions, overallScore, status: InterviewStatus.STARTED };
+    return { ...interview, questions, totalScore, status: InterviewStatus.STARTED };
   });
 };
 
@@ -299,13 +300,13 @@ export const releaseReportGeneration = async (interviewId: string): Promise<void
 export const completeInterview = async (
   interviewId: string,
   report: InterviewReport,
-  overallScore: number
+  totalScore: InterviewTotalScore
 ): Promise<Interview> => {
   const ref = db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId);
 
   await ref.update({
     report,
-    overallScore,
+    totalScore,
     status: InterviewStatus.COMPLETED,
     completedAt: FieldValue.serverTimestamp(),
     reportGenerating: FieldValue.delete(),

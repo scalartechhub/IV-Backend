@@ -23,7 +23,7 @@ import type {
 import { InterviewMode, InterviewStatus } from "./interview.types";
 import { buildInterviewDocuments } from "./interview.document";
 import {
-  calculateInterviewOverallScore,
+  calculateInterviewTotalScore,
   countAnsweredQuestions,
   getRawEvaluationScore,
 } from "./interview.scoring";
@@ -247,12 +247,12 @@ const evaluateSubmittedAnswers = async (
     };
   });
 
-  const overallScore = calculateInterviewOverallScore(mergedQuestions);
+  const totalScore = calculateInterviewTotalScore(mergedQuestions);
 
   const updatedInterview = await repo.applyAnswerEvaluations(
     interview.id,
     answerUpdates,
-    overallScore
+    totalScore
   );
 
   const results: SubmitAnswersResult["results"] = answerUpdates.map((update) => ({
@@ -265,7 +265,7 @@ const evaluateSubmittedAnswers = async (
 
   return {
     results,
-    overallScore: updatedInterview.overallScore ?? overallScore,
+    totalScore: updatedInterview.totalScore ?? totalScore,
     answeredCount: countAnsweredQuestions(updatedInterview.questions),
   };
 };
@@ -326,7 +326,7 @@ export const finishInterview = async (
             feedback: q.feedback ?? "",
             answeredAt: q.answeredAt ?? Timestamp.now(),
           })),
-          overallScore: calculateInterviewOverallScore(interview.questions),
+          totalScore: calculateInterviewTotalScore(interview.questions),
           answeredCount: countAnsweredQuestions(interview.questions),
         };
 
@@ -343,7 +343,7 @@ export const finishInterview = async (
 
   try {
     const updatedInterview = await repo.requireOwnedInterview(interviewId, userId);
-    const overallScore = calculateInterviewOverallScore(updatedInterview.questions);
+    const totalScore = calculateInterviewTotalScore(updatedInterview.questions);
 
     const rawReport = await generateReport({
       technology: getInterviewContextLabel(updatedInterview),
@@ -360,8 +360,27 @@ export const finishInterview = async (
       generatedAt: Timestamp.now(),
     };
 
-    await repo.completeInterview(interviewId, report, overallScore);
-    await updateStatsOnInterviewFinish(userId, overallScore);
+    await repo.completeInterview(interviewId, report, totalScore);
+
+    const analyticsScore =
+      report.overallScore ??
+      (totalScore.outOf > 0
+        ? Math.round((totalScore.score / totalScore.outOf) * 100)
+        : 0);
+    const targetTechnology =
+      updatedInterview.targetRole?.trim() ||
+      updatedInterview.specification?.trim() ||
+      updatedInterview.category?.trim() ||
+      "General";
+    const domain = updatedInterview.domain?.trim() || "General";
+    const interviewType = updatedInterview.interviewType?.trim() || "technicalInterview";
+
+    await updateStatsOnInterviewFinish(userId, analyticsScore, {
+      domain,
+      interviewType,
+      targetTechnology,
+      interviewDate: Timestamp.now(),
+    });
 
     const notificationPrefs = await getUserNotificationPreferences(userId);
     if (notificationPrefs.feedbackReports) {
@@ -377,7 +396,7 @@ export const finishInterview = async (
     }
 
     logger.info(`[interview.service] interview completed interviewId=${interviewId}`, {
-      overallScore,
+      totalScore,
       reportScore: report.overallScore,
     });
 

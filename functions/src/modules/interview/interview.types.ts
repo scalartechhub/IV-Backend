@@ -46,6 +46,12 @@ export interface InterviewReport {
   generatedAt: Timestamp;
 }
 
+/** Sum of per-question scores (each 0–10) with the interview maximum. */
+export interface InterviewTotalScore {
+  score: number;
+  outOf: number;
+}
+
 export interface ResumeAnalysis {
   skills: string[];
   projects: string[];
@@ -76,7 +82,8 @@ export interface Interview {
   difficultyLevel?: DifficultyLevel;
   interviewType?: InterviewType;
   status: InterviewStatus;
-  overallScore?: number;
+  /** Earned points / maximum (each question worth 0–10). */
+  totalScore?: InterviewTotalScore;
   questionCount: number;
   durationMinutes?: number;
   questions: InterviewQuestion[];
@@ -128,7 +135,7 @@ export interface SubmitAnswerResult {
 
 export interface SubmitAnswersResult {
   results: SubmitAnswerResult[];
-  overallScore: number;
+  totalScore: InterviewTotalScore;
   answeredCount: number;
 }
 
@@ -148,7 +155,8 @@ export interface InterviewSummary {
   difficultyLevel?: DifficultyLevel;
   interviewType?: InterviewType;
   status: InterviewStatus;
-  overallScore?: number;
+  /** Earned points / maximum (each question worth 0–10). */
+  totalScore?: InterviewTotalScore;
   questionCount: number;
   durationMinutes?: number;
   createdAt: Timestamp;

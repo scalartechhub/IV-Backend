@@ -1,6 +1,6 @@
 import { DEFAULT_QUESTION_COUNT } from "../../shared/constants";
 import { clamp } from "../../shared/utils";
-import type { InterviewQuestion, RawEvaluation } from "./interview.types";
+import type { InterviewQuestion, InterviewTotalScore, RawEvaluation } from "./interview.types";
 
 export const MAX_SCORE_PER_QUESTION = 10;
 export const MAX_INTERVIEW_SCORE =
@@ -18,20 +18,28 @@ export const getRawEvaluationScore = (evaluation: RawEvaluation): number => {
 };
 
 /**
- * Overall interview score out of 100.
+ * Total interview score as earned points / maximum.
  * Each question contributes up to 10 points; unanswered questions score 0.
+ * Use report.overallScore for the normalized 0–100 performance score.
  */
-export const calculateInterviewOverallScore = (
+export const calculateInterviewTotalScore = (
   questions: InterviewQuestion[]
-): number => {
-  let total = 0;
+): InterviewTotalScore => {
+  let score = 0;
 
   for (const question of questions) {
-    total += question.score ?? 0;
+    score += question.score ?? 0;
   }
 
-  const maxScore = questions.length * MAX_SCORE_PER_QUESTION;
-  return clamp(total, 0, maxScore > 0 ? maxScore : MAX_INTERVIEW_SCORE);
+  const outOf =
+    questions.length > 0
+      ? questions.length * MAX_SCORE_PER_QUESTION
+      : MAX_INTERVIEW_SCORE;
+
+  return {
+    score: clamp(score, 0, outOf),
+    outOf,
+  };
 };
 
 export const countAnsweredQuestions = (questions: InterviewQuestion[]): number =>
