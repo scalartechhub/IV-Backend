@@ -1,6 +1,7 @@
 import { Timestamp } from "firebase-admin/firestore";
 import { db } from "../../config/firebase";
 import { PLAN_DEFAULTS, PLAN_IDS, SUBSCRIPTION_STATUS } from "../../constants/payment.constants";
+import type { User } from "../auth/auth.types";
 import type { UserSubscription } from "../payment/payment.model";
 import { AppError } from "../../shared/utils";
 
@@ -24,12 +25,9 @@ const buildFreeSubscription = (): UserSubscription => ({
   currentPaymentId: null,
 });
 
-/** Resolves the effective subscription, downgrading expired paid plans to free defaults. */
-export const resolveUserSubscription = async (uid: string): Promise<UserSubscription> => {
-  const snap = await getUsersCollection().doc(uid).get();
-  if (!snap.exists) return buildFreeSubscription();
-
-  const subscription = (snap.data() as { subscription?: UserSubscription }).subscription;
+/** Resolves effective subscription from an already-loaded user (no Firestore read). */
+export const resolveSubscriptionFromUser = (user: User | null | undefined): UserSubscription => {
+  const subscription = user?.subscription as UserSubscription | undefined;
   if (!subscription) return buildFreeSubscription();
 
   if (
@@ -50,8 +48,16 @@ export const resolveUserSubscription = async (uid: string): Promise<UserSubscrip
   return subscription;
 };
 
-export const assertActiveSubscription = async (uid: string): Promise<UserSubscription> => {
-  const subscription = await resolveUserSubscription(uid);
+/** Resolves the effective subscription, downgrading expired paid plans to free defaults. */
+export const resolveUserSubscription = async (uid: string): Promise<UserSubscription> => {
+  const snap = await getUsersCollection().doc(uid).get();
+  if (!snap.exists) return buildFreeSubscription();
+
+  return resolveSubscriptionFromUser(snap.data() as User);
+};
+
+export const assertActiveSubscriptionForUser = (user: User): UserSubscription => {
+  const subscription = resolveSubscriptionFromUser(user);
 
   if (subscription.status === SUBSCRIPTION_STATUS.EXPIRED) {
     throw new AppError(403, "Your subscription has expired. Please renew to continue.");
@@ -62,6 +68,21 @@ export const assertActiveSubscription = async (uid: string): Promise<UserSubscri
   }
 
   return subscription;
+};
+
+export const assertActiveSubscription = async (uid: string): Promise<UserSubscription> => {
+  const snap = await getUsersCollection().doc(uid).get();
+  if (!snap.exists) {
+    return assertActiveSubscriptionForUser({
+      uid,
+      displayName: "",
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      subscription: buildFreeSubscription(),
+    } as User);
+  }
+
+  return assertActiveSubscriptionForUser({ ...(snap.data() as User), uid });
 };
 
 export const assertCanCreateInterview = async (uid: string): Promise<void> => {

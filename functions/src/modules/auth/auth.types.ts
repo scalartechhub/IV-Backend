@@ -35,6 +35,10 @@ export interface UserStats {
   completedInterviews: number;
   averageScore: number;
   bestScore: number;
+  /** Non-deleted interviews created in interviewsMonthKey (YYYY-MM). */
+  interviewsCreatedThisMonth?: number;
+  /** Calendar month key for interviewsCreatedThisMonth, e.g. "2026-07". */
+  interviewsMonthKey?: string;
 }
 
 export interface RadarSkill {

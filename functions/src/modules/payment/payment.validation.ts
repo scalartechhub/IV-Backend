@@ -1,4 +1,5 @@
 import { body } from "express-validator";
+import { z } from "zod";
 
 export const createOrderValidator = [
   body("planId")
@@ -33,3 +34,10 @@ export const verifyPaymentValidator = [
     .isString()
     .withMessage("razorpay_signature must be a string"),
 ];
+
+export const paymentHistoryQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  startAfter: z.string().min(1).optional(),
+});
+
+export type PaymentHistoryQuery = z.infer<typeof paymentHistoryQuerySchema>;
