@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import * as paymentService from "./payment.service";
 import { sendSuccess } from "../../shared/responses";
-import type { PaymentHistoryQuery } from "./payment.validation";
 
 export const createOrder = async (req: Request, res: Response): Promise<void> => {
   const data = await paymentService.createOrder({
@@ -23,11 +22,7 @@ export const verifyPayment = async (req: Request, res: Response): Promise<void> 
 };
 
 export const paymentHistory = async (req: Request, res: Response): Promise<void> => {
-  const { limit, startAfter } = req.query as unknown as PaymentHistoryQuery;
-  const data = await paymentService.getPaymentHistory(req.user!.uid, {
-    limit,
-    startAfterId: startAfter,
-  });
+  const data = await paymentService.getPaymentHistory(req.user!.uid);
   sendSuccess(res, data, "Payment history fetched successfully");
 };
 

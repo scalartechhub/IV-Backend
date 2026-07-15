@@ -277,42 +277,13 @@ export const verifyAndCapturePayment = async ({
   return { success: true };
 };
 
-export const getPaymentHistory = async (
-  userId: string,
-  options: { limit?: number; startAfterId?: string } = {}
-): Promise<{ items: PaymentRecord[]; hasMore: boolean; nextCursor?: string }> => {
-  const limit = Math.min(Math.max(options.limit ?? 20, 1), 50);
-
-  let query = getPaymentsCollection()
+export const getPaymentHistory = async (userId: string): Promise<PaymentRecord[]> => {
+  const snap = await getPaymentsCollection()
     .where("userId", "==", userId)
     .orderBy("createdAt", "desc")
-    .limit(limit + 1);
-
-  if (options.startAfterId) {
-    const cursorDoc = await getPaymentsCollection().doc(options.startAfterId).get();
-    if (!cursorDoc.exists) {
-      throw new AppError(400, "Invalid pagination cursor. Payment not found.");
-    }
-
-    const cursorPayment = cursorDoc.data() as PaymentRecord;
-    if (cursorPayment.userId !== userId) {
-      throw new AppError(400, "Invalid pagination cursor.");
-    }
-
-    query = query.startAfter(cursorDoc);
-  }
-
-  const snap = await query.get();
-  const hasMore = snap.docs.length > limit;
-  const pageDocs = hasMore ? snap.docs.slice(0, limit) : snap.docs;
-  const items = pageDocs.map((doc) => doc.data() as PaymentRecord);
-
-  return {
-    items,
-    hasMore,
-    nextCursor: hasMore && items.length > 0 ? items[items.length - 1].paymentId : undefined,
-  };
-};
+    .get();
+  return snap.docs.map((doc) => doc.data() as PaymentRecord);
+}
 
 export const getSubscription = async (userId: string) => {
   const userSnap = await getUsersCollection().doc(userId).get();
