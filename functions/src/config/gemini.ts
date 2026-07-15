@@ -1,6 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { appConfig } from "./app.config";
 import { secretService } from "./secrets";
+import { logger } from "../shared/logger";
+import { AppError } from "../shared/utils";
 
 const SECONDARY_FALLBACK_MODEL = "gemini-2.0-flash";
 
@@ -28,7 +30,9 @@ export const getGenAI = (): GoogleGenAI => {
 };
 
 export const geminiModel = {
-  async generateContent(prompt: string): Promise<{ response: { text: () => string } }> {
+  async generateContent(
+    prompt: string,
+  ): Promise<{ response: { text: () => string } }> {
     const result = await getGenAI().models.generateContent({
       model: GEMINI_MODEL,
       contents: prompt,
@@ -42,6 +46,73 @@ export const geminiModel = {
 
     const text = result.text ?? "";
     return { response: { text: () => text } };
+  },
+
+  async generateJSON<T = any>(
+    prompt: string,
+    options: {
+      temperature?: number;
+      maxOutputTokens?: number;
+      useFallbackModels?: boolean;
+    } = {},
+  ): Promise<T> {
+    const {
+      temperature = 0.2,
+      maxOutputTokens = 2048,
+      useFallbackModels = true,
+    } = options;
+
+    const modelsToTry = useFallbackModels
+      ? GEMINI_FALLBACK_MODELS
+      : [GEMINI_MODEL];
+    let lastError: Error | null = null;
+
+    for (const model of modelsToTry) {
+      try {
+        const result = await getGenAI().models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            temperature,
+            topP: 0.95,
+            topK: 40,
+            maxOutputTokens,
+            responseMimeType: "application/json", 
+          },
+        });
+
+        const rawText = result.text ?? "";
+
+        if (!rawText || rawText.trim().length === 0) {
+          throw new Error("Empty response from Gemini");
+        }
+
+        try {
+          return JSON.parse(rawText.trim()) as T;
+        } catch {
+          const cleaned = rawText
+            .trim()
+            .replace(/^```(?:json)?\s*/i, "")
+            .replace(/\s*```$/i, "")
+            .trim();
+          return JSON.parse(cleaned) as T;
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        logger.warn(
+          `[geminiService] Model ${model} failed, trying next fallback`,
+          {
+            error: lastError.message,
+          },
+        );
+      }
+    }
+
+    logger.error("[geminiService] All models failed to generate JSON");
+    throw new AppError(
+      502,
+      `AI analysis failed: ${lastError?.message || "Unknown error"}`,
+    );
   },
 };
 

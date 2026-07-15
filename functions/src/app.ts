@@ -75,6 +75,7 @@ app.use(apiPath("/interviews/resume-analysis"), aiLimiter);
 app.use(apiPath("/interviews/:id/finish"), aiLimiter);
 app.use(apiPath("/chat"), aiLimiter);
 app.use(apiPath("/chat-bot"), aiLimiter);
+app.use(apiPath("/ats/analyze"), aiLimiter);
 app.use(apiPath("/payment/create-order"), paymentLimiter);
 app.use(apiPath("/payment/verify"), paymentLimiter);
 
