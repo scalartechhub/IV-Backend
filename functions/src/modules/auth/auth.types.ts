@@ -39,6 +39,10 @@ export interface UserStats {
   interviewsCreatedThisMonth?: number;
   /** Calendar month key for interviewsCreatedThisMonth, e.g. "2026-07". */
   interviewsMonthKey?: string;
+  /** Resume analyses uploaded in resumeAnalysesMonthKey (YYYY-MM). */
+  resumeAnalysesCreatedThisMonth?: number;
+  /** Calendar month key for resumeAnalysesCreatedThisMonth, e.g. "2026-07". */
+  resumeAnalysesMonthKey?: string;
 }
 
 export interface RadarSkill {
