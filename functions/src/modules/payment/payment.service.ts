@@ -75,7 +75,7 @@ const buildSubscriptionForPlan = (plan: Plan, paymentId: string): UserSubscripti
   const now = new Date();
   const fallback = PLAN_DEFAULTS[plan.id as keyof typeof PLAN_DEFAULTS] ?? {
     duration: plan.duration ?? 0,
-    interviewCredits: plan.interviewCredits ?? 3,
+    interviewCredits: plan.interviewCredits ?? 10,
   };
   const duration = plan.duration ?? fallback.duration;
   const interviewCredits = plan.interviewCredits ?? fallback.interviewCredits;

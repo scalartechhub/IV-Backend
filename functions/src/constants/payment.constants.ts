@@ -15,13 +15,13 @@ export type BillingPlanId = (typeof PLAN_IDS)[keyof typeof PLAN_IDS];
 
 /** Interviews allowed per calendar month. `null` = unlimited. */
 export const PLAN_MONTHLY_INTERVIEW_LIMITS: Record<BillingPlanId, number | null> = {
-  [PLAN_IDS.FREE]: 3,
+  [PLAN_IDS.FREE]: 10,
   [PLAN_IDS.PRO]: 20,
   [PLAN_IDS.ENTERPRISE]: null,
 };
 
 export const PLAN_DEFAULTS = {
-  [PLAN_IDS.FREE]: { duration: 0, interviewCredits: 3 },
+  [PLAN_IDS.FREE]: { duration: 0, interviewCredits: 10 },
   [PLAN_IDS.PRO]: { duration: 30, interviewCredits: 20 },
   [PLAN_IDS.ENTERPRISE]: { duration: 365, interviewCredits: -1 },
 } as const;

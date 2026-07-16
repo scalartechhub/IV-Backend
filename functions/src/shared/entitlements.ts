@@ -38,14 +38,14 @@ export const assertInterviewCreationAllowed = (
   if (billingPlan === PLAN_IDS.FREE) {
     throw new AppError(
       403,
-      "You have reached your monthly limit of 3 interviews. Please upgrade to the Pro plan to create more interviews."
+      `You have reached your monthly limit of ${limit} interviews. Please upgrade to the Pro plan to create more interviews.`
     );
   }
 
   if (billingPlan === PLAN_IDS.PRO) {
     throw new AppError(
       403,
-      "You have reached your monthly limit of 20 interviews. Please upgrade to the Enterprise plan to create more interviews."
+      `You have reached your monthly limit of ${limit} interviews. Please upgrade to the Enterprise plan to create more interviews.`
     );
   }
 

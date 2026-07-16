@@ -154,7 +154,7 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
 export const DEFAULT_USER_SUBSCRIPTION: UserSubscription = {
   plan: PLAN_IDS.FREE,
   status: SUBSCRIPTION_STATUS.ACTIVE,
-  interviewCredits: 3,
+  interviewCredits: 10,
 };
 
 export interface UserResponse {
