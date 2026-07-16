@@ -32,6 +32,10 @@ Scoring guide:
 - 8-9: Strong / Comprehensive
 - 10: Exceptional / Beyond expectations
 
+Strict rules for weak answers:
+- Empty, missing, off-topic, nonsensical answers, or "I don't know/remember": ALL dimensions MUST be 0.
+- Factually incorrect or largely wrong answers: technical and completeness MUST be 0-2; communication and confidence MUST stay in 0-3. Do not reward fluency when the answer is wrong.
+
 Provide constructive, actionable feedback (2-4 sentences) highlighting what was good and what could be improved.
 
 Return ONLY a valid JSON object. No markdown, no explanation:
@@ -85,6 +89,10 @@ Scoring guide:
 - 6-7: Good / Correct with minor gaps
 - 8-9: Strong / Comprehensive
 - 10: Exceptional / Beyond expectations
+
+Strict rules for weak answers:
+- Empty, missing, off-topic, nonsensical answers, or "I don't know/remember": ALL dimensions MUST be 0.
+- Factually incorrect or largely wrong answers: technical and completeness MUST be 0-2; communication and confidence MUST stay in 0-3. Do not reward fluency when the answer is wrong.
 
 Answers to evaluate:
 ---

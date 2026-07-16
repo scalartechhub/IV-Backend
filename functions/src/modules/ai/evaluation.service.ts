@@ -28,9 +28,9 @@ const normalizeEvaluation = (result: RawEvaluation): RawEvaluation => {
 
   return {
     technical: clamp(Math.round(toNumber(result.technical)), 0, 10),
-    communication: clamp(Math.round(toNumber(result.communication, 5)), 0, 10),
-    completeness: clamp(Math.round(toNumber(result.completeness, 5)), 0, 10),
-    confidence: clamp(Math.round(toNumber(result.confidence, 5)), 0, 10),
+    communication: clamp(Math.round(toNumber(result.communication)), 0, 10),
+    completeness: clamp(Math.round(toNumber(result.completeness)), 0, 10),
+    confidence: clamp(Math.round(toNumber(result.confidence)), 0, 10),
     feedback: result.feedback.trim() || "No feedback provided.",
   };
 };

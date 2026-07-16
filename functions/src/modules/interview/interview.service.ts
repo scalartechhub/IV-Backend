@@ -37,6 +37,7 @@ import {
   calculateInterviewTotalScore,
   countAnsweredQuestions,
   getRawEvaluationScore,
+  resolveOverallScore,
 } from "./interview.scoring";
 
 const getInterviewContextLabel = (interview: Interview): string => {
@@ -209,11 +210,16 @@ const evaluateSubmittedAnswers = async (
     }
   }
 
+  const normalizedAnswers = input.answers.map((item) => ({
+    ...item,
+    answer: item.answer.trim(),
+  }));
+
   logger.info(
-    `[interview.service] evaluating ${input.answers.length} answers interviewId=${interview.id}`
+    `[interview.service] evaluating ${normalizedAnswers.length} answers interviewId=${interview.id}`
   );
 
-  const answeredItems = input.answers.filter((item) => item.answer.length > 0);
+  const answeredItems = normalizedAnswers.filter((item) => item.answer.length > 0);
   const evaluationsByQuestionId = new Map<string, RawEvaluation>();
 
   if (answeredItems.length > 0) {
@@ -239,7 +245,7 @@ const evaluateSubmittedAnswers = async (
   }
 
   const answeredAt = Timestamp.now();
-  const answerUpdates = input.answers.map((item) => {
+  const answerUpdates = normalizedAnswers.map((item) => {
     const rawEvaluation =
       item.answer.length > 0
         ? evaluationsByQuestionId.get(item.questionId)!
@@ -380,7 +386,7 @@ export const finishInterview = async (
     });
 
     const report: InterviewReport = {
-      overallScore: rawReport.overallScore,
+      overallScore: resolveOverallScore(rawReport.overallScore, totalScore),
       strengths: rawReport.strengths,
       weaknesses: rawReport.weaknesses,
       recommendations: rawReport.recommendations,
@@ -390,11 +396,7 @@ export const finishInterview = async (
 
     await repo.completeInterview(interviewId, report, interview);
 
-    const analyticsScore =
-      report.overallScore ??
-      (totalScore.outOf > 0
-        ? Math.round((totalScore.score / totalScore.outOf) * 100)
-        : 0);
+    const analyticsScore = report.overallScore;
     const targetTechnology =
       interview.targetRole?.trim() ||
       interview.specification?.trim() ||
