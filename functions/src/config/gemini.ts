@@ -4,7 +4,7 @@ import { secretService } from "./secrets";
 import { logger } from "../shared/logger";
 import { AppError } from "../shared/utils";
 
-const SECONDARY_FALLBACK_MODEL = "gemini-2.0-flash";
+const SECONDARY_FALLBACK_MODEL = "gemini-1.5-flash";
 
 export const GEMINI_MODEL = appConfig.geminiModel;
 

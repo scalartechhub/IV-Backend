@@ -1,39 +1,78 @@
-export interface ValidationResult {
-  valid: boolean;
-  message: string;
-}
+import { z } from "zod";
 
-export const validateAtsInput = (
-  resumeText: string | undefined,
-  jobDescription: string | undefined,
-): ValidationResult => {
-  if (!resumeText || !jobDescription) {
-    return { valid: false, message: "Resume and Job Description are required" };
-  }
+export const analyzeResumeSchema = z
+  .object({
+    resumeText: z
+      .string()
+      .trim()
+      .min(100, "Resume text is too short (min 100 characters)")
+      .max(15_000, "Resume text is too long (max 15,000 characters)")
+      .optional(),
 
-  if (resumeText.trim().length < 100) {
-    return {
-      valid: false,
-      message: "Resume text is too short (min 100 characters)",
-    };
-  }
+    parsedResume: z
+      .object({
+        skills: z.array(z.string()).optional(),
+        experience: z
+          .array(
+            z.object({
+              title: z.string(),
+              company: z.string(),
+              duration: z.string(),
+              description: z.string(),
+            }),
+          )
+          .optional(),
+        projects: z
+          .array(
+            z.object({
+              name: z.string(),
+              description: z.string(),
+            }),
+          )
+          .optional(),
+        education: z
+          .array(
+            z.object({
+              degree: z.string(),
+              university: z.string(),
+              year: z.string(),
+            }),
+          )
+          .optional(),
+      })
+      .optional(),
 
-  if (jobDescription.trim().length < 100) {
-    return {
-      valid: false,
-      message: "Job Description is too short (min 100 characters)",
-    };
-  }
+    jobDescription: z
+      .string()
+      .trim()
+      .min(100, "Job description is too short (min 100 characters)")
+      .max(15_000, "Job description is too long (max 15,000 characters)")
+      .optional(),
 
-  if (resumeText.length > 15000 || jobDescription.length > 15000) {
-    return {
-      valid: false,
-      message: "Text too long (max 15,000 characters each)",
-    };
-  }
+    targetRole: z
+      .string()
+      .trim()
+      .min(1, "Target role cannot be empty")
+      .optional(),
+  })
+  .refine(
+    (data) => {
+      const hasResume = !!(data.resumeText || data.parsedResume);
+      const hasComparison = !!(data.jobDescription || data.targetRole);
 
-  return {
-    valid: true,
-    message: "",
-  };
-};
+      return hasResume && hasComparison;
+    },
+    {
+      message:
+        "You must provide either a jobDescription or a targetRole, and either resumeText or parsedResume.",
+      path: ["resumeText"],
+    },
+  );
+
+export const historyQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+});
+
+export const analysisIdParamSchema = z.object({
+  id: z.string().trim().min(1, "Analysis ID is required"),
+});

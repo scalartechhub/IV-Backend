@@ -1,8 +1,28 @@
-import { Request } from "express";
+import { RoleBenchmark } from "../../constants/roles-benchmarks";
+export type { RoleBenchmark };
+
+export interface ParsedResume {
+  skills?: string[];
+  experience: {
+    title: string;
+    company: string;
+    duration: string;
+    description: string;
+  }[];
+  projects?: {
+    name: string;
+    description: string;
+  }[];
+  education?: {
+    degree: string;
+    university: string;
+    year: string;
+  }[];
+}
 
 export interface AtsAnalysisResult {
   matchScore: number;
-  missingKeyword: number;
+  missingKeywords: string[];
   matchedKeywords: string[];
   strengths: string[];
   actionableTips: string[];
@@ -11,29 +31,17 @@ export interface AtsAnalysisResult {
 }
 
 export interface AtsAnalysisDoc {
+  id?: string;
   userId: string;
   resumeSnippet: string;
   jobTitle: string;
-  analysisResult: string;
-  createdAt: string;
+  analysisResult: AtsAnalysisResult;
+  createdAt: string | FirebaseFirestore.Timestamp;
 }
 
 export interface AnalyzeRequest {
-  resumeText: string;
-  jobDescription: string;
-}
-
-export interface AuthRequest extends Request {
-  userId?: string;
-}
-
-export interface ApiResponse<T = any> {
-  success: boolean;
-  data?: T;
-  message?: string;
-}
-
-export interface ValidationResult {
-  valid: boolean;
-  message?: string;
+  resumeText?: string;
+  parsedResume?: ParsedResume;
+  jobDescription?: string; 
+  targetRole?: string;   
 }

@@ -1,19 +1,26 @@
 import { logger } from "../../shared/logger";
 import { atsService } from "./atsService";
-import { AtsAnalysisDoc, AtsAnalysisResult } from "./ats.types";
+import { AtsAnalysisDoc, AtsAnalysisResult, ParsedResume } from "./ats.types";
 
-/**
- * Analyze a resume against a job description
- * Called directly from routes with business arguments (not Express req/res/next)
- */
 export const analyzeResume = async (
   userId: string,
-  resumeText: string,
-  jobDescription: string,
+  resumeText: string | undefined,
+  jobDescription: string | undefined,
+  parsedResume?: ParsedResume,
+  targetRole?: string,
 ): Promise<{ analysisId: string } & AtsAnalysisResult> => {
-  logger.debug("[atsController] Starting resume analysis", { userId });
+  logger.debug("[atsController] Starting resume analysis", {
+    userId,
+    targetRole,
+  });
 
-  const result = await atsService.analyzeResume(userId, resumeText, jobDescription);
+  const result = await atsService.analyzeResume(
+    userId,
+    resumeText,
+    jobDescription,
+    parsedResume,
+    targetRole,
+  );
 
   logger.info("[atsController] Resume analyzed successfully", {
     userId,
@@ -24,50 +31,29 @@ export const analyzeResume = async (
   return result;
 };
 
-/**
- * Get user's analysis history
- */
+export const getAvailableRoles = async (): Promise<
+  { id: string; title: string }[]
+> => {
+  return atsService.getAvailableRoles();
+};
+
 export const getHistory = async (
   userId: string,
   limit: number,
-): Promise<(AtsAnalysisDoc & { id: string })[]> => {
-  const history = await atsService.getHistory(userId, limit);
-
-  logger.debug("[atsController] History fetched", {
-    userId,
-    count: history.length,
-  });
-
-  return history;
+): Promise<AtsAnalysisDoc[]> => {
+  return atsService.getHistory(userId, limit);
 };
 
-/**
- * Get a specific analysis by ID
- */
 export const getAnalysisById = async (
   userId: string,
   analysisId: string,
-): Promise<AtsAnalysisDoc & { id: string }> => {
-  const analysis = await atsService.getAnalysisById(userId, analysisId);
-
-  logger.debug("[atsController] Analysis fetched", {
-    userId,
-    analysisId,
-  });
-
-  return analysis;
+): Promise<AtsAnalysisDoc> => {
+  return atsService.getAnalysisById(userId, analysisId);
 };
 
-/**
- * Delete a specific analysis
- */
 export const deleteAnalysis = async (
   userId: string,
   analysisId: string,
 ): Promise<boolean> => {
-  await atsService.deleteAnalysis(userId, analysisId);
-
-  logger.info("[atsController] Analysis deleted", { userId, analysisId });
-
-  return true;
+  return atsService.deleteAnalysis(userId, analysisId);
 };

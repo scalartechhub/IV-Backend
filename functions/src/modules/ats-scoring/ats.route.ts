@@ -1,35 +1,28 @@
 import { NextFunction, Request, Response, Router } from "express";
-import { z } from "zod";
 import verifyToken from "../../middleware/auth.middleware";
+import * as atsController from "./atsController";
+import { sendCreated, sendSuccess } from "../../shared/responses";
 import { validate } from "../../middleware/validation.middleware";
-import { sendSuccess } from "../../shared/responses";
-import * as atsController from "../../modules/ats-scoring/atsController";
+import {
+  analysisIdParamSchema,
+  analyzeResumeSchema,
+  historyQuerySchema,
+} from "./ats.validators";
 
 const router = Router();
-
-const analyzeResumeSchema = z.object({
-  resumeText: z
-    .string()
-    .trim()
-    .min(100, "Resume text is too short (min 100 characters)")
-    .max(15_000, "Resume text is too long (max 15,000 characters)"),
-  jobDescription: z
-    .string()
-    .trim()
-    .min(100, "Job description is too short (min 100 characters)")
-    .max(15_000, "Job description is too long (max 15,000 characters)"),
-});
-
-const historyQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(50).default(10),
-});
-
-const analysisIdParamSchema = z.object({
-  id: z.string().trim().min(1, "Analysis ID is required"),
-});
-
-// Apply auth to all routes in this file
 router.use(verifyToken);
+
+router.get(
+  "/roles",
+  async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const roles = await atsController.getAvailableRoles();
+      sendSuccess(res, roles);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 router.post(
   "/analyze",
@@ -40,8 +33,10 @@ router.post(
         req.user!.uid,
         req.body.resumeText,
         req.body.jobDescription,
+        req.body.parsedResume,
+        req.body.targetRole,
       );
-      sendSuccess(res, result, "Resume analyzed successfully");
+      sendCreated(res, result, "Resume analyzed successfully");
     } catch (error) {
       next(error);
     }
@@ -53,11 +48,9 @@ router.get(
   validate(historyQuerySchema, "query"),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const result = await atsController.getHistory(
-        req.user!.uid,
-        Number(req.query.limit),
-      );
-      sendSuccess(res, { analyses: result, total: result.length });
+      const limit = Number(req.query.limit) || 10;
+      const results = await atsController.getHistory(req.user!.uid, limit);
+      sendSuccess(res, results);
     } catch (error) {
       next(error);
     }
