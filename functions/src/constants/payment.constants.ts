@@ -13,10 +13,17 @@ export const PLAN_IDS = {
 
 export type BillingPlanId = (typeof PLAN_IDS)[keyof typeof PLAN_IDS];
 
-/** Interviews allowed per calendar month. `null` = unlimited. */
+/** Fallback interview quotas if `plans/{id}.monthlyInterviewLimit` is missing. `null` = unlimited. */
 export const PLAN_MONTHLY_INTERVIEW_LIMITS: Record<BillingPlanId, number | null> = {
   [PLAN_IDS.FREE]: 10,
   [PLAN_IDS.PRO]: 20,
+  [PLAN_IDS.ENTERPRISE]: null,
+};
+
+/** Fallback resume quotas if `plans/{id}.monthlyResumeAnalysisLimit` is missing. `null` = unlimited. */
+export const PLAN_MONTHLY_RESUME_ANALYSIS_LIMITS: Record<BillingPlanId, number | null> = {
+  [PLAN_IDS.FREE]: 2,
+  [PLAN_IDS.PRO]: 5,
   [PLAN_IDS.ENTERPRISE]: null,
 };
 

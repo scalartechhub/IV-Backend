@@ -2,6 +2,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import { db } from "../../config/firebase";
 import { PLAN_DEFAULTS, PLAN_IDS, SUBSCRIPTION_STATUS } from "../../constants/payment.constants";
 import type { User } from "../auth/auth.types";
+import { assertUserCanAnalyzeResume, requireUserById } from "../auth/auth.repository";
 import type { UserSubscription } from "../payment/payment.model";
 import { AppError } from "../../shared/utils";
 
@@ -124,4 +125,6 @@ export const recordInterviewUsage = async (uid: string): Promise<void> => {
 
 export const assertCanUploadResume = async (uid: string): Promise<void> => {
   await assertActiveSubscription(uid);
+  const user = await requireUserById(uid);
+  await assertUserCanAnalyzeResume(uid, user);
 };

@@ -6,6 +6,16 @@ export interface Plan {
   currency: string;
   duration: number;
   interviewCredits: number;
+  /**
+   * Interviews allowed per calendar month.
+   * `null` or negative = unlimited. Change this on the plan doc to update all users.
+   */
+  monthlyInterviewLimit?: number | null;
+  /**
+   * Resume analyses allowed per calendar month.
+   * `null` or negative = unlimited. Change this on the plan doc to update all users.
+   */
+  monthlyResumeAnalysisLimit?: number | null;
   /** When false, plan cannot be purchased. Defaults to active when omitted. */
   isActive?: boolean;
 }

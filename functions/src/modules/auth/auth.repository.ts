@@ -1,10 +1,11 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db } from "../../config/firebase";
 import { COLLECTIONS } from "../../shared/constants";
-import { assertInterviewCreationAllowed } from "../../shared/entitlements";
+import { assertInterviewCreationAllowed, assertResumeAnalysisAllowed } from "../../shared/entitlements";
 import { getStartOfCurrentMonth, resolveBillingPlan } from "../../shared/plan.utils";
 import { AppError } from "../../shared/utils";
 import type { Interview } from "../interview/interview.types";
+import { getPlanMonthlyLimits } from "../payment/plan.repository";
 import {
   DEFAULT_USER_PREFERENCES,
   DEFAULT_USER_SUBSCRIPTION,
@@ -90,6 +91,8 @@ export const upsertUser = async (
         bestScore: 0,
         interviewsCreatedThisMonth: 0,
         interviewsMonthKey: monthKey,
+        resumeAnalysesCreatedThisMonth: 0,
+        resumeAnalysesMonthKey: monthKey,
       },
       interview: defaultUserAnalytics(),
       resume: { analyses: [] },
@@ -253,8 +256,80 @@ export const assertUserCanCreateInterview = async (
   const resolved = user ?? (await requireUserById(uid));
   const billingPlan = resolveBillingPlan(resolved);
   const usedThisMonth = await countInterviewsCreatedThisMonth(uid, resolved);
+  const { monthlyInterviewLimit } = await getPlanMonthlyLimits(billingPlan);
 
-  assertInterviewCreationAllowed(billingPlan, usedThisMonth);
+  assertInterviewCreationAllowed(billingPlan, usedThisMonth, monthlyInterviewLimit);
+};
+
+const readMonthlyResumeCountFromUser = (
+  user: User | null | undefined,
+  monthKey: string
+): number | null => {
+  if (
+    user?.stats?.resumeAnalysesMonthKey === monthKey &&
+    typeof user.stats.resumeAnalysesCreatedThisMonth === "number"
+  ) {
+    return Math.max(0, user.stats.resumeAnalysesCreatedThisMonth);
+  }
+  return null;
+};
+
+const timestampToMillis = (value: unknown): number | null => {
+  if (!value) return null;
+  if (typeof (value as { toMillis?: () => number }).toMillis === "function") {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+  const parsed = new Date(value as string).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const countResumeAnalysesFromUserDoc = (user: User): number => {
+  const startMs = getStartOfCurrentMonth().getTime();
+  const analyses = user.resume?.analyses ?? [];
+  return analyses.filter((entry) => {
+    const uploadedMs = timestampToMillis(entry.uploadedAt);
+    return uploadedMs !== null && uploadedMs >= startMs;
+  }).length;
+};
+
+/**
+ * Monthly resume analysis usage for entitlements / subscription UI.
+ * Prefers the user-doc counter; backfills by counting analyses on the user doc.
+ */
+export const countResumeAnalysesThisMonth = async (
+  uid: string,
+  user?: User | null
+): Promise<number> => {
+  const monthKey = toMonthKey(new Date());
+  const fromProvided = readMonthlyResumeCountFromUser(user, monthKey);
+  if (fromProvided !== null) return fromProvided;
+
+  const resolved = user ?? (await findUserById(uid));
+  const fromStored = readMonthlyResumeCountFromUser(resolved, monthKey);
+  if (fromStored !== null) return fromStored;
+
+  if (!resolved) return 0;
+
+  const count = countResumeAnalysesFromUserDoc(resolved);
+  await db.collection(COLLECTIONS.USERS).doc(uid).update({
+    "stats.resumeAnalysesCreatedThisMonth": count,
+    "stats.resumeAnalysesMonthKey": monthKey,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  return count;
+};
+
+export const assertUserCanAnalyzeResume = async (
+  uid: string,
+  user?: User
+): Promise<void> => {
+  const resolved = user ?? (await requireUserById(uid));
+  const billingPlan = resolveBillingPlan(resolved);
+  const usedThisMonth = await countResumeAnalysesThisMonth(uid, resolved);
+  const { monthlyResumeAnalysisLimit } = await getPlanMonthlyLimits(billingPlan);
+
+  assertResumeAnalysisAllowed(billingPlan, usedThisMonth, monthlyResumeAnalysisLimit);
 };
 
 export const getUserProfile = async (uid: string): Promise<User> => requireUserById(uid);
@@ -375,6 +450,8 @@ const defaultUserStats = (): UserStats => ({
   bestScore: 0,
   interviewsCreatedThisMonth: 0,
   interviewsMonthKey: toMonthKey(new Date()),
+  resumeAnalysesCreatedThisMonth: 0,
+  resumeAnalysesMonthKey: toMonthKey(new Date()),
 });
 
 const roundScore = (value: number): number => Math.round(value * 100) / 100;
@@ -628,6 +705,7 @@ export const appendUserResumeAnalysis = async (
   entry: Omit<UserResumeAnalysisEntry, "no">
 ): Promise<UserResumeAnalysisEntry> => {
   const ref = db.collection(COLLECTIONS.USERS).doc(uid);
+  const monthKey = toMonthKey(new Date());
 
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
@@ -641,10 +719,21 @@ export const appendUserResumeAnalysis = async (
       ...entry,
     };
 
+    const stats = user.stats ?? defaultUserStats();
+    const monthlyUsed =
+      stats.resumeAnalysesMonthKey === monthKey
+        ? (stats.resumeAnalysesCreatedThisMonth ?? 0)
+        : 0;
+
     tx.update(ref, {
       resume: {
         url: entry.url ?? user.resume?.url,
         analyses: [...analyses, nextEntry],
+      },
+      stats: {
+        ...stats,
+        resumeAnalysesCreatedThisMonth: monthlyUsed + 1,
+        resumeAnalysesMonthKey: monthKey,
       },
       updatedAt: FieldValue.serverTimestamp(),
     });
