@@ -37,6 +37,16 @@ export interface InterviewQuestion {
   answeredAt?: Timestamp;
 }
 
+export type InterviewConversationRole = "assistant" | "candidate";
+
+export interface InterviewConversationMessage {
+  id: string;
+  role: InterviewConversationRole;
+  questionId: string;
+  message: string;
+  createdAt: Timestamp;
+}
+
 export interface InterviewReport {
   overallScore: number;
   strengths: string[];
@@ -89,6 +99,15 @@ export interface Interview {
   questionCount: number;
   durationMinutes?: number;
   questions: InterviewQuestion[];
+  conversation?: InterviewConversationMessage[];
+  currentQuestionIndex?: number;
+  lastSpeaker?: InterviewConversationRole;
+  currentTopic?: string;
+  currentDifficulty?: QuestionDifficulty;
+  currentQuestionId?: string;
+  startedAt?: Timestamp;
+  remainingSeconds?: number;
+  questionStartTime?: Timestamp;
   report?: InterviewReport;
   documents?: InterviewDocuments;
   reportGenerating?: boolean;
@@ -97,6 +116,25 @@ export interface Interview {
   updatedAt: Timestamp;
   version: number;
   isDeleted: boolean;
+}
+
+export interface InterviewResumeState {
+  status: InterviewStatus;
+  conversation: InterviewConversationMessage[];
+  currentQuestionIndex: number;
+  lastSpeaker?: InterviewConversationRole;
+  currentTopic?: string;
+  currentDifficulty?: QuestionDifficulty;
+  currentQuestionId?: string;
+  startedAt?: Timestamp;
+  remainingSeconds: number;
+  questionStartTime?: Timestamp;
+}
+
+export interface LiveTurnCommitResult {
+  interview: Interview;
+  message: InterviewConversationMessage;
+  created: boolean;
 }
 
 // ─── Input / Output DTOs ──────────────────────────────────────────────────────

@@ -2,16 +2,36 @@ import { Modality, type LiveServerMessage, type Session } from "@google/genai";
 import { getGenAI } from "../../config/gemini";
 import { appConfig } from "../../config/app.config";
 import { logger } from "../../shared/logger";
-import { buildLiveInterviewSystemInstruction } from "./live-interview.prompt";
+import {
+  buildLiveInterviewSystemInstruction,
+  buildResumeKickoffText,
+} from "./live-interview.prompt";
 import type { Interview } from "../interview/interview.types";
-import type { BrowserWebSocket, LiveTranscriptEntry } from "./live-interview.types";
+import type {
+  BrowserWebSocket,
+  LiveResumeMode,
+  LiveTranscriptEntry,
+  PersistedTurnPayload,
+} from "./live-interview.types";
 
 export interface GeminiLiveBridgeOptions {
   interview: Interview;
   clientSocket: BrowserWebSocket;
+  resumeMode?: LiveResumeMode;
   onTranscript: (entry: LiveTranscriptEntry) => void;
   onSessionEnd: () => void;
   onSessionReady?: (session: Session) => void;
+  /**
+   * Persist a finalized candidate answer. Called only after complete text is available.
+   * Return null when skipped (e.g. already persisted via text path).
+   */
+  onFinalizedCandidateAnswer?: (text: string) => Promise<PersistedTurnPayload | null>;
+  /** Persist a finalized AI question. Called only after streaming completes. */
+  onFinalizedAiQuestion?: (text: string) => Promise<PersistedTurnPayload | null>;
+  /** When true, skip voice/STT candidate persistence for the current turn (text already saved). */
+  shouldSkipCandidatePersist?: () => boolean;
+  /** Clear the skip flag after a turn completes. */
+  clearSkipCandidatePersist?: () => void;
 }
 
 export interface GeminiLiveBridge {
@@ -51,16 +71,84 @@ const appendTranscript = (
   onTranscript(entry);
 };
 
+const emitPersistedCandidate = (
+  socket: BrowserWebSocket,
+  payload: PersistedTurnPayload
+): void => {
+  if (!payload.created) return;
+  const body = {
+    id: payload.message.id,
+    questionId: payload.message.questionId,
+    text: payload.message.message,
+    message: payload.message.message,
+    conversation: payload.conversation,
+    lastSpeaker: payload.lastSpeaker,
+    currentQuestionId: payload.currentQuestionId,
+    currentQuestionIndex: payload.currentQuestionIndex,
+    remainingSeconds: payload.remainingSeconds,
+    currentTopic: payload.currentTopic,
+    currentDifficulty: payload.currentDifficulty,
+    questionStartTime: payload.questionStartTime,
+  };
+  sendJson(socket, { type: "userAnswerFinal", ...body });
+  sendJson(socket, { type: "candidate_answer_saved", ...body });
+  sendJson(socket, {
+    type: "conversation_updated",
+    conversation: payload.conversation,
+    lastSpeaker: payload.lastSpeaker,
+  });
+};
+
+const emitPersistedAiQuestion = (
+  socket: BrowserWebSocket,
+  payload: PersistedTurnPayload
+): void => {
+  if (!payload.created) return;
+  const body = {
+    id: payload.message.id,
+    questionId: payload.message.questionId,
+    text: payload.message.message,
+    message: payload.message.message,
+    conversation: payload.conversation,
+    lastSpeaker: payload.lastSpeaker,
+    currentQuestionId: payload.currentQuestionId,
+    currentQuestionIndex: payload.currentQuestionIndex,
+    remainingSeconds: payload.remainingSeconds,
+    currentTopic: payload.currentTopic,
+    currentDifficulty: payload.currentDifficulty,
+    questionStartTime: payload.questionStartTime,
+  };
+  sendJson(socket, { type: "aiQuestion", ...body });
+  sendJson(socket, { type: "ai_question", ...body });
+  sendJson(socket, {
+    type: "conversation_updated",
+    conversation: payload.conversation,
+    lastSpeaker: payload.lastSpeaker,
+  });
+};
+
 export const createGeminiLiveBridge = async (
   options: GeminiLiveBridgeOptions
 ): Promise<GeminiLiveBridge> => {
-  const { interview, clientSocket, onTranscript, onSessionEnd, onSessionReady } = options;
+  const {
+    interview,
+    clientSocket,
+    resumeMode = "fresh",
+    onTranscript,
+    onSessionEnd,
+    onSessionReady,
+    onFinalizedCandidateAnswer,
+    onFinalizedAiQuestion,
+    shouldSkipCandidatePersist,
+    clearSkipCandidatePersist,
+  } = options;
   const transcript: LiveTranscriptEntry[] = [];
 
   let userTranscriptBuffer = "";
   let aiTranscriptBuffer = "";
   let geminiSession: Session | null = null;
   let closed = false;
+  let turnPersistQueue: Promise<void> = Promise.resolve();
 
   /** After audioComplete, hold AI audio/text until user STT is visible on the client. */
   let awaitingUserTranscript = false;
@@ -96,14 +184,18 @@ export const createGeminiLiveBridge = async (
     const userText = sanitizeUserTranscript(userTranscriptBuffer);
     if (!userText) return;
 
+    // Live captions only — do not persist partials.
     sendJson(clientSocket, {
       type: finalize ? "userAnswerFinal" : "userAnswerPartial",
       text: userText,
     });
+    // Compatibility alias expected by some clients.
+    if (!finalize) {
+      sendJson(clientSocket, { type: "userTranscriptLive", text: userText });
+    }
 
     if (!userTranscriptVisible) {
       userTranscriptVisible = true;
-      // User bubble is on screen — now safe to let AI audio/text through.
       releaseAiHold();
     }
   };
@@ -122,7 +214,6 @@ export const createGeminiLiveBridge = async (
       if (sanitizeUserTranscript(userTranscriptBuffer)) {
         markUserTranscriptVisible(true);
       } else {
-        // No usable STT available — don't block the interview forever.
         userTranscriptVisible = true;
         releaseAiHold();
       }
@@ -145,6 +236,15 @@ export const createGeminiLiveBridge = async (
     onSessionEnd();
   };
 
+  const enqueuePersist = (task: () => Promise<void>): Promise<void> => {
+    turnPersistQueue = turnPersistQueue.then(task).catch((error) => {
+      logger.error(`[live-interview] persist task failed interviewId=${interview.id}`, error);
+      const message = error instanceof Error ? error.message : "Failed to persist interview turn";
+      sendJson(clientSocket, { type: "error", message });
+    });
+    return turnPersistQueue;
+  };
+
   const handleGeminiMessage = (message: LiveServerMessage): void => {
     const serverContent = message.serverContent;
     if (!serverContent) return;
@@ -160,7 +260,6 @@ export const createGeminiLiveBridge = async (
 
     if (serverContent.inputTranscription?.text) {
       userTranscriptBuffer += serverContent.inputTranscription.text;
-      // Push STT to the client immediately and release any held AI output.
       markUserTranscriptVisible(false);
     }
 
@@ -188,16 +287,13 @@ export const createGeminiLiveBridge = async (
       const aiText = aiTranscriptBuffer.trim();
       const userText = sanitizeUserTranscript(userTranscriptBuffer);
 
-      // Always commit user transcript before AI question / turnComplete.
       if (userText) {
         appendTranscript(transcript, "user", userText, onTranscript);
-        sendJson(clientSocket, { type: "userAnswerFinal", text: userText });
         if (!userTranscriptVisible) {
           userTranscriptVisible = true;
           releaseAiHold();
         }
       } else if (awaitingUserTranscript && !userTranscriptVisible) {
-        // Audio turn completed with no usable STT — release so the interview can continue.
         userTranscriptVisible = true;
         releaseAiHold();
       }
@@ -209,15 +305,43 @@ export const createGeminiLiveBridge = async (
 
       if (aiText) {
         appendTranscript(transcript, "ai", aiText, onTranscript);
-        sendJson(clientSocket, { type: "aiQuestion", text: aiText });
         aiTranscriptBuffer = "";
       }
 
-      sendJson(clientSocket, { type: "turnComplete" });
+      void enqueuePersist(async () => {
+        const skipCandidate = shouldSkipCandidatePersist?.() === true;
+
+        if (userText && !skipCandidate && onFinalizedCandidateAnswer) {
+          const saved = await onFinalizedCandidateAnswer(userText);
+          if (saved) {
+            emitPersistedCandidate(clientSocket, saved);
+          } else {
+            // Still notify client of finalized STT text without claiming a new write.
+            sendJson(clientSocket, { type: "userAnswerFinal", text: userText });
+          }
+        } else if (userText && skipCandidate) {
+          sendJson(clientSocket, { type: "userAnswerFinal", text: userText });
+        }
+
+        clearSkipCandidatePersist?.();
+
+        if (aiText && onFinalizedAiQuestion) {
+          const saved = await onFinalizedAiQuestion(aiText);
+          if (saved) {
+            emitPersistedAiQuestion(clientSocket, saved);
+          } else {
+            sendJson(clientSocket, { type: "aiQuestion", text: aiText });
+          }
+        } else if (aiText) {
+          sendJson(clientSocket, { type: "aiQuestion", text: aiText });
+        }
+
+        sendJson(clientSocket, { type: "turnComplete" });
+      });
     }
   };
 
-  const systemInstruction = buildLiveInterviewSystemInstruction(interview);
+  const systemInstruction = buildLiveInterviewSystemInstruction(interview, resumeMode);
 
   geminiSession = await getGenAI().live.connect({
     model: appConfig.geminiLiveModel,
@@ -234,7 +358,9 @@ export const createGeminiLiveBridge = async (
     },
     callbacks: {
       onopen: () => {
-        logger.info(`[live-interview] Gemini session open interviewId=${interview.id}`);
+        logger.info(
+          `[live-interview] Gemini session open interviewId=${interview.id} resumeMode=${resumeMode}`
+        );
         if (geminiSession) {
           onSessionReady?.(geminiSession);
         }
@@ -260,21 +386,35 @@ export const createGeminiLiveBridge = async (
   });
 
   try {
-    await geminiSession.sendClientContent({
-      turns: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: "Hello, I am ready for my interview. Please introduce yourself, explain how this interview will work, and ask your first question.",
-            },
-          ],
-        },
-      ],
-      turnComplete: true,
-    });
+    if (resumeMode !== "fresh" && interview.conversation?.length) {
+      await geminiSession.sendClientContent({
+        turns: interview.conversation.map((message) => ({
+          role: message.role === "assistant" ? "model" : "user",
+          parts: [{ text: message.message }],
+        })),
+        // Restore context without asking Gemini to produce a turn.
+        turnComplete: false,
+      });
+    }
+
+    const lastAssistantQuestion = [...(interview.conversation ?? [])]
+      .reverse()
+      .find((entry) => entry.role === "assistant")?.message;
+
+    const kickoffText = buildResumeKickoffText(resumeMode, lastAssistantQuestion);
+    if (kickoffText) {
+      await geminiSession.sendClientContent({
+        turns: [
+          {
+            role: "user",
+            parts: [{ text: kickoffText }],
+          },
+        ],
+        turnComplete: true,
+      });
+    }
   } catch (error) {
-    logger.warn(`[live-interview] Kickoff message failed interviewId=${interview.id}`, error);
+    logger.warn(`[live-interview] Context/kickoff message failed interviewId=${interview.id}`, error);
   }
 
   return {
@@ -305,6 +445,5 @@ export const forwardTextToGemini = (session: Session, text: string): void => {
 };
 
 export const forwardAudioTurnComplete = (session: Session): void => {
-  // Marks end of recorded audio turn so Gemini can respond.
   session.sendRealtimeInput({ audioStreamEnd: true });
 };

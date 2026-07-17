@@ -8,16 +8,23 @@ import { calculateInterviewTotalScore } from "./interview.scoring";
 import type {
   CreateInterviewInput,
   Interview,
+  InterviewConversationMessage,
   InterviewQuestion,
   InterviewReport,
   InterviewSummary,
   InterviewTotalScore,
+  LiveTurnCommitResult,
   RawQuestion,
   DifficultyLevel,
   InterviewType,
 } from "./interview.types";
-import { InterviewStatus, toQuestionDifficulty } from "./interview.types";
+import { InterviewStatus, QuestionDifficulty, toQuestionDifficulty } from "./interview.types";
 import { InterviewMode } from "./interview.types";
+
+/** Soft ceiling to keep interviews/{id} under Firestore's 1 MiB document limit. */
+const MAX_CONVERSATION_MESSAGES = 120;
+const MAX_MESSAGE_CHARS = 8_000;
+const MAX_LIVE_DOCUMENT_BYTES = 850_000;
 
 export type ClaimReportResult =
   | { status: "existing"; report: InterviewReport; interview: Interview }
@@ -369,4 +376,361 @@ export const softDeleteInterview = async (interviewId: string): Promise<void> =>
   const interview = await requireInterview(interviewId);
   await updateInterview(interviewId, { isDeleted: true }, interview);
   await decrementMonthlyInterviewCountIfNeeded(interview.userId, interview.createdAt);
+};
+
+const clampMessage = (text: string): string => {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  if (trimmed.length > MAX_MESSAGE_CHARS) {
+    throw new AppError(413, `Live interview messages cannot exceed ${MAX_MESSAGE_CHARS} characters.`);
+  }
+  return trimmed;
+};
+
+const timestampMs = (value?: Timestamp | null): number | null => {
+  if (!value) return null;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  return null;
+};
+
+export const computeRemainingSeconds = (
+  interview: Pick<Interview, "startedAt" | "durationMinutes" | "remainingSeconds">,
+  nowMs = Date.now()
+): number => {
+  const durationSeconds =
+    typeof interview.durationMinutes === "number" && interview.durationMinutes > 0
+      ? Math.floor(interview.durationMinutes * 60)
+      : 45 * 60;
+
+  const startedMs = timestampMs(interview.startedAt ?? null);
+  if (startedMs != null) {
+    const elapsed = Math.max(0, Math.floor((nowMs - startedMs) / 1000));
+    return Math.max(0, durationSeconds - elapsed);
+  }
+
+  if (typeof interview.remainingSeconds === "number" && interview.remainingSeconds >= 0) {
+    return Math.floor(interview.remainingSeconds);
+  }
+
+  return durationSeconds;
+};
+
+const resolveCurrentTopic = (interview: Interview): string =>
+  interview.specification?.trim() ||
+  interview.category?.trim() ||
+  interview.domain?.trim() ||
+  interview.targetRole?.trim() ||
+  "General";
+
+const resolveCurrentDifficulty = (interview: Interview): QuestionDifficulty =>
+  interview.difficultyLevel
+    ? toQuestionDifficulty(interview.difficultyLevel)
+    : QuestionDifficulty.MEDIUM;
+
+const findConversationMessage = (
+  conversation: InterviewConversationMessage[],
+  predicate: (message: InterviewConversationMessage) => boolean
+): InterviewConversationMessage | undefined => conversation.find(predicate);
+
+const assertLiveStateFitsDocument = (
+  conversation: InterviewConversationMessage[],
+  questions: InterviewQuestion[]
+): void => {
+  const estimatedBytes = Buffer.byteLength(JSON.stringify({ conversation, questions }), "utf8");
+  if (
+    conversation.length > MAX_CONVERSATION_MESSAGES ||
+    estimatedBytes > MAX_LIVE_DOCUMENT_BYTES
+  ) {
+    throw new AppError(
+      409,
+      "This interview has reached its transcript storage limit. Please finish the interview."
+    );
+  }
+};
+
+/**
+ * Marks draft → started once and sets timer fields. Idempotent if already started.
+ * Separate from conversational turn writes (allowed for start lifecycle).
+ */
+export const markInterviewStarted = async (interviewId: string): Promise<{
+  interview: Interview;
+  created: boolean;
+}> => {
+  const ref = db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId);
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new AppError(404, "Interview not found. Please check the interview ID.");
+
+    const interview = snap.data() as Interview;
+    if (interview.status === InterviewStatus.COMPLETED) {
+      throw new AppError(400, "This interview is already completed.");
+    }
+    if (interview.status === InterviewStatus.CANCELLED) {
+      throw new AppError(400, "This interview was cancelled and cannot be continued.");
+    }
+
+    if (interview.status === InterviewStatus.STARTED && interview.startedAt) {
+      return { interview, created: false };
+    }
+
+    const now = Timestamp.now();
+    const remainingSeconds = computeRemainingSeconds(
+      {
+        startedAt: now,
+        durationMinutes: interview.durationMinutes,
+      },
+      now.toMillis()
+    );
+
+    const patch: Partial<Interview> = {
+      status: InterviewStatus.STARTED,
+      startedAt: now,
+      remainingSeconds,
+      currentQuestionIndex: interview.currentQuestionIndex ?? -1,
+      conversation: interview.conversation ?? [],
+    };
+
+    tx.update(ref, {
+      ...patch,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return {
+      interview: { ...interview, ...patch, updatedAt: now },
+      created: true,
+    };
+  });
+};
+
+/**
+ * Exactly one Firestore write for a finalized AI question.
+ * Idempotent by message id / questionId / identical trailing assistant text.
+ */
+export const appendLiveAssistantQuestion = async (
+  interviewId: string,
+  questionText: string
+): Promise<LiveTurnCommitResult> => {
+  const messageText = clampMessage(questionText);
+  if (!messageText) {
+    throw new AppError(400, "AI question text is empty.");
+  }
+
+  const ref = db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId);
+  // Generated once per finalized turn, outside the transaction callback, so
+  // automatic Firestore transaction retries reuse the same stable ids.
+  const questionId = uuidv4();
+  const messageId = `m-${questionId}-a`;
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new AppError(404, "Interview not found. Please check the interview ID.");
+
+    const interview = snap.data() as Interview;
+    if (interview.status === InterviewStatus.COMPLETED) {
+      throw new AppError(400, "This interview is already completed.");
+    }
+    if (interview.status === InterviewStatus.CANCELLED) {
+      throw new AppError(400, "This interview was cancelled.");
+    }
+
+    const conversation = [...(interview.conversation ?? [])];
+    const last = conversation[conversation.length - 1];
+    if (last?.role === "assistant" && last.message === messageText) {
+      return { interview, message: last, created: false };
+    }
+
+    // Candidate must answer before another AI question is appended (except first question).
+    if (last?.role === "assistant") {
+      return { interview, message: last, created: false };
+    }
+
+    const now = Timestamp.now();
+    const existingById = findConversationMessage(conversation, (m) => m.id === messageId);
+    if (existingById) {
+      return { interview, message: existingById, created: false };
+    }
+
+    const difficulty = resolveCurrentDifficulty(interview);
+    const topic = resolveCurrentTopic(interview);
+    const message: InterviewConversationMessage = {
+      id: messageId,
+      role: "assistant",
+      questionId,
+      message: messageText,
+      createdAt: now,
+    };
+
+    const nextConversation = [...conversation, message];
+    const questions = [...(interview.questions ?? [])];
+    questions.push({
+      id: questionId,
+      question: messageText,
+      difficulty,
+    });
+    assertLiveStateFitsDocument(nextConversation, questions);
+
+    const currentQuestionIndex =
+      (interview.currentQuestionIndex ?? questions.length - 2) + 1;
+    const remainingSeconds = computeRemainingSeconds(
+      {
+        startedAt: interview.startedAt ?? now,
+        durationMinutes: interview.durationMinutes,
+      },
+      now.toMillis()
+    );
+
+    const patch: Partial<Interview> = {
+      status: InterviewStatus.STARTED,
+      startedAt: interview.startedAt ?? now,
+      conversation: nextConversation,
+      questions,
+      currentQuestionIndex,
+      currentQuestionId: questionId,
+      lastSpeaker: "assistant",
+      currentTopic: topic,
+      currentDifficulty: difficulty,
+      questionStartTime: now,
+      remainingSeconds,
+    };
+
+    tx.update(ref, {
+      ...patch,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return {
+      interview: { ...interview, ...patch, updatedAt: now },
+      message,
+      created: true,
+    };
+  });
+};
+
+/**
+ * Exactly one Firestore write for a finalized candidate answer.
+ * Idempotent by questionId candidate message / existing answer on the question.
+ */
+export const appendLiveCandidateAnswer = async (
+  interviewId: string,
+  answerText: string,
+  preferredQuestionId?: string
+): Promise<LiveTurnCommitResult> => {
+  const messageText = clampMessage(answerText);
+  if (!messageText) {
+    throw new AppError(400, "Candidate answer text is empty.");
+  }
+
+  const ref = db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId);
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new AppError(404, "Interview not found. Please check the interview ID.");
+
+    const interview = snap.data() as Interview;
+    if (interview.status === InterviewStatus.COMPLETED) {
+      throw new AppError(400, "This interview is already completed.");
+    }
+    if (interview.status === InterviewStatus.CANCELLED) {
+      throw new AppError(400, "This interview was cancelled.");
+    }
+
+    const conversation = [...(interview.conversation ?? [])];
+    const questions = [...(interview.questions ?? [])];
+
+    const questionId = interview.currentQuestionId;
+
+    if (!questionId) {
+      throw new AppError(400, "No active question to answer.");
+    }
+    if (preferredQuestionId?.trim() && preferredQuestionId.trim() !== questionId) {
+      throw new AppError(409, "Candidate answer does not match the active question.");
+    }
+
+    const existingCandidate = findConversationMessage(
+      conversation,
+      (m) => m.role === "candidate" && m.questionId === questionId
+    );
+    if (existingCandidate) {
+      return { interview, message: existingCandidate, created: false };
+    }
+
+    const questionIndex = questions.findIndex((q) => q.id === questionId);
+    if (questionIndex < 0) {
+      throw new AppError(400, "Active question was not found on the interview.");
+    }
+
+    const existingQuestion = questions[questionIndex];
+    if ((existingQuestion.answer ?? "").trim().length > 0) {
+      const synthetic: InterviewConversationMessage = {
+        id: `m-${questionId}-c`,
+        role: "candidate",
+        questionId,
+        message: existingQuestion.answer!.trim(),
+        createdAt: existingQuestion.answeredAt ?? Timestamp.now(),
+      };
+      return { interview, message: synthetic, created: false };
+    }
+
+    // Only accept an answer when the last finalized speaker is the assistant for this question.
+    const last = conversation[conversation.length - 1];
+    if (last && !(last.role === "assistant" && last.questionId === questionId)) {
+      if (last.role === "candidate" && last.questionId === questionId) {
+        return { interview, message: last, created: false };
+      }
+      throw new AppError(409, "Cannot save candidate answer: interview is not awaiting an answer.");
+    }
+
+    const now = Timestamp.now();
+    const message: InterviewConversationMessage = {
+      id: `m-${questionId}-c`,
+      role: "candidate",
+      questionId,
+      message: messageText,
+      createdAt: now,
+    };
+
+    const nextConversation = [...conversation, message];
+    questions[questionIndex] = {
+      ...existingQuestion,
+      answer: messageText,
+      answeredAt: now,
+    };
+    assertLiveStateFitsDocument(nextConversation, questions);
+
+    const remainingSeconds = computeRemainingSeconds(
+      {
+        startedAt: interview.startedAt ?? now,
+        durationMinutes: interview.durationMinutes,
+      },
+      now.toMillis()
+    );
+
+    const patch: Partial<Interview> = {
+      status: InterviewStatus.STARTED,
+      startedAt: interview.startedAt ?? now,
+      conversation: nextConversation,
+      questions,
+      currentQuestionId: questionId,
+      currentQuestionIndex:
+        typeof interview.currentQuestionIndex === "number"
+          ? interview.currentQuestionIndex
+          : Math.max(0, questionIndex),
+      lastSpeaker: "candidate",
+      remainingSeconds,
+      currentTopic: interview.currentTopic ?? resolveCurrentTopic(interview),
+      currentDifficulty: interview.currentDifficulty ?? resolveCurrentDifficulty(interview),
+    };
+
+    tx.update(ref, {
+      ...patch,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return {
+      interview: { ...interview, ...patch, updatedAt: now },
+      message,
+      created: true,
+    };
+  });
 };

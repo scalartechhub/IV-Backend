@@ -26,6 +26,7 @@ import type {
   Interview,
   InterviewListResult,
   InterviewReport,
+  InterviewResumeState,
   FinishInterviewResult,
   SubmitAnswersInput,
   SubmitAnswersResult,
@@ -187,6 +188,37 @@ const buildAnswersFromInterview = (interview: Interview): SubmitAnswersInput => 
   })),
 });
 
+const rebuildQuestionsFromConversation = (interview: Interview): Interview["questions"] => {
+  const conversation = interview.conversation ?? [];
+  if (!conversation.length) return [];
+
+  const byQuestionId = new Map<string, Interview["questions"][number]>();
+  const difficulty =
+    interview.currentDifficulty ??
+    (interview.difficultyLevel
+      ? (interview.difficultyLevel as Interview["questions"][number]["difficulty"])
+      : ("medium" as Interview["questions"][number]["difficulty"]));
+
+  for (const entry of conversation) {
+    const existing: Interview["questions"][number] = byQuestionId.get(entry.questionId) ?? {
+      id: entry.questionId,
+      question: "",
+      difficulty,
+    };
+
+    if (entry.role === "assistant") {
+      existing.question = entry.message;
+    } else {
+      existing.answer = entry.message;
+      existing.answeredAt = entry.createdAt;
+    }
+
+    byQuestionId.set(entry.questionId, existing);
+  }
+
+  return [...byQuestionId.values()].filter((q) => q.question.trim().length > 0);
+};
+
 const EMPTY_ANSWER_EVALUATION: RawEvaluation = {
   technical: 0,
   communication: 0,
@@ -315,6 +347,35 @@ export const prepareLiveSession = async (
   return interview;
 };
 
+export const resumeInterview = async (
+  userId: string,
+  interviewId: string
+): Promise<InterviewResumeState> => {
+  await assertActiveSubscription(userId);
+
+  const interview = await repo.requireOwnedInterview(interviewId, userId);
+
+  if (interview.status === InterviewStatus.CANCELLED) {
+    throw new AppError(400, "This interview was cancelled and cannot be continued.");
+  }
+
+  const remainingSeconds = repo.computeRemainingSeconds(interview);
+
+  return {
+    status: interview.status,
+    conversation: interview.conversation ?? [],
+    currentQuestionIndex:
+      typeof interview.currentQuestionIndex === "number" ? interview.currentQuestionIndex : -1,
+    lastSpeaker: interview.lastSpeaker,
+    currentTopic: interview.currentTopic,
+    currentDifficulty: interview.currentDifficulty,
+    currentQuestionId: interview.currentQuestionId,
+    startedAt: interview.startedAt,
+    remainingSeconds,
+    questionStartTime: interview.questionStartTime,
+  };
+};
+
 export const finishInterview = async (
   userId: string,
   interviewId: string
@@ -330,6 +391,21 @@ export const finishInterview = async (
   if (interview.status === InterviewStatus.CANCELLED) {
     throw new AppError(400, "This interview was cancelled and cannot be continued.");
   }
+
+  if (interview.questions.length === 0 && (interview.conversation?.length ?? 0) > 0) {
+    const rebuilt = rebuildQuestionsFromConversation(interview);
+    if (rebuilt.length > 0) {
+      interview = await repo.updateInterview(
+        interviewId,
+        {
+          questions: rebuilt,
+          questionCount: Math.max(interview.questionCount, rebuilt.length),
+        },
+        interview
+      );
+    }
+  }
+
   if (interview.questions.length === 0) {
     throw new AppError(
       400,

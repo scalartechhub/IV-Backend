@@ -50,6 +50,12 @@ router.post(
 );
 
 router.get(
+  "/:id/resume",
+  validate(interviewIdParamSchema, "params"),
+  asyncHandler(interviewController.resumeInterview)
+);
+
+router.get(
   "/:id/live-session",
   validate(interviewIdParamSchema, "params"),
   asyncHandler(interviewController.getLiveSession)
