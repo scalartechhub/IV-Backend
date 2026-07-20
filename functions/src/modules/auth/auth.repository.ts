@@ -21,7 +21,9 @@ import {
   type MonthlyPerformance,
   type RecentScore,
 } from "./auth.types";
-import { DIFFICULTY_LEVELS, INTERVIEW_TYPES, type SubscriptionPlan } from "../../shared/constants";
+import { DIFFICULTY_LEVELS, INTERVIEW_TYPES } from "../../shared/constants";
+// When re-enabling plan-based difficulty limits, also import SubscriptionPlan:
+// import { DIFFICULTY_LEVELS, INTERVIEW_TYPES, type SubscriptionPlan } from "../../shared/constants";
 import { PLAN_IDS } from "../../constants/payment.constants";
 
 const RECENT_SCORES_LIMIT = 10;
@@ -136,20 +138,20 @@ export const requireUserById = async (uid: string): Promise<User> => {
   return user;
 };
 
-export const subscriptionPlanFromUser = (user: User): SubscriptionPlan => {
-  const billingPlan = resolveBillingPlan(user);
-
-  if (billingPlan === PLAN_IDS.ENTERPRISE || billingPlan === PLAN_IDS.PRO) {
-    return "pro";
-  }
-
-  return "starter";
-};
-
-export const getUserSubscriptionPlan = async (uid: string): Promise<SubscriptionPlan> => {
-  const user = await requireUserById(uid);
-  return subscriptionPlanFromUser(user);
-};
+// export const subscriptionPlanFromUser = (user: User): SubscriptionPlan => {
+//   const billingPlan = resolveBillingPlan(user);
+//
+//   if (billingPlan === PLAN_IDS.ENTERPRISE || billingPlan === PLAN_IDS.PRO) {
+//     return "pro";
+//   }
+//
+//   return "starter";
+// };
+//
+// export const getUserSubscriptionPlan = async (uid: string): Promise<SubscriptionPlan> => {
+//   const user = await requireUserById(uid);
+//   return subscriptionPlanFromUser(user);
+// };
 
 const readMonthlyCountFromUser = (user: User | null | undefined, monthKey: string): number | null => {
   if (
