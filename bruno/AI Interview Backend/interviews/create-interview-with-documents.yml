@@ -48,8 +48,8 @@ docs: |-
   - Upload at least one file using multipart fields `resume` and/or `jd`.
   - Resume/JD are parsed and stored on the interview document.
   - Does **not** use user profile `technology` / `experienceLevel`.
-  - Questions are generated from resume/JD analysis plus `users.settings` for
-    `difficultyLevel`, `durationMinutes`, `interviewType`, and `questionCount`.
+  - Questions are generated live during the session from resume/JD analysis plus `users.preferences.interview` for
+    `difficultyLevel`, `durationMinutes`, and `interviewType`.
   - Returns an error if user settings are missing.
   - May take 30–60 seconds (Gemini AI).
 

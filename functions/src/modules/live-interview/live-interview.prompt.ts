@@ -68,6 +68,9 @@ export const formatConversationContext = (
     .join("\n\n");
 };
 
+const estimateQuestionTargetFromDuration = (durationMinutes: number): number =>
+  Math.max(5, Math.round(durationMinutes / 4));
+
 export const buildLiveInterviewSystemInstruction = (
   interview: Interview,
   resumeMode: LiveResumeMode = "fresh"
@@ -82,7 +85,7 @@ export const buildLiveInterviewSystemInstruction = (
     ? formatInterviewTypeLabel(interview.interviewType)
     : "technical interview";
   const durationMinutes = interview.durationMinutes ?? 45;
-  const questionTarget = interview.questionCount > 0 ? interview.questionCount : 12;
+  const questionTarget = estimateQuestionTargetFromDuration(durationMinutes);
   const resumeContext = truncate(formatResumeContext(interview), 6000);
   const conversationContext = truncate(
     formatConversationContext(interview.conversation),
