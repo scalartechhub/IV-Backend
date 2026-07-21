@@ -357,9 +357,7 @@ const isValidInterviewSettings = (
     typeof value.interviewType === "string" &&
     value.interviewType.trim().length > 0 &&
     typeof value.durationMinutes === "number" &&
-    value.durationMinutes > 0 &&
-    typeof value.questionCount === "number" &&
-    value.questionCount > 0
+    value.durationMinutes > 0
   );
 };
 
@@ -371,8 +369,7 @@ const normalizeInterviewSettings = (settings: unknown): UserInterviewSettings | 
     typeof value.durationMinutes === "number"
       ? value.durationMinutes
       : Number(value.durationMinutes);
-  const questionCount =
-    typeof value.questionCount === "number" ? value.questionCount : Number(value.questionCount);
+
   const rawDifficulty = value.difficultyLevel ?? value.difficulty;
 
   const normalized: Partial<UserInterviewSettings> = {
@@ -390,7 +387,6 @@ const normalizeInterviewSettings = (settings: unknown): UserInterviewSettings | 
         ? value.interviewType.trim()
         : undefined,
     durationMinutes: Number.isFinite(durationMinutes) ? durationMinutes : undefined,
-    questionCount: Number.isFinite(questionCount) ? questionCount : undefined,
     experienceLevel:
       typeof value.experienceLevel === "string" && value.experienceLevel.trim().length > 0
         ? value.experienceLevel.trim()
@@ -411,7 +407,7 @@ export const interviewSettingsFromUser = (user: User): UserInterviewSettings => 
   if (!settings) {
     throw new AppError(
       400,
-      "Interview settings are missing. Please set domain, category, specification, targetRole, difficulty, durationMinutes, interviewType, and questionCount in users.preferences.interview."
+      "Interview settings are missing. Please set domain, category, specification, targetRole, difficulty, durationMinutes, and interviewType in users.preferences.interview."
     );
   }
 
@@ -927,10 +923,6 @@ const buildInterviewPreferencesFromResumeAnalysis = (
       typeof existingPrefs.durationMinutes === "number" && existingPrefs.durationMinutes > 0
         ? existingPrefs.durationMinutes
         : 30,
-    questionCount:
-      typeof existingPrefs.questionCount === "number" && existingPrefs.questionCount > 0
-        ? existingPrefs.questionCount
-        : 10,
     experienceLevel: preferExistingText(existingPrefs.experienceLevel, inferredYears),
     aiPersonality: existingPrefs.aiPersonality,
     techStacks,

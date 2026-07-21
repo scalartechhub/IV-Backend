@@ -14,7 +14,6 @@ export interface UserInterviewSettings {
   difficultyLevel: DifficultyLevel;
   interviewType: string;
   durationMinutes: number;
-  questionCount: number;
   experienceLevel?: string;
   aiPersonality?: string;
   techStacks?: Array<{ label: string }>;

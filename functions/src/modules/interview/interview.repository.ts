@@ -49,7 +49,6 @@ export const createInterview = async (
     difficultyLevel: input.difficultyLevel,
     interviewType: input.interviewType,
     durationMinutes: input.durationMinutes,
-    questionCount: input.questionCount,
     status: InterviewStatus.DRAFT,
     questions: [],
     version: INTERVIEW_DOCUMENT_VERSION,
@@ -78,7 +77,6 @@ export const createInterviewWithDocuments = async (
     difficultyLevel: DifficultyLevel;
     interviewType: InterviewType;
     durationMinutes: number;
-    questionCount: number;
   }
 ): Promise<Interview> => {
   const ref = db.collection(COLLECTIONS.INTERVIEWS).doc();
@@ -96,7 +94,6 @@ export const createInterviewWithDocuments = async (
     difficultyLevel: settings.difficultyLevel,
     interviewType: settings.interviewType,
     durationMinutes: settings.durationMinutes,
-    questionCount: settings.questionCount,
     status: InterviewStatus.DRAFT,
     questions: [],
     version: INTERVIEW_DOCUMENT_VERSION,
@@ -139,7 +136,7 @@ export const toInterviewSummary = (interview: Interview): InterviewSummary => ({
   interviewType: interview.interviewType,
   status: interview.status,
   totalScore: calculateInterviewTotalScore(interview.questions ?? []),
-  questionCount: interview.questionCount,
+  questionCount: interview.questions?.length ?? interview.questionCount ?? 0,
   durationMinutes: interview.durationMinutes,
   createdAt: interview.createdAt,
   completedAt: interview.completedAt,
@@ -222,7 +219,6 @@ export const setInterviewQuestions = async (
   config?: {
     interviewType: InterviewType;
     durationMinutes: number;
-    questionCount: number;
   }
 ): Promise<InterviewQuestion[]> => {
   const difficulty = toQuestionDifficulty(difficultyLevel);
@@ -235,7 +231,6 @@ export const setInterviewQuestions = async (
   const ref = db.collection(COLLECTIONS.INTERVIEWS).doc(interviewId);
   await ref.update({
     questions,
-    questionCount: questions.length,
     difficultyLevel,
     ...(config && {
       interviewType: config.interviewType,

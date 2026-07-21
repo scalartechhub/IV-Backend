@@ -107,7 +107,8 @@ export interface Interview {
    * Derived from question scores for API responses only — not stored on the interview document.
    */
   totalScore?: InterviewTotalScore;
-  questionCount: number;
+  /** @deprecated Legacy configured count; prefer questions.length. */
+  questionCount?: number;
   durationMinutes?: number;
   questions: InterviewQuestion[];
   conversation?: InterviewConversationMessage[];
@@ -159,7 +160,6 @@ export interface CreateInterviewInput {
   difficultyLevel: DifficultyLevel;
   interviewType: InterviewType;
   durationMinutes: number;
-  questionCount: number;
 }
 
 export interface CreateInterviewDocumentsInput {
