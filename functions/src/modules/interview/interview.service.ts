@@ -6,7 +6,7 @@ import { evaluateAnswersBatch } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
 import {
   requireUserById,
-  subscriptionPlanFromUser,
+  // subscriptionPlanFromUser,
   interviewSettingsFromUser,
   notificationPreferencesFromUser,
   assertUserCanCreateInterview,
@@ -19,7 +19,7 @@ import {
   assertActiveSubscriptionForUser,
 } from "../subscription/subscription.service";
 import { AppError } from "../../shared/utils";
-import { assertDifficultyAllowedForPlan } from "../../shared/entitlements";
+// import { assertDifficultyAllowedForPlan } from "../../shared/entitlements";
 import { logger } from "../../shared/logger";
 import type {
   CreateInterviewInput,
@@ -94,8 +94,8 @@ export const createInterview = async (
   });
 
   const user = await requireUserById(userId);
-  const plan = subscriptionPlanFromUser(user);
-  assertDifficultyAllowedForPlan(plan, input.difficultyLevel);
+  // const plan = subscriptionPlanFromUser(user);
+  // assertDifficultyAllowedForPlan(plan, input.difficultyLevel);
   await assertUserCanCreateInterview(userId, user);
 
   const interview = await repo.createInterview(userId, input);
@@ -136,9 +136,9 @@ export const createInterviewWithDocuments = async (
   });
 
   const user = await requireUserById(userId);
-  const plan = subscriptionPlanFromUser(user);
   const interviewSettings = interviewSettingsFromUser(user);
-  assertDifficultyAllowedForPlan(plan, interviewSettings.difficultyLevel);
+  // const plan = subscriptionPlanFromUser(user);
+  // assertDifficultyAllowedForPlan(plan, interviewSettings.difficultyLevel);
   await assertUserCanCreateInterview(userId, user);
 
   let interview: Interview | undefined;

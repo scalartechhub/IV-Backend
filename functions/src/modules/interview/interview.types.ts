@@ -67,6 +67,17 @@ export interface ResumeAnalysis {
   projects: string[];
   experience: string[];
   education: string[];
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  location?: string;
+  yearsOfExperience?: string;
+  targetRole?: string;
+  domain?: string;
+  category?: string;
+  specification?: string;
+  interviewType?: InterviewType;
+  difficultyLevel?: DifficultyLevel;
 }
 
 export interface JDAnalysis {
