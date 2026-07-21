@@ -11,9 +11,17 @@ export const extractTextFromPDF = async (buffer: Buffer): Promise<string> => {
     const data = await extractPdfText(buffer);
 
     if (!data.text || data.text.length < 20) {
+      console.warn(
+        `[Resume] PDF has no readable text.\n` +
+          `  WHAT THIS MEANS: The uploaded PDF is empty, scanned as images only, or corrupted.\n` +
+          `  HOW TO FIX:\n` +
+          `  1. Upload a text-based PDF (not a scanned photo/image PDF).\n` +
+          `  2. Re-export the resume from Word/Google Docs as PDF.\n` +
+          `  3. Try a different PDF file.`
+      );
       throw new AppError(
         400,
-        "PDF appears to be empty or unreadable. Please upload a text-based PDF."
+        "Your resume PDF is empty or unreadable. Please upload a text-based PDF."
       );
     }
 
@@ -22,7 +30,18 @@ export const extractTextFromPDF = async (buffer: Buffer): Promise<string> => {
   } catch (error) {
     if (error instanceof AppError) throw error;
     logger.error("[resume-parser] PDF extraction failed", error);
-    throw new AppError(400, "Failed to read PDF. Ensure the file is a valid, text-based PDF.");
+    console.error(
+      `[Resume] Could not read the PDF file.\n` +
+        `  WHAT THIS MEANS: The file is corrupted or not a valid PDF.\n` +
+        `  HOW TO FIX:\n` +
+        `  1. Make sure the file extension is .pdf.\n` +
+        `  2. Re-download or re-export the resume and upload again.\n` +
+        `  3. Keep file size under 10 MB.`
+    );
+    throw new AppError(
+      400,
+      "Could not read your resume PDF. Please upload a valid, text-based PDF file."
+    );
   }
 };
 

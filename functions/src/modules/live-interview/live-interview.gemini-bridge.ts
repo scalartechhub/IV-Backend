@@ -447,3 +447,11 @@ export const forwardTextToGemini = (session: Session, text: string): void => {
 export const forwardAudioTurnComplete = (session: Session): void => {
   session.sendRealtimeInput({ audioStreamEnd: true });
 };
+
+/** Inject internal context (e.g. time updates) without triggering a model turn. */
+export const injectSystemContextToGemini = (session: Session, text: string): void => {
+  session.sendClientContent({
+    turns: [{ role: "user", parts: [{ text }] }],
+    turnComplete: false,
+  });
+};

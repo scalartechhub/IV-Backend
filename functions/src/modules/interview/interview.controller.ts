@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
 import * as interviewService from "./interview.service";
 import * as authService from "../auth/auth.service";
+import * as resumePdfService from "./resume-pdf.service";
 import { sendSuccess, sendCreated } from "../../shared/responses";
-import type { ListInterviewsQuery } from "./interview.validation";
+import type { ListInterviewsQuery, ResumePdfInput } from "./interview.validation";
 import { getLiveWsPath, broadcastInterviewCompleted } from "../live-interview/live-interview.ws";
 
 const param = (req: Request, key: string): string => String(req.params[key]);
@@ -47,6 +48,17 @@ export const resumeAnalysis = async (req: Request, res: Response): Promise<void>
     req.file!.buffer
   );
   sendSuccess(res, resumeAnalysisEntry, "Resume uploaded and analyzed successfully");
+};
+
+export const resumePdf = async (req: Request, res: Response): Promise<void> => {
+  const { html, fileName } = req.body as ResumePdfInput;
+  const pdfBuffer = await resumePdfService.generateResumePdf(html);
+
+  res.set({
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `attachment; filename="${fileName}.pdf"`,
+  });
+  res.send(pdfBuffer);
 };
 
 export const finishInterview = async (req: Request, res: Response): Promise<void> => {

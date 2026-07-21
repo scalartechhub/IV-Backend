@@ -32,6 +32,18 @@ export const safeJsonParse = <T>(text: string): T => {
   try {
     return JSON.parse(cleaned) as T;
   } catch {
-    throw new AppError(502, "AI returned invalid JSON. Please try again.");
+    console.error(
+      `[AI Response] Gemini returned text that is not valid JSON.\n` +
+        `  WHAT THIS MEANS: The AI reply could not be read as JSON.\n` +
+        `  HOW TO FIX:\n` +
+        `  1. Retry the request — this is usually a temporary AI formatting issue.\n` +
+        `  2. Check Gemini API key and quota in your .env file.\n` +
+        `  3. If it keeps failing, inspect the raw response in server logs.\n` +
+        `  Raw response preview: ${cleaned.slice(0, 300)}${cleaned.length > 300 ? "..." : ""}`
+    );
+    throw new AppError(
+      502,
+      "AI returned a response we could not read. Please try again."
+    );
   }
 };

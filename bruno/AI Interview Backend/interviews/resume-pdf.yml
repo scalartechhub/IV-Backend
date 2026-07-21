@@ -1,0 +1,41 @@
+info:
+  name: Resume PDF
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{baseUrl}}/interviews/resume-pdf"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "html": "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>body{font-family:Georgia,serif;margin:48px;color:#111}h1{font-size:28px;margin:0 0 8px}h2{font-size:14px;text-transform:uppercase;letter-spacing:.04em;margin:24px 0 8px;border-bottom:1px solid #ccc;padding-bottom:4px}p,li{font-size:13px;line-height:1.5}.meta{color:#555;margin:0 0 24px}</style></head><body><h1>John Doe</h1><p class=\"meta\">Software Engineer · john.doe@email.com · +1 555 0100</p><h2>Summary</h2><p>Full-stack engineer with 5 years building Node.js and React products. Strong in APIs, auth, and cloud deployments.</p><h2>Experience</h2><ul><li><strong>Senior Engineer</strong> — Acme Corp (2022–Present). Led interview platform backend; shipped PDF export and live sessions.</li><li><strong>Software Engineer</strong> — Beta Labs (2019–2022). Built REST APIs and CI pipelines.</li></ul><h2>Skills</h2><p>TypeScript, Node.js, Express, Firebase, React, PostgreSQL, Docker</p></body></html>",
+        "fileName": "john-doe-resume"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  variables:
+    - name: baseUrl
+      value: http://localhost:5000/api
+
+settings:
+  encodeUrl: true
+  timeout: 60000
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Generate a print-quality PDF from rendered resume HTML (Puppeteer).
+
+  - Requires Bearer token — run **Login** first.
+  - Body: `html` (full self-contained HTML document) and `fileName` (no extension).
+  - Success: raw PDF bytes (`Content-Type: application/pdf`), not the usual JSON envelope.
+  - In Bruno: open the response Preview / save the body as `.pdf` to verify selectable text.
+  - Errors return JSON: `{ "success": false, "message": "..." }` (400 / 401 / 500).

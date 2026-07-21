@@ -17,7 +17,9 @@ import {
   forwardAudioToGemini,
   forwardAudioTurnComplete,
   forwardTextToGemini,
+  injectSystemContextToGemini,
 } from "./live-interview.gemini-bridge";
+import { buildTimeUpdateContext } from "./live-interview.prompt";
 import type {
   LiveClientMessage,
   LiveResumeMode,
@@ -26,6 +28,11 @@ import type {
 } from "./live-interview.types";
 
 const LIVE_WS_PATH = "/ws/interview";
+const TIMER_TICK_INTERVAL_MS = 30_000;
+/** Inject Gemini pacing context when remaining time crosses these thresholds (seconds). */
+const TIME_CONTEXT_THRESHOLDS = [
+  3_600, 2_700, 1_800, 1_200, 900, 600, 300, 180, 120,
+];
 
 interface ActiveLiveSession {
   interviewId: string;
@@ -181,6 +188,16 @@ export const setupLiveInterviewWebSocket = (server: Server): void => {
   wss.on("connection", async (clientSocket, req) => {
     let bridgeClose: (() => void) | null = null;
     let interviewIdForCleanup = "";
+    let timerTickId: ReturnType<typeof setInterval> | null = null;
+    let lastInjectedThreshold = Number.POSITIVE_INFINITY;
+    let latestInterviewRef: Interview | null = null;
+
+    const clearTimerTick = (): void => {
+      if (timerTickId != null) {
+        clearInterval(timerTickId);
+        timerTickId = null;
+      }
+    };
 
     try {
       const userId = await verifyTokenFromRequest(req);
@@ -211,6 +228,7 @@ export const setupLiveInterviewWebSocket = (server: Server): void => {
         // Derive elapsed time in memory; never perform reconnect/tick-only writes.
         remainingSeconds: repo.computeRemainingSeconds(started.interview),
       };
+      latestInterviewRef = interview;
 
       const resumeMode = resolveResumeMode(interview);
       const isResume = resumeMode !== "fresh";
@@ -278,6 +296,51 @@ export const setupLiveInterviewWebSocket = (server: Server): void => {
       beginAwaitingUserTranscript = bridge.beginAwaitingUserTranscript;
       activeSessions.set(clientSocket, sessionState);
       bridgeClose = bridge.close;
+
+      const durationMinutes =
+        typeof interview.durationMinutes === "number" && interview.durationMinutes > 0
+          ? interview.durationMinutes
+          : 45;
+
+      const broadcastRemainingTime = (): number => {
+        if (!latestInterviewRef) return 0;
+        const remaining = repo.computeRemainingSeconds(latestInterviewRef);
+        latestInterviewRef = { ...latestInterviewRef, remainingSeconds: remaining };
+        sendJson(clientSocket, { type: "timer_tick", remainingSeconds: remaining });
+        return remaining;
+      };
+
+      const maybeInjectTimeContext = (remaining: number): void => {
+        const geminiSession = sessionState.geminiSession;
+        if (!geminiSession || remaining <= 0) return;
+
+        const threshold = TIME_CONTEXT_THRESHOLDS.find(
+          (value) => remaining <= value && value < lastInjectedThreshold
+        );
+        if (threshold == null) return;
+
+        lastInjectedThreshold = threshold;
+        try {
+          injectSystemContextToGemini(
+            geminiSession,
+            buildTimeUpdateContext(remaining, durationMinutes)
+          );
+        } catch (error) {
+          logger.warn(
+            `[live-interview] Time context injection failed interviewId=${interviewId}`,
+            error
+          );
+        }
+      };
+
+      timerTickId = setInterval(() => {
+        if (activeByInterviewId.get(interviewId) !== clientSocket) return;
+        const remaining = broadcastRemainingTime();
+        maybeInjectTimeContext(remaining);
+      }, TIMER_TICK_INTERVAL_MS);
+
+      const initialRemaining = broadcastRemainingTime();
+      maybeInjectTimeContext(initialRemaining);
 
       const conversation: InterviewConversationMessage[] = interview.conversation ?? [];
 
@@ -347,6 +410,10 @@ export const setupLiveInterviewWebSocket = (server: Server): void => {
               if (persisted) {
                 const payload = persisted as PersistedTurnPayload;
                 if (payload.created) {
+                  latestInterviewRef = {
+                    ...(latestInterviewRef ?? interview),
+                    remainingSeconds: payload.remainingSeconds,
+                  };
                   sendJson(clientSocket, {
                     type: "userAnswerFinal",
                     id: payload.message.id,
@@ -355,6 +422,7 @@ export const setupLiveInterviewWebSocket = (server: Server): void => {
                     message: payload.message.message,
                     conversation: payload.conversation,
                     lastSpeaker: payload.lastSpeaker,
+                    remainingSeconds: payload.remainingSeconds,
                   });
                   sendJson(clientSocket, {
                     type: "candidate_answer_saved",
@@ -364,6 +432,7 @@ export const setupLiveInterviewWebSocket = (server: Server): void => {
                     message: payload.message.message,
                     conversation: payload.conversation,
                     lastSpeaker: payload.lastSpeaker,
+                    remainingSeconds: payload.remainingSeconds,
                   });
                   sendJson(clientSocket, {
                     type: "conversation_updated",
@@ -386,6 +455,7 @@ export const setupLiveInterviewWebSocket = (server: Server): void => {
             }
 
             if (message.type === "end") {
+              clearTimerTick();
               sendJson(clientSocket, { type: "ended" });
               bridge.close();
               clientSocket.close();
@@ -399,6 +469,7 @@ export const setupLiveInterviewWebSocket = (server: Server): void => {
         })();
       });
     } catch (error) {
+      clearTimerTick();
       const message = error instanceof Error ? error.message : "Failed to start live session";
       logger.error("[live-interview] connection failed", error);
       sendJson(clientSocket, { type: "error", message });
@@ -413,6 +484,7 @@ export const setupLiveInterviewWebSocket = (server: Server): void => {
     }
 
     clientSocket.on("close", () => {
+      clearTimerTick();
       bridgeClose?.();
       activeSessions.delete(clientSocket);
       if (
@@ -425,6 +497,7 @@ export const setupLiveInterviewWebSocket = (server: Server): void => {
 
     clientSocket.on("error", (error) => {
       logger.error("[live-interview] client socket error", error);
+      clearTimerTick();
       bridgeClose?.();
       activeSessions.delete(clientSocket);
       if (
