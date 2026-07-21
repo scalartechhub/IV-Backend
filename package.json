@@ -14,5 +14,9 @@
     "seed": "node scripts/seed.js"
   },
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "@sparticuz/chromium": "^149.0.0",
+    "puppeteer-core": "^25.3.0"
+  }
 }
