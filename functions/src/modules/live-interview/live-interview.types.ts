@@ -55,7 +55,8 @@ export type LiveServerMessageType =
   | "candidate_answer_saved"
   | "conversation_updated"
   | "interview_resumed"
-  | "interview_completed";
+  | "interview_completed"
+  | "timer_tick";
 
 export interface LiveTranscriptEntry {
   role: "user" | "ai";

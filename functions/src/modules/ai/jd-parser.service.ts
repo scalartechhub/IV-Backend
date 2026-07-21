@@ -14,12 +14,34 @@ export const parseJD = async (pdfBuffer: Buffer): Promise<JDAnalysis> => {
     text = data.text;
 
     if (!text || text.length < 20) {
-      throw new AppError(400, "Job description PDF appears to be empty or unreadable.");
+      console.warn(
+        `[JD] Job description PDF has no readable text.\n` +
+          `  WHAT THIS MEANS: The uploaded JD PDF is empty, scanned as images only, or corrupted.\n` +
+          `  HOW TO FIX:\n` +
+          `  1. Upload a text-based PDF (not a scanned photo/image PDF).\n` +
+          `  2. Copy the JD text into Word/Google Docs and export as PDF.\n` +
+          `  3. Try a different PDF file.`
+      );
+      throw new AppError(
+        400,
+        "Your job description PDF is empty or unreadable. Please upload a text-based PDF."
+      );
     }
   } catch (error) {
     if (error instanceof AppError) throw error;
     logger.error("[jd-parser] PDF extraction failed", error);
-    throw new AppError(400, "Failed to read JD PDF. Ensure the file is a valid, text-based PDF.");
+    console.error(
+      `[JD] Could not read the job description PDF.\n` +
+        `  WHAT THIS MEANS: The file is corrupted or not a valid PDF.\n` +
+        `  HOW TO FIX:\n` +
+        `  1. Make sure the file extension is .pdf.\n` +
+        `  2. Re-export the job description as PDF and upload again.\n` +
+        `  3. Keep file size under 10 MB.`
+    );
+    throw new AppError(
+      400,
+      "Could not read your job description PDF. Please upload a valid, text-based PDF file."
+    );
   }
 
   const prompt = buildJDParserPrompt(text);

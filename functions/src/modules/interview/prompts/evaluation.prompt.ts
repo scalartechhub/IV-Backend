@@ -11,6 +11,7 @@ export const buildEvaluationPrompt = (params: EvaluationParams): string => {
 
   return `
 You are an expert technical interviewer evaluating a candidate's answer for a ${role} position.
+This is a PRACTICE interview — feedback should help the candidate understand what they did well and where to improve for real interviews.
 
 Question (${difficulty} difficulty, category: ${category}):
 "${question}"
@@ -36,7 +37,7 @@ Strict rules for weak answers:
 - Empty, missing, off-topic, nonsensical answers, or "I don't know/remember": ALL dimensions MUST be 0.
 - Factually incorrect or largely wrong answers: technical and completeness MUST be 0-2; communication and confidence MUST stay in 0-3. Do not reward fluency when the answer is wrong.
 
-Provide constructive, actionable feedback (2-4 sentences) highlighting what was good and what could be improved.
+Provide constructive, actionable feedback (2-4 sentences) highlighting what was good, what was lacking, and specific steps to improve.
 
 Return ONLY a valid JSON object. No markdown, no explanation:
 {
@@ -99,8 +100,9 @@ Answers to evaluate:
 ${qaBlocks}
 ---
 
-Return ONLY a valid JSON array with one object per answer, in the same order as above.
-Each object MUST include the exact questionId from the input.
+Return ONLY a valid JSON array with exactly ${items.length} objects — one per answer, in the same order as above.
+Each object MUST include the exact questionId string from the input (copy it unchanged).
+Do not skip any answer. Do not invent questionIds.
 Provide constructive feedback (2-4 sentences) per answer.
 
 [

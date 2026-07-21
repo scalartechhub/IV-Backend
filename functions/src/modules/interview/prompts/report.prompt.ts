@@ -23,6 +23,7 @@ export const buildReportPrompt = (params: ReportParams): string => {
 
   return `
 You are generating a comprehensive final interview report for a ${technology} candidate with ${experienceLevel} of experience.
+This is a PRACTICE interview report — focus on helping the candidate identify gaps, strengths, and a clear improvement plan for future real interviews.
 
 Complete Interview Transcript with Scores:
 ---
@@ -37,8 +38,8 @@ Instructions:
 - Empty, missing, off-topic, nonsensical, or largely wrong answers must heavily lower overallScore. Strong fluency alone must not inflate the score when answers are incorrect or shallow.
 - Write a concise executive summary (2-4 sentences)
 - Identify 3-5 specific strengths demonstrated by the candidate
-- Identify 2-4 specific areas for improvement (weaknesses)
-- Provide 3-5 actionable, specific recommendations for the candidate
+- Identify 2-4 specific areas for improvement (weaknesses) with concrete examples from their answers
+- Provide 3-5 actionable, specific recommendations the candidate can follow to prepare better
 
 Return ONLY a valid JSON object. No markdown, no explanation:
 {
