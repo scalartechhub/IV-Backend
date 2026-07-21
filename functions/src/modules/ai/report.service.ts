@@ -1,4 +1,5 @@
 import { aiService } from "./ai.service";
+import { throwAiResponseError } from "./ai.errors";
 import { buildReportPrompt } from "../interview/prompts/report.prompt";
 import { logger } from "../../shared/logger";
 import { AppError, clamp, toNumber } from "../../shared/utils";
@@ -18,7 +19,10 @@ export const generateReport = async (params: GenerateReportParams): Promise<RawR
   });
 
   if (params.questions.length === 0) {
-    throw new AppError(400, "Cannot generate report: no questions found for this interview.");
+    throw new AppError(
+      400,
+      "Cannot create a report because this interview has no questions yet."
+    );
   }
 
   const prompt = buildReportPrompt(params);
@@ -26,7 +30,20 @@ export const generateReport = async (params: GenerateReportParams): Promise<RawR
 
   const overallScore = toNumber(result.overallScore, NaN);
   if (Number.isNaN(overallScore)) {
-    throw new AppError(500, "AI returned invalid report format. Please try again.");
+    throwAiResponseError(
+      "report",
+      "We could not calculate your interview score. Please try again.",
+      {
+        missingField: "overallScore",
+        expected: "a number between 0 and 100, e.g. 72",
+        received: result.overallScore,
+        fixSteps: [
+          "Retry generating the report — Gemini sometimes skips the score field.",
+          "Make sure the interview has at least one answered question.",
+          "Check Gemini API quota and model availability in server logs.",
+        ],
+      }
+    );
   }
 
   const report: RawReport = {

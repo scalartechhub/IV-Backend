@@ -1,9 +1,10 @@
 import { Request, Response } from "express";
 import * as interviewService from "./interview.service";
 import * as authService from "../auth/auth.service";
+import * as resumePdfService from "./resume-pdf.service";
 import { sendSuccess, sendCreated } from "../../shared/responses";
-import type { ListInterviewsQuery } from "./interview.validation";
-import { getLiveWsPath } from "../live-interview/live-interview.ws";
+import type { ListInterviewsQuery, ResumePdfInput } from "./interview.validation";
+import { getLiveWsPath, broadcastInterviewCompleted } from "../live-interview/live-interview.ws";
 
 const param = (req: Request, key: string): string => String(req.params[key]);
 
@@ -49,9 +50,27 @@ export const resumeAnalysis = async (req: Request, res: Response): Promise<void>
   sendSuccess(res, resumeAnalysisEntry, "Resume uploaded and analyzed successfully");
 };
 
+export const resumePdf = async (req: Request, res: Response): Promise<void> => {
+  const { html, fileName } = req.body as ResumePdfInput;
+  const pdfBuffer = await resumePdfService.generateResumePdf(html);
+
+  res.set({
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `attachment; filename="${fileName}.pdf"`,
+  });
+  res.send(pdfBuffer);
+};
+
 export const finishInterview = async (req: Request, res: Response): Promise<void> => {
-  const result = await interviewService.finishInterview(req.user!.uid, param(req, "id"));
+  const interviewId = param(req, "id");
+  const result = await interviewService.finishInterview(req.user!.uid, interviewId);
+  broadcastInterviewCompleted(interviewId);
   sendSuccess(res, result, "Interview completed. Answers evaluated and report generated.");
+};
+
+export const resumeInterview = async (req: Request, res: Response): Promise<void> => {
+  const state = await interviewService.resumeInterview(req.user!.uid, param(req, "id"));
+  sendSuccess(res, state, "Interview resume state fetched successfully");
 };
 
 const buildWsUrl = (req: Request, interviewId: string): string => {

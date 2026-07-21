@@ -72,6 +72,7 @@ app.use(apiPath("") || "/", globalLimiter);
 app.use(apiPath("/interviews/create"), aiLimiter);
 app.use(apiPath("/interviews/create-with-documents"), aiLimiter);
 app.use(apiPath("/interviews/resume-analysis"), aiLimiter);
+app.use(apiPath("/interviews/resume-pdf"), aiLimiter);
 app.use(apiPath("/interviews/:id/finish"), aiLimiter);
 app.use(apiPath("/chat"), aiLimiter);
 app.use(apiPath("/chat-bot"), aiLimiter);

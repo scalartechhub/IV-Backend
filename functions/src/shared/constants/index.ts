@@ -27,11 +27,11 @@ export const DEFAULT_QUESTION_COUNT = 10;
 export const DIFFICULTY_LEVELS = ["easy", "medium", "hard", "expert"] as const;
 export type DifficultyLevel = (typeof DIFFICULTY_LEVELS)[number];
 
-export const SUBSCRIPTION_PLANS = ["starter", "pro"] as const;
-export type SubscriptionPlan = (typeof SUBSCRIPTION_PLANS)[number];
-
-export const STARTER_ALLOWED_DIFFICULTIES: DifficultyLevel[] = ["easy", "medium"];
-export const PRO_ALLOWED_DIFFICULTIES: DifficultyLevel[] = [...DIFFICULTY_LEVELS];
+// export const SUBSCRIPTION_PLANS = ["starter", "pro"] as const;
+// export type SubscriptionPlan = (typeof SUBSCRIPTION_PLANS)[number];
+//
+// export const STARTER_ALLOWED_DIFFICULTIES: DifficultyLevel[] = ["easy", "medium"];
+// export const PRO_ALLOWED_DIFFICULTIES: DifficultyLevel[] = [...DIFFICULTY_LEVELS];
 
 /** Common interview types — domains may define additional values in Firestore. */
 export const INTERVIEW_TYPES = [

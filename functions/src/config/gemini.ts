@@ -126,7 +126,15 @@ export function parseGeminiJSON(text: string): any {
   try {
     return JSON.parse(cleanText);
   } catch {
-    console.error("Failed to parse Gemini JSON:", cleanText);
-    throw new Error("Invalid JSON response from AI");
+    console.error(
+      `[Gemini] ❌ Failed to parse JSON response from Gemini.\n` +
+      `  HOW TO FIX:\n` +
+      `  1. The model returned text that is not valid JSON. This usually means the prompt\n` +
+      `     did not clearly ask for JSON output.\n` +
+      `  2. Make sure your prompt explicitly says: "Respond ONLY with valid JSON. No extra text."\n` +
+      `  3. Check if the model is set to use responseMimeType: "application/json".\n` +
+      `  Raw response received:\n  ${cleanText.slice(0, 500)}${cleanText.length > 500 ? "... (truncated)" : ""}`
+    );
+    throw new Error("AI returned an invalid response format. Please try again.");
   }
 }

@@ -1,10 +1,11 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db } from "../../config/firebase";
 import { COLLECTIONS } from "../../shared/constants";
-import { assertInterviewCreationAllowed } from "../../shared/entitlements";
+import { assertInterviewCreationAllowed, assertResumeAnalysisAllowed } from "../../shared/entitlements";
 import { getStartOfCurrentMonth, resolveBillingPlan } from "../../shared/plan.utils";
 import { AppError } from "../../shared/utils";
-import type { Interview } from "../interview/interview.types";
+import type { Interview, ResumeAnalysis } from "../interview/interview.types";
+import { getPlanMonthlyLimits } from "../payment/plan.repository";
 import {
   DEFAULT_USER_PREFERENCES,
   DEFAULT_USER_SUBSCRIPTION,
@@ -20,7 +21,9 @@ import {
   type MonthlyPerformance,
   type RecentScore,
 } from "./auth.types";
-import { DIFFICULTY_LEVELS, type SubscriptionPlan } from "../../shared/constants";
+import { DIFFICULTY_LEVELS, INTERVIEW_TYPES } from "../../shared/constants";
+// When re-enabling plan-based difficulty limits, also import SubscriptionPlan:
+// import { DIFFICULTY_LEVELS, INTERVIEW_TYPES, type SubscriptionPlan } from "../../shared/constants";
 import { PLAN_IDS } from "../../constants/payment.constants";
 
 const RECENT_SCORES_LIMIT = 10;
@@ -90,6 +93,8 @@ export const upsertUser = async (
         bestScore: 0,
         interviewsCreatedThisMonth: 0,
         interviewsMonthKey: monthKey,
+        resumeAnalysesCreatedThisMonth: 0,
+        resumeAnalysesMonthKey: monthKey,
       },
       interview: defaultUserAnalytics(),
       resume: { analyses: [] },
@@ -133,20 +138,20 @@ export const requireUserById = async (uid: string): Promise<User> => {
   return user;
 };
 
-export const subscriptionPlanFromUser = (user: User): SubscriptionPlan => {
-  const billingPlan = resolveBillingPlan(user);
-
-  if (billingPlan === PLAN_IDS.ENTERPRISE || billingPlan === PLAN_IDS.PRO) {
-    return "pro";
-  }
-
-  return "starter";
-};
-
-export const getUserSubscriptionPlan = async (uid: string): Promise<SubscriptionPlan> => {
-  const user = await requireUserById(uid);
-  return subscriptionPlanFromUser(user);
-};
+// export const subscriptionPlanFromUser = (user: User): SubscriptionPlan => {
+//   const billingPlan = resolveBillingPlan(user);
+//
+//   if (billingPlan === PLAN_IDS.ENTERPRISE || billingPlan === PLAN_IDS.PRO) {
+//     return "pro";
+//   }
+//
+//   return "starter";
+// };
+//
+// export const getUserSubscriptionPlan = async (uid: string): Promise<SubscriptionPlan> => {
+//   const user = await requireUserById(uid);
+//   return subscriptionPlanFromUser(user);
+// };
 
 const readMonthlyCountFromUser = (user: User | null | undefined, monthKey: string): number | null => {
   if (
@@ -253,8 +258,80 @@ export const assertUserCanCreateInterview = async (
   const resolved = user ?? (await requireUserById(uid));
   const billingPlan = resolveBillingPlan(resolved);
   const usedThisMonth = await countInterviewsCreatedThisMonth(uid, resolved);
+  const { monthlyInterviewLimit } = await getPlanMonthlyLimits(billingPlan);
 
-  assertInterviewCreationAllowed(billingPlan, usedThisMonth);
+  assertInterviewCreationAllowed(billingPlan, usedThisMonth, monthlyInterviewLimit);
+};
+
+const readMonthlyResumeCountFromUser = (
+  user: User | null | undefined,
+  monthKey: string
+): number | null => {
+  if (
+    user?.stats?.resumeAnalysesMonthKey === monthKey &&
+    typeof user.stats.resumeAnalysesCreatedThisMonth === "number"
+  ) {
+    return Math.max(0, user.stats.resumeAnalysesCreatedThisMonth);
+  }
+  return null;
+};
+
+const timestampToMillis = (value: unknown): number | null => {
+  if (!value) return null;
+  if (typeof (value as { toMillis?: () => number }).toMillis === "function") {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+  const parsed = new Date(value as string).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const countResumeAnalysesFromUserDoc = (user: User): number => {
+  const startMs = getStartOfCurrentMonth().getTime();
+  const analyses = user.resume?.analyses ?? [];
+  return analyses.filter((entry) => {
+    const uploadedMs = timestampToMillis(entry.uploadedAt);
+    return uploadedMs !== null && uploadedMs >= startMs;
+  }).length;
+};
+
+/**
+ * Monthly resume analysis usage for entitlements / subscription UI.
+ * Prefers the user-doc counter; backfills by counting analyses on the user doc.
+ */
+export const countResumeAnalysesThisMonth = async (
+  uid: string,
+  user?: User | null
+): Promise<number> => {
+  const monthKey = toMonthKey(new Date());
+  const fromProvided = readMonthlyResumeCountFromUser(user, monthKey);
+  if (fromProvided !== null) return fromProvided;
+
+  const resolved = user ?? (await findUserById(uid));
+  const fromStored = readMonthlyResumeCountFromUser(resolved, monthKey);
+  if (fromStored !== null) return fromStored;
+
+  if (!resolved) return 0;
+
+  const count = countResumeAnalysesFromUserDoc(resolved);
+  await db.collection(COLLECTIONS.USERS).doc(uid).update({
+    "stats.resumeAnalysesCreatedThisMonth": count,
+    "stats.resumeAnalysesMonthKey": monthKey,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  return count;
+};
+
+export const assertUserCanAnalyzeResume = async (
+  uid: string,
+  user?: User
+): Promise<void> => {
+  const resolved = user ?? (await requireUserById(uid));
+  const billingPlan = resolveBillingPlan(resolved);
+  const usedThisMonth = await countResumeAnalysesThisMonth(uid, resolved);
+  const { monthlyResumeAnalysisLimit } = await getPlanMonthlyLimits(billingPlan);
+
+  assertResumeAnalysisAllowed(billingPlan, usedThisMonth, monthlyResumeAnalysisLimit);
 };
 
 export const getUserProfile = async (uid: string): Promise<User> => requireUserById(uid);
@@ -375,9 +452,490 @@ const defaultUserStats = (): UserStats => ({
   bestScore: 0,
   interviewsCreatedThisMonth: 0,
   interviewsMonthKey: toMonthKey(new Date()),
+  resumeAnalysesCreatedThisMonth: 0,
+  resumeAnalysesMonthKey: toMonthKey(new Date()),
 });
 
 const roundScore = (value: number): number => Math.round(value * 100) / 100;
+type UserExperienceEntry = NonNullable<NonNullable<User["profile"]>["experiences"]>[number];
+type UserSkillItem = NonNullable<NonNullable<User["profile"]>["skills"]>[number];
+type InterviewDomainRoleRecord = { name: string; roles: string[] };
+type InterviewDomainCategoryRecord = { name: string; specializations: InterviewDomainRoleRecord[] };
+type InterviewDomainRecord = {
+  domainName: string;
+  interviewTypes: string[];
+  categories: InterviewDomainCategoryRecord[];
+};
+type CareerPathMatch = {
+  domain: string;
+  category: string;
+  specification: string;
+  targetRole: string;
+  interviewType?: string;
+};
+
+const INTERVIEW_DOMAIN_COLLECTION = "interview_domain";
+
+const omitUndefinedDeep = <T>(value: T): T => {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => omitUndefinedDeep(item))
+      .filter((item) => item !== undefined) as T;
+  }
+
+  if (value && typeof value === "object") {
+    const source = value as Record<string, unknown>;
+    const output: Record<string, unknown> = {};
+
+    for (const [key, item] of Object.entries(source)) {
+      if (item === undefined) continue;
+      output[key] = omitUndefinedDeep(item);
+    }
+
+    return output as T;
+  }
+
+  return value;
+};
+
+const normalizeText = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const normalizeKey = (value: unknown): string =>
+  normalizeText(value)?.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() ?? "";
+
+const similarityScore = (left: unknown, right: unknown): number => {
+  const a = normalizeKey(left);
+  const b = normalizeKey(right);
+  if (!a || !b) return 0;
+  if (a === b) return 3;
+  if (a.includes(b) || b.includes(a)) return 2;
+
+  const aWords = a.split(" ");
+  const bWords = new Set(b.split(" "));
+  const overlap = aWords.filter((word) => bWords.has(word)).length;
+  return overlap > 0 ? 1 : 0;
+};
+
+const textContains = (source: string, target: unknown): boolean => {
+  const token = normalizeKey(target);
+  return token.length > 0 && source.includes(token);
+};
+
+const findDomainRecord = (
+  domains: InterviewDomainRecord[],
+  domainName: unknown
+): InterviewDomainRecord | undefined => {
+  const key = normalizeKey(domainName);
+  if (!key) return undefined;
+  return domains.find((domain) => normalizeKey(domain.domainName) === key);
+};
+
+const findCategoryRecord = (
+  domain: InterviewDomainRecord | undefined,
+  categoryName: unknown
+): InterviewDomainCategoryRecord | undefined => {
+  const key = normalizeKey(categoryName);
+  if (!domain || !key) return undefined;
+  return domain.categories.find((category) => normalizeKey(category.name) === key);
+};
+
+const findSpecializationRecord = (
+  category: InterviewDomainCategoryRecord | undefined,
+  specificationName: unknown
+): InterviewDomainRoleRecord | undefined => {
+  const key = normalizeKey(specificationName);
+  if (!category || !key) return undefined;
+  return category.specializations.find((specialization) => normalizeKey(specialization.name) === key);
+};
+
+const isValidCareerPathInDomains = (
+  domains: InterviewDomainRecord[],
+  selection: { domain?: unknown; category?: unknown; specification?: unknown; targetRole?: unknown }
+): boolean => {
+  const domain = findDomainRecord(domains, selection.domain);
+  if (!domain) return false;
+  const category = findCategoryRecord(domain, selection.category);
+  if (!category) return false;
+  const specialization = findSpecializationRecord(category, selection.specification);
+  if (!specialization) return false;
+
+  const roleKey = normalizeKey(selection.targetRole);
+  if (!roleKey) return false;
+  return specialization.roles.some((role) => normalizeKey(role) === roleKey);
+};
+
+const normalizeInterviewDomainsFromPayload = (raw: unknown): InterviewDomainRecord[] => {
+  const payload = raw as Record<string, unknown> | undefined;
+  const domainsRaw = Array.isArray(payload?.domains) ? payload.domains : [];
+
+  return domainsRaw
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const domain = item as Record<string, unknown>;
+      const domainName = normalizeText(domain.domainName);
+      if (!domainName) return null;
+
+      const interviewTypes = Array.isArray(domain.interviewTypes)
+        ? domain.interviewTypes.map((type) => normalizeText(type)).filter((type): type is string => Boolean(type))
+        : [];
+      const categoriesRaw = Array.isArray(domain.categories) ? domain.categories : [];
+      const categories: InterviewDomainCategoryRecord[] = categoriesRaw
+        .map((categoryItem) => {
+          if (!categoryItem || typeof categoryItem !== "object") return null;
+          const categoryRecord = categoryItem as Record<string, unknown>;
+          const categoryName = normalizeText(categoryRecord.name);
+          if (!categoryName) return null;
+
+          const specializationsRaw = Array.isArray(categoryRecord.specializations)
+            ? categoryRecord.specializations
+            : [];
+          const specializations: InterviewDomainRoleRecord[] = specializationsRaw
+            .map((specItem) => {
+              if (!specItem || typeof specItem !== "object") return null;
+              const specRecord = specItem as Record<string, unknown>;
+              const specName = normalizeText(specRecord.name);
+              if (!specName) return null;
+              const roles = Array.isArray(specRecord.roles)
+                ? specRecord.roles
+                    .map((role) => normalizeText(role))
+                    .filter((role): role is string => Boolean(role))
+                : [];
+              return { name: specName, roles };
+            })
+            .filter((spec): spec is InterviewDomainRoleRecord => Boolean(spec));
+
+          return { name: categoryName, specializations };
+        })
+        .filter((category): category is InterviewDomainCategoryRecord => Boolean(category));
+
+      return {
+        domainName,
+        interviewTypes,
+        categories,
+      };
+    })
+    .filter((domain): domain is InterviewDomainRecord => Boolean(domain));
+};
+
+const resolveCareerPathMatch = (
+  domains: InterviewDomainRecord[],
+  analysis: ResumeAnalysis
+): CareerPathMatch | null => {
+  if (domains.length === 0) return null;
+
+  const resumeSignal = normalizeKey(
+    [
+      analysis.targetRole,
+      analysis.domain,
+      analysis.category,
+      analysis.specification,
+      analysis.projects.join(" "),
+      analysis.experience.join(" "),
+      analysis.skills.join(" "),
+    ].join(" ")
+  );
+
+  let best:
+    | (CareerPathMatch & {
+        score: number;
+      })
+    | null = null;
+
+  for (const domain of domains) {
+    for (const category of domain.categories) {
+      for (const specialization of category.specializations) {
+        const roles = specialization.roles.length > 0 ? specialization.roles : [specialization.name];
+        for (const role of roles) {
+          let score = 0;
+          score += similarityScore(role, analysis.targetRole) * 8;
+          score += similarityScore(specialization.name, analysis.specification) * 6;
+          score += similarityScore(category.name, analysis.category) * 4;
+          score += similarityScore(domain.domainName, analysis.domain) * 3;
+
+          if (textContains(resumeSignal, role)) score += 3;
+          if (textContains(resumeSignal, specialization.name)) score += 2;
+          if (textContains(resumeSignal, category.name)) score += 1;
+          if (textContains(resumeSignal, domain.domainName)) score += 1;
+
+          if (!best || score > best.score) {
+            best = {
+              domain: domain.domainName,
+              category: category.name,
+              specification: specialization.name,
+              targetRole: role,
+              interviewType: domain.interviewTypes[0],
+              score,
+            };
+          }
+        }
+      }
+    }
+  }
+
+  if (!best || best.score <= 0) return null;
+
+  return {
+    domain: best.domain,
+    category: best.category,
+    specification: best.specification,
+    targetRole: best.targetRole,
+    interviewType: best.interviewType,
+  };
+};
+
+const preferExistingText = (existing: unknown, incoming: unknown): string | undefined =>
+  normalizeText(existing) ?? normalizeText(incoming);
+
+const parseLocation = (
+  rawLocation: unknown
+): { city?: string; state?: string; country?: string } | undefined => {
+  const location = normalizeText(rawLocation);
+  if (!location) return undefined;
+
+  const parts = location
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) return undefined;
+  if (parts.length === 1) return { city: parts[0] };
+  if (parts.length === 2) return { city: parts[0], country: parts[1] };
+
+  return {
+    city: parts[0],
+    state: parts.slice(1, parts.length - 1).join(", "),
+    country: parts[parts.length - 1],
+  };
+};
+
+const extractYearsFromText = (input: string): number | null => {
+  const match = input.match(/(\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?)/i);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const inferYearsOfExperience = (analysis: ResumeAnalysis): string | undefined => {
+  const explicit = normalizeText(analysis.yearsOfExperience);
+  if (explicit) return explicit;
+
+  const values = analysis.experience
+    .map((item) => extractYearsFromText(item))
+    .filter((value): value is number => value !== null);
+  if (values.length === 0) return undefined;
+
+  const maxYears = Math.max(...values);
+  return `${maxYears}+ years`;
+};
+
+const inferDifficultyLevel = (
+  explicit: unknown,
+  yearsOfExperience: string | undefined
+): UserInterviewSettings["difficultyLevel"] => {
+  const provided = normalizeText(explicit);
+  if (provided && DIFFICULTY_LEVELS.includes(provided as UserInterviewSettings["difficultyLevel"])) {
+    return provided as UserInterviewSettings["difficultyLevel"];
+  }
+
+  const years = yearsOfExperience ? extractYearsFromText(yearsOfExperience) ?? 0 : 0;
+  if (years >= 8) return "expert";
+  if (years >= 5) return "hard";
+  if (years >= 2) return "medium";
+  return "easy";
+};
+
+const parseResumeExperienceEntry = (
+  raw: string
+): { title: string; company: string; period?: string; description?: string } => {
+  const normalized = raw.trim();
+  const pattern = /^(.+?)\s+at\s+([^(:]+?)(?:\s*\(([^)]+)\))?(?::\s*(.+))?$/i;
+  const match = normalized.match(pattern);
+
+  if (match) {
+    const title = normalizeText(match[1]) ?? "Professional Experience";
+    const company = normalizeText(match[2]) ?? "Not specified";
+    const period = normalizeText(match[3]);
+    const description = normalizeText(match[4]) ?? normalized;
+    return { title, company, period, description };
+  }
+
+  const [headline, ...rest] = normalized.split(":");
+  const description = normalizeText(rest.join(":"));
+  return {
+    title: normalizeText(headline) ?? "Professional Experience",
+    company: "Not specified",
+    description: description ?? normalized,
+  };
+};
+
+const buildExperienceEntries = (
+  existing: User["profile"],
+  analysis: ResumeAnalysis
+): UserExperienceEntry[] => {
+  const existingEntries = existing?.experiences ?? [];
+  const maxId = existingEntries.reduce((max, entry) => Math.max(max, entry.id ?? 0), 0);
+  const parsed = analysis.experience
+    .map((item) => parseResumeExperienceEntry(item))
+    .filter((item) => item.title.length > 0)
+    .map((item, index) => ({
+      id: maxId + index + 1,
+      ...item,
+    }));
+
+  const seen = new Set(
+    existingEntries.map((entry) =>
+      `${entry.title.toLowerCase()}|${entry.company.toLowerCase()}|${(entry.period ?? "").toLowerCase()}`
+    )
+  );
+
+  const dedupedParsed = parsed.filter((entry) => {
+    const key = `${entry.title.toLowerCase()}|${entry.company.toLowerCase()}|${(entry.period ?? "").toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return [...existingEntries, ...dedupedParsed];
+};
+
+const buildSkillItems = (
+  existing: User["profile"],
+  analysis: ResumeAnalysis
+): UserSkillItem[] => {
+  const existingSkills = existing?.skills ?? [];
+  const seen = new Set(existingSkills.map((item) => item.name.trim().toLowerCase()).filter(Boolean));
+  const parsedSkills = analysis.skills
+    .map((skill) => skill.trim())
+    .filter(Boolean)
+    .filter((skill) => {
+      const key = skill.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((name) => ({ name }));
+
+  return [...existingSkills, ...parsedSkills];
+};
+
+const buildProfileFromResumeAnalysis = (user: User, analysis: ResumeAnalysis): User["profile"] => {
+  const existing = user.profile ?? {};
+  const experienceEntries = buildExperienceEntries(existing, analysis);
+  const firstExperience = experienceEntries[0];
+  const inferredYears = inferYearsOfExperience(analysis);
+  const parsedLocation = parseLocation(analysis.location);
+  const mergedLocation = {
+    ...(existing.location ?? {}),
+    ...(parsedLocation ?? {}),
+  };
+
+  return {
+    ...existing,
+    phone: preferExistingText(existing.phone, analysis.phone),
+    designation: preferExistingText(existing.designation, analysis.targetRole ?? firstExperience?.title),
+    company: preferExistingText(existing.company, firstExperience?.company),
+    industry: preferExistingText(existing.industry, analysis.domain),
+    yearsOfExperience: preferExistingText(existing.yearsOfExperience, inferredYears),
+    bio: preferExistingText(existing.bio, analysis.projects[0]),
+    location:
+      Object.values(mergedLocation).some((value) => normalizeText(value))
+        ? mergedLocation
+        : existing.location,
+    skills: buildSkillItems(existing, analysis),
+    experiences: experienceEntries,
+  };
+};
+
+const buildInterviewPreferencesFromResumeAnalysis = (
+  user: User,
+  analysis: ResumeAnalysis,
+  domains: InterviewDomainRecord[],
+  matchedCareerPath?: CareerPathMatch | null
+): UserInterviewSettings => {
+  const existingPrefs = user.preferences?.interview ?? ({} as Partial<UserInterviewSettings>);
+  const inferredYears = inferYearsOfExperience(analysis);
+  const hasValidExistingCareerPath = isValidCareerPathInDomains(domains, {
+    domain: existingPrefs.domain,
+    category: existingPrefs.category,
+    specification: existingPrefs.specification,
+    targetRole: existingPrefs.targetRole,
+  });
+  const selectedDomainName =
+    (hasValidExistingCareerPath ? normalizeText(existingPrefs.domain) : undefined) ??
+    normalizeText(matchedCareerPath?.domain) ??
+    normalizeText(analysis.domain) ??
+    "";
+  const selectedDomain = findDomainRecord(domains, selectedDomainName);
+  const targetRole =
+    (hasValidExistingCareerPath ? normalizeText(existingPrefs.targetRole) : undefined) ??
+    normalizeText(matchedCareerPath?.targetRole) ??
+    normalizeText(analysis.targetRole) ??
+    "";
+  const rawInterviewType =
+    normalizeText(existingPrefs.interviewType) ??
+    normalizeText(analysis.interviewType) ??
+    normalizeText(matchedCareerPath?.interviewType) ??
+    "technicalInterview";
+  const interviewType = INTERVIEW_TYPES.includes(rawInterviewType as (typeof INTERVIEW_TYPES)[number])
+    ? rawInterviewType
+    : "technicalInterview";
+  const normalizedDomainInterviewTypes = (selectedDomain?.interviewTypes ?? []).map((type) =>
+    normalizeKey(type)
+  );
+  const resolvedInterviewType =
+    normalizedDomainInterviewTypes.length > 0 &&
+    !normalizedDomainInterviewTypes.includes(normalizeKey(interviewType))
+      ? selectedDomain?.interviewTypes?.[0] ?? interviewType
+      : interviewType;
+
+  const techStacks =
+    existingPrefs.techStacks && existingPrefs.techStacks.length > 0
+      ? existingPrefs.techStacks
+      : analysis.skills
+          .map((skill) => skill.trim())
+          .filter(Boolean)
+          .slice(0, 10)
+          .map((label) => ({ label }));
+
+  return {
+    domain:
+      (hasValidExistingCareerPath ? normalizeText(existingPrefs.domain) : undefined) ??
+      normalizeText(matchedCareerPath?.domain) ??
+      normalizeText(analysis.domain) ??
+      "",
+    category:
+      (hasValidExistingCareerPath ? normalizeText(existingPrefs.category) : undefined) ??
+      normalizeText(matchedCareerPath?.category) ??
+      normalizeText(analysis.category) ??
+      "",
+    specification:
+      (hasValidExistingCareerPath ? normalizeText(existingPrefs.specification) : undefined) ??
+      normalizeText(matchedCareerPath?.specification) ??
+      normalizeText(analysis.specification) ??
+      "",
+    targetRole,
+    difficultyLevel: inferDifficultyLevel(
+      existingPrefs.difficultyLevel ?? analysis.difficultyLevel,
+      inferredYears
+    ),
+    interviewType: resolvedInterviewType,
+    durationMinutes:
+      typeof existingPrefs.durationMinutes === "number" && existingPrefs.durationMinutes > 0
+        ? existingPrefs.durationMinutes
+        : 30,
+    questionCount:
+      typeof existingPrefs.questionCount === "number" && existingPrefs.questionCount > 0
+        ? existingPrefs.questionCount
+        : 10,
+    experienceLevel: preferExistingText(existingPrefs.experienceLevel, inferredYears),
+    aiPersonality: existingPrefs.aiPersonality,
+    techStacks,
+  };
+};
 
 const updateRollingAverage = (
   previousAverage: number,
@@ -628,6 +1186,10 @@ export const appendUserResumeAnalysis = async (
   entry: Omit<UserResumeAnalysisEntry, "no">
 ): Promise<UserResumeAnalysisEntry> => {
   const ref = db.collection(COLLECTIONS.USERS).doc(uid);
+  const interviewDomainRef = db
+    .collection(INTERVIEW_DOMAIN_COLLECTION)
+    .doc(INTERVIEW_DOMAIN_COLLECTION);
+  const monthKey = toMonthKey(new Date());
 
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
@@ -636,15 +1198,46 @@ export const appendUserResumeAnalysis = async (
     const user = snap.data() as User;
     const analyses = user.resume?.analyses ?? [];
     const highestNo = analyses.reduce((maxNo, item) => Math.max(maxNo, item.no ?? 0), 0);
+    const sanitizedParsed = omitUndefinedDeep(entry.parsed);
     const nextEntry: UserResumeAnalysisEntry = {
       no: highestNo + 1,
       ...entry,
+      parsed: sanitizedParsed,
     };
+
+    const stats = user.stats ?? defaultUserStats();
+    const monthlyUsed =
+      stats.resumeAnalysesMonthKey === monthKey
+        ? (stats.resumeAnalysesCreatedThisMonth ?? 0)
+        : 0;
+    const interviewDomainSnap = await tx.get(interviewDomainRef);
+    const interviewDomains = normalizeInterviewDomainsFromPayload(interviewDomainSnap.data());
+    const matchedCareerPath = resolveCareerPathMatch(interviewDomains, entry.parsed);
+    const profile = buildProfileFromResumeAnalysis(user, entry.parsed);
+    const interviewPreferences = buildInterviewPreferencesFromResumeAnalysis(
+      user,
+      entry.parsed,
+      interviewDomains,
+      matchedCareerPath
+    );
+    const existingPreferences = omitUndefinedDeep((user.preferences ?? {}) as Record<string, unknown>);
 
     tx.update(ref, {
       resume: {
         url: entry.url ?? user.resume?.url,
-        analyses: [...analyses, nextEntry],
+        analyses: [...analyses, omitUndefinedDeep(nextEntry)],
+      },
+      profile: omitUndefinedDeep(profile),
+      preferences: {
+        ...existingPreferences,
+        interview: omitUndefinedDeep(interviewPreferences),
+        notifications:
+          user.preferences?.notifications ?? DEFAULT_USER_PREFERENCES.notifications,
+      },
+      stats: {
+        ...stats,
+        resumeAnalysesCreatedThisMonth: monthlyUsed + 1,
+        resumeAnalysesMonthKey: monthKey,
       },
       updatedAt: FieldValue.serverTimestamp(),
     });

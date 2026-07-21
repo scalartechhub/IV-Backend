@@ -11,6 +11,7 @@ import {
   createInterviewSchema,
   interviewIdParamSchema,
   listInterviewsQuerySchema,
+  resumePdfSchema,
 } from "./interview.validation";
 
 const router = Router();
@@ -44,9 +45,21 @@ router.post(
 );
 
 router.post(
+  "/resume-pdf",
+  validate(resumePdfSchema),
+  asyncHandler(interviewController.resumePdf)
+);
+
+router.post(
   "/:id/finish",
   validate(interviewIdParamSchema, "params"),
   asyncHandler(interviewController.finishInterview)
+);
+
+router.get(
+  "/:id/resume",
+  validate(interviewIdParamSchema, "params"),
+  asyncHandler(interviewController.resumeInterview)
 );
 
 router.get(

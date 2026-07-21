@@ -39,6 +39,10 @@ export interface UserStats {
   interviewsCreatedThisMonth?: number;
   /** Calendar month key for interviewsCreatedThisMonth, e.g. "2026-07". */
   interviewsMonthKey?: string;
+  /** Resume analyses uploaded in resumeAnalysesMonthKey (YYYY-MM). */
+  resumeAnalysesCreatedThisMonth?: number;
+  /** Calendar month key for resumeAnalysesCreatedThisMonth, e.g. "2026-07". */
+  resumeAnalysesMonthKey?: string;
 }
 
 export interface RadarSkill {
@@ -154,7 +158,7 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
 export const DEFAULT_USER_SUBSCRIPTION: UserSubscription = {
   plan: PLAN_IDS.FREE,
   status: SUBSCRIPTION_STATUS.ACTIVE,
-  interviewCredits: 3,
+  interviewCredits: 10,
 };
 
 export interface UserResponse {

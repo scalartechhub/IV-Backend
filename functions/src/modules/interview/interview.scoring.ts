@@ -18,9 +18,9 @@ export const getRawEvaluationScore = (evaluation: RawEvaluation): number => {
 };
 
 /**
- * Total interview score as earned points / maximum.
+ * Total interview score as earned points / maximum (per-question sum).
  * Each question contributes up to 10 points; unanswered questions score 0.
- * Use report.overallScore for the normalized 0–100 performance score.
+ * Overall report score (0–100) comes from AI analysis of all answers, not this total.
  */
 export const calculateInterviewTotalScore = (
   questions: InterviewQuestion[]
@@ -44,3 +44,15 @@ export const calculateInterviewTotalScore = (
 
 export const countAnsweredQuestions = (questions: InterviewQuestion[]): number =>
   questions.filter((q) => q.answer !== undefined && q.answer.length > 0).length;
+
+/**
+ * Prefer the AI report overall score, but never invent points when the
+ * candidate demonstrated no knowledge (all empty / zero-scored answers).
+ */
+export const resolveOverallScore = (
+  aiOverallScore: number,
+  totalScore: InterviewTotalScore
+): number => {
+  if (totalScore.score <= 0) return 0;
+  return clamp(Math.round(aiOverallScore), 0, 100);
+};

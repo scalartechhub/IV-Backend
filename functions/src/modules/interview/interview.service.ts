@@ -6,7 +6,7 @@ import { evaluateAnswersBatch } from "../ai/evaluation.service";
 import { generateReport } from "../ai/report.service";
 import {
   requireUserById,
-  subscriptionPlanFromUser,
+  // subscriptionPlanFromUser,
   interviewSettingsFromUser,
   notificationPreferencesFromUser,
   assertUserCanCreateInterview,
@@ -19,13 +19,14 @@ import {
   assertActiveSubscriptionForUser,
 } from "../subscription/subscription.service";
 import { AppError } from "../../shared/utils";
-import { assertDifficultyAllowedForPlan } from "../../shared/entitlements";
+// import { assertDifficultyAllowedForPlan } from "../../shared/entitlements";
 import { logger } from "../../shared/logger";
 import type {
   CreateInterviewInput,
   Interview,
   InterviewListResult,
   InterviewReport,
+  InterviewResumeState,
   FinishInterviewResult,
   SubmitAnswersInput,
   SubmitAnswersResult,
@@ -37,6 +38,7 @@ import {
   calculateInterviewTotalScore,
   countAnsweredQuestions,
   getRawEvaluationScore,
+  resolveOverallScore,
 } from "./interview.scoring";
 
 const getInterviewContextLabel = (interview: Interview): string => {
@@ -92,8 +94,8 @@ export const createInterview = async (
   });
 
   const user = await requireUserById(userId);
-  const plan = subscriptionPlanFromUser(user);
-  assertDifficultyAllowedForPlan(plan, input.difficultyLevel);
+  // const plan = subscriptionPlanFromUser(user);
+  // assertDifficultyAllowedForPlan(plan, input.difficultyLevel);
   await assertUserCanCreateInterview(userId, user);
 
   const interview = await repo.createInterview(userId, input);
@@ -134,9 +136,9 @@ export const createInterviewWithDocuments = async (
   });
 
   const user = await requireUserById(userId);
-  const plan = subscriptionPlanFromUser(user);
   const interviewSettings = interviewSettingsFromUser(user);
-  assertDifficultyAllowedForPlan(plan, interviewSettings.difficultyLevel);
+  // const plan = subscriptionPlanFromUser(user);
+  // assertDifficultyAllowedForPlan(plan, interviewSettings.difficultyLevel);
   await assertUserCanCreateInterview(userId, user);
 
   let interview: Interview | undefined;
@@ -186,6 +188,37 @@ const buildAnswersFromInterview = (interview: Interview): SubmitAnswersInput => 
   })),
 });
 
+const rebuildQuestionsFromConversation = (interview: Interview): Interview["questions"] => {
+  const conversation = interview.conversation ?? [];
+  if (!conversation.length) return [];
+
+  const byQuestionId = new Map<string, Interview["questions"][number]>();
+  const difficulty =
+    interview.currentDifficulty ??
+    (interview.difficultyLevel
+      ? (interview.difficultyLevel as Interview["questions"][number]["difficulty"])
+      : ("medium" as Interview["questions"][number]["difficulty"]));
+
+  for (const entry of conversation) {
+    const existing: Interview["questions"][number] = byQuestionId.get(entry.questionId) ?? {
+      id: entry.questionId,
+      question: "",
+      difficulty,
+    };
+
+    if (entry.role === "assistant") {
+      existing.question = entry.message;
+    } else {
+      existing.answer = entry.message;
+      existing.answeredAt = entry.createdAt;
+    }
+
+    byQuestionId.set(entry.questionId, existing);
+  }
+
+  return [...byQuestionId.values()].filter((q) => q.question.trim().length > 0);
+};
+
 const EMPTY_ANSWER_EVALUATION: RawEvaluation = {
   technical: 0,
   communication: 0,
@@ -209,11 +242,16 @@ const evaluateSubmittedAnswers = async (
     }
   }
 
+  const normalizedAnswers = input.answers.map((item) => ({
+    ...item,
+    answer: item.answer.trim(),
+  }));
+
   logger.info(
-    `[interview.service] evaluating ${input.answers.length} answers interviewId=${interview.id}`
+    `[interview.service] evaluating ${normalizedAnswers.length} answers interviewId=${interview.id}`
   );
 
-  const answeredItems = input.answers.filter((item) => item.answer.length > 0);
+  const answeredItems = normalizedAnswers.filter((item) => item.answer.length > 0);
   const evaluationsByQuestionId = new Map<string, RawEvaluation>();
 
   if (answeredItems.length > 0) {
@@ -239,7 +277,7 @@ const evaluateSubmittedAnswers = async (
   }
 
   const answeredAt = Timestamp.now();
-  const answerUpdates = input.answers.map((item) => {
+  const answerUpdates = normalizedAnswers.map((item) => {
     const rawEvaluation =
       item.answer.length > 0
         ? evaluationsByQuestionId.get(item.questionId)!
@@ -309,6 +347,35 @@ export const prepareLiveSession = async (
   return interview;
 };
 
+export const resumeInterview = async (
+  userId: string,
+  interviewId: string
+): Promise<InterviewResumeState> => {
+  await assertActiveSubscription(userId);
+
+  const interview = await repo.requireOwnedInterview(interviewId, userId);
+
+  if (interview.status === InterviewStatus.CANCELLED) {
+    throw new AppError(400, "This interview was cancelled and cannot be continued.");
+  }
+
+  const remainingSeconds = repo.computeRemainingSeconds(interview);
+
+  return {
+    status: interview.status,
+    conversation: interview.conversation ?? [],
+    currentQuestionIndex:
+      typeof interview.currentQuestionIndex === "number" ? interview.currentQuestionIndex : -1,
+    lastSpeaker: interview.lastSpeaker,
+    currentTopic: interview.currentTopic,
+    currentDifficulty: interview.currentDifficulty,
+    currentQuestionId: interview.currentQuestionId,
+    startedAt: interview.startedAt,
+    remainingSeconds,
+    questionStartTime: interview.questionStartTime,
+  };
+};
+
 export const finishInterview = async (
   userId: string,
   interviewId: string
@@ -324,6 +391,21 @@ export const finishInterview = async (
   if (interview.status === InterviewStatus.CANCELLED) {
     throw new AppError(400, "This interview was cancelled and cannot be continued.");
   }
+
+  if (interview.questions.length === 0 && (interview.conversation?.length ?? 0) > 0) {
+    const rebuilt = rebuildQuestionsFromConversation(interview);
+    if (rebuilt.length > 0) {
+      interview = await repo.updateInterview(
+        interviewId,
+        {
+          questions: rebuilt,
+          questionCount: Math.max(interview.questionCount, rebuilt.length),
+        },
+        interview
+      );
+    }
+  }
+
   if (interview.questions.length === 0) {
     throw new AppError(
       400,
@@ -380,7 +462,7 @@ export const finishInterview = async (
     });
 
     const report: InterviewReport = {
-      overallScore: rawReport.overallScore,
+      overallScore: resolveOverallScore(rawReport.overallScore, totalScore),
       strengths: rawReport.strengths,
       weaknesses: rawReport.weaknesses,
       recommendations: rawReport.recommendations,
@@ -390,11 +472,7 @@ export const finishInterview = async (
 
     await repo.completeInterview(interviewId, report, interview);
 
-    const analyticsScore =
-      report.overallScore ??
-      (totalScore.outOf > 0
-        ? Math.round((totalScore.score / totalScore.outOf) * 100)
-        : 0);
+    const analyticsScore = report.overallScore;
     const targetTechnology =
       interview.targetRole?.trim() ||
       interview.specification?.trim() ||

@@ -1,11 +1,12 @@
 import { Timestamp } from "firebase-admin/firestore";
 import { db } from "../../config/firebase";
 import { getRazorpay, getRazorpayConfig, isRazorpayConfigured } from "../../config/razorpay";
-import { PLAN_DEFAULTS, PLAN_IDS, PLAN_MONTHLY_INTERVIEW_LIMITS, SUBSCRIPTION_STATUS } from "../../constants/payment.constants";
+import { PLAN_DEFAULTS, PLAN_IDS, SUBSCRIPTION_STATUS } from "../../constants/payment.constants";
 import * as userRepo from "../auth/auth.repository";
-import { countInterviewsCreatedThisMonth } from "../auth/auth.repository";
+import { countInterviewsCreatedThisMonth, countResumeAnalysesThisMonth } from "../auth/auth.repository";
 import { isSubscriptionExpired } from "../subscription/subscription.service";
 import type { PaymentRecord, Plan, UserSubscription } from "./payment.model";
+import { getPlanById as findPlanById, getPlanMonthlyLimits } from "./plan.repository";
 import type { User } from "../auth/auth.types";
 import { COLLECTIONS } from "../../shared/constants";
 import { getStartOfNextMonth, resolveBillingPlan } from "../../shared/plan.utils";
@@ -29,9 +30,29 @@ interface VerifyPaymentInput {
 const CAPTURED_STATUS = "captured";
 const WEBHOOK_ACTIVATION_EVENTS = new Set(["payment.captured", "order.paid"]);
 
-const getPlansCollection = () => db.collection(COLLECTIONS.PLANS);
 const getPaymentsCollection = () => db.collection(COLLECTIONS.PAYMENTS);
 const getUsersCollection = () => db.collection(COLLECTIONS.USERS);
+
+const getPlanById = async (planId: string): Promise<Plan> => {
+  const plan = await findPlanById(planId);
+  if (!plan) {
+    throw new AppError(404, "Plan not found");
+  }
+
+  if (!plan.id || typeof plan.amount !== "number" || !plan.name) {
+    throw new AppError(500, "Invalid plan configuration in Firestore");
+  }
+
+  if (plan.isActive === false) {
+    throw new AppError(400, "This plan is not available for purchase.");
+  }
+
+  if (!plan.currency?.trim()) {
+    throw new AppError(500, "Invalid plan configuration: currency is required");
+  }
+
+  return plan;
+};
 
 const tsToIso = (value: Timestamp | string | null | undefined): string | null => {
   if (!value) return null;
@@ -49,33 +70,11 @@ const computeExpiryDate = (durationInDays: number): Date | null => {
 const readNote = (notes: Record<string, unknown> | undefined, key: string): string =>
   String(notes?.[key] ?? "").trim();
 
-const getPlanById = async (planId: string): Promise<Plan> => {
-  const snap = await getPlansCollection().doc(planId).get();
-  if (!snap.exists) {
-    throw new AppError(404, "Plan not found");
-  }
-
-  const plan = { id: snap.id, ...snap.data() } as Plan;
-  if (!plan.id || typeof plan.amount !== "number" || !plan.name) {
-    throw new AppError(500, "Invalid plan configuration in Firestore");
-  }
-
-  if (plan.isActive === false) {
-    throw new AppError(400, "This plan is not available for purchase.");
-  }
-
-  if (!plan.currency?.trim()) {
-    throw new AppError(500, "Invalid plan configuration: currency is required");
-  }
-
-  return plan;
-};
-
 const buildSubscriptionForPlan = (plan: Plan, paymentId: string): UserSubscription => {
   const now = new Date();
   const fallback = PLAN_DEFAULTS[plan.id as keyof typeof PLAN_DEFAULTS] ?? {
     duration: plan.duration ?? 0,
-    interviewCredits: plan.interviewCredits ?? 3,
+    interviewCredits: plan.interviewCredits ?? 10,
   };
   const duration = plan.duration ?? fallback.duration;
   const interviewCredits = plan.interviewCredits ?? fallback.interviewCredits;
@@ -288,10 +287,14 @@ export const getPaymentHistory = async (userId: string): Promise<PaymentRecord[]
 export const getSubscription = async (userId: string) => {
   const userSnap = await getUsersCollection().doc(userId).get();
   const freeCredits = PLAN_DEFAULTS[PLAN_IDS.FREE].interviewCredits;
+  const freeLimits = await getPlanMonthlyLimits(PLAN_IDS.FREE);
   const emptyQuota = {
-    monthlyInterviewLimit: PLAN_MONTHLY_INTERVIEW_LIMITS[PLAN_IDS.FREE],
+    monthlyInterviewLimit: freeLimits.monthlyInterviewLimit,
     interviewsUsedThisMonth: 0,
-    interviewsRemainingThisMonth: PLAN_MONTHLY_INTERVIEW_LIMITS[PLAN_IDS.FREE],
+    interviewsRemainingThisMonth: freeLimits.monthlyInterviewLimit,
+    monthlyResumeAnalysisLimit: freeLimits.monthlyResumeAnalysisLimit,
+    resumeAnalysesUsedThisMonth: 0,
+    resumeAnalysesRemainingThisMonth: freeLimits.monthlyResumeAnalysisLimit,
     quotaResetsAt: getStartOfNextMonth().toISOString(),
   };
 
@@ -309,10 +312,23 @@ export const getSubscription = async (userId: string) => {
   const user = { ...(userSnap.data() as User), uid: userId };
   let subscription = user.subscription as UserSubscription | undefined;
   const billingPlan = resolveBillingPlan(user);
-  const monthlyLimit = PLAN_MONTHLY_INTERVIEW_LIMITS[billingPlan];
+  const planLimits = await getPlanMonthlyLimits(billingPlan);
+  const monthlyLimit = planLimits.monthlyInterviewLimit;
   const interviewsUsedThisMonth = await countInterviewsCreatedThisMonth(userId, user);
   const interviewsRemainingThisMonth =
     monthlyLimit === null ? null : Math.max(0, monthlyLimit - interviewsUsedThisMonth);
+  const monthlyResumeLimit = planLimits.monthlyResumeAnalysisLimit;
+  const resumeAnalysesUsedThisMonth = await countResumeAnalysesThisMonth(userId, user);
+  const resumeAnalysesRemainingThisMonth =
+    monthlyResumeLimit === null
+      ? null
+      : Math.max(0, monthlyResumeLimit - resumeAnalysesUsedThisMonth);
+
+  const resumeQuota = {
+    monthlyResumeAnalysisLimit: monthlyResumeLimit,
+    resumeAnalysesUsedThisMonth,
+    resumeAnalysesRemainingThisMonth,
+  };
 
   if (
     subscription &&
@@ -340,6 +356,7 @@ export const getSubscription = async (userId: string) => {
       monthlyInterviewLimit: monthlyLimit,
       interviewsUsedThisMonth,
       interviewsRemainingThisMonth,
+      ...resumeQuota,
       quotaResetsAt: getStartOfNextMonth().toISOString(),
     };
   }
@@ -360,6 +377,7 @@ export const getSubscription = async (userId: string) => {
     monthlyInterviewLimit: monthlyLimit,
     interviewsUsedThisMonth,
     interviewsRemainingThisMonth,
+    ...resumeQuota,
     quotaResetsAt: getStartOfNextMonth().toISOString(),
   };
 };

@@ -23,6 +23,7 @@ export const buildReportPrompt = (params: ReportParams): string => {
 
   return `
 You are generating a comprehensive final interview report for a ${technology} candidate with ${experienceLevel} of experience.
+This is a PRACTICE interview report — focus on helping the candidate identify gaps, strengths, and a clear improvement plan for future real interviews.
 
 Complete Interview Transcript with Scores:
 ---
@@ -32,11 +33,13 @@ ${qaSection}
 Based on the above, generate a professional final report.
 
 Instructions:
-- Calculate an overall score (0-100) that reflects the aggregate performance
+- Analyze ALL answers together (content quality, correctness, depth, consistency, and coverage across the interview). Then assign overallScore (0-100) as a holistic judgment of the candidate's performance — do NOT compute it as an average of per-question scores.
+- overallScore MUST be 0 when every answer is empty, missing, "I don't know/remember", off-topic, nonsensical, or scored 0. Do not award consolation points for honesty or effort alone.
+- Empty, missing, off-topic, nonsensical, or largely wrong answers must heavily lower overallScore. Strong fluency alone must not inflate the score when answers are incorrect or shallow.
 - Write a concise executive summary (2-4 sentences)
 - Identify 3-5 specific strengths demonstrated by the candidate
-- Identify 2-4 specific areas for improvement (weaknesses)
-- Provide 3-5 actionable, specific recommendations for the candidate
+- Identify 2-4 specific areas for improvement (weaknesses) with concrete examples from their answers
+- Provide 3-5 actionable, specific recommendations the candidate can follow to prepare better
 
 Return ONLY a valid JSON object. No markdown, no explanation:
 {

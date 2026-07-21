@@ -10,7 +10,8 @@
     "deploy-firestore": "firebase deploy --only firestore:indexes --project=interview-89e09",
     "deploy-functions": "firebase deploy --only functions --force --project=interview-89e09",
     "emulators:start": "firebase emulators:start --project=interview-89e09",
-    "sync:secrets": "node scripts/sync-firebase-secrets.js"
+    "sync:secrets": "node scripts/sync-firebase-secrets.js",
+    "seed": "node scripts/seed.js"
   },
   "author": "",
   "license": "ISC"
