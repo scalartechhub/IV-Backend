@@ -164,6 +164,15 @@ export const broadcastInterviewCompleted = (interviewId: string): void => {
   });
 };
 
+/** Wait for in-flight live-session writes before reading interview state (e.g. on finish). */
+export const awaitLiveSessionPersist = async (interviewId: string): Promise<void> => {
+  const socket = activeByInterviewId.get(interviewId);
+  if (!socket) return;
+  const session = activeSessions.get(socket);
+  if (!session) return;
+  await session.persistQueue.catch(() => undefined);
+};
+
 export const setupLiveInterviewWebSocket = (server: Server): void => {
   if (isCloudRuntime()) {
     logger.warn(

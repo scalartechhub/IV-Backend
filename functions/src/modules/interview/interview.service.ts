@@ -40,6 +40,7 @@ import {
   getRawEvaluationScore,
   resolveOverallScore,
 } from "./interview.scoring";
+import { awaitLiveSessionPersist } from "../live-interview/live-interview.ws";
 
 const getInterviewContextLabel = (interview: Interview): string => {
   const role = interview.targetRole?.trim();
@@ -227,6 +228,18 @@ const EMPTY_ANSWER_EVALUATION: RawEvaluation = {
   feedback: "No answer provided.",
 };
 
+const buildNoParticipationReport = (): InterviewReport => ({
+  overallScore: 0,
+  strengths: [],
+  weaknesses: ["No answers were recorded during this session."],
+  recommendations: [
+    "Join the live interview and respond to each question before submitting.",
+    "Check your microphone permissions if you intended to answer verbally.",
+  ],
+  summary: "This interview was submitted without any recorded answers.",
+  generatedAt: Timestamp.now(),
+});
+
 const evaluateSubmittedAnswers = async (
   interview: Interview,
   input: SubmitAnswersInput
@@ -383,6 +396,8 @@ export const finishInterview = async (
   const user = await requireUserById(userId);
   assertActiveSubscriptionForUser(user);
 
+  await awaitLiveSessionPersist(interviewId);
+
   let interview = await repo.requireOwnedInterview(interviewId, userId);
 
   if (interview.status === InterviewStatus.COMPLETED) {
@@ -399,44 +414,42 @@ export const finishInterview = async (
         interviewId,
         {
           questions: rebuilt,
-          questionCount: Math.max(interview.questionCount, rebuilt.length),
         },
         interview
       );
     }
   }
 
-  if (interview.questions.length === 0) {
-    throw new AppError(
-      400,
-      "No interview transcript is available yet. Complete the live session before finishing."
-    );
-  }
-
-  const answersInput = buildAnswersFromInterview(interview);
-  const hasUnevaluatedAnswers = interview.questions.some(
-    (q) => (q.answer ?? "").trim().length > 0 && q.score === undefined
-  );
-
   let submission: SubmitAnswersResult;
 
-  if (hasUnevaluatedAnswers) {
-    const evaluated = await evaluateSubmittedAnswers(interview, answersInput);
-    submission = evaluated.submission;
-    interview = evaluated.interview;
+  if (interview.questions.length > 0) {
+    const answersInput = buildAnswersFromInterview(interview);
+    const hasUnevaluatedAnswers = interview.questions.some((q) => q.score === undefined);
+
+    if (hasUnevaluatedAnswers) {
+      const evaluated = await evaluateSubmittedAnswers(interview, answersInput);
+      submission = evaluated.submission;
+      interview = evaluated.interview;
+    } else {
+      submission = {
+        results: interview.questions
+          .filter((q) => q.score !== undefined)
+          .map((q) => ({
+            questionId: q.id,
+            answer: q.answer ?? "",
+            score: q.score!,
+            feedback: q.feedback ?? "",
+            answeredAt: q.answeredAt ?? Timestamp.now(),
+          })),
+        totalScore: calculateInterviewTotalScore(interview.questions),
+        answeredCount: countAnsweredQuestions(interview.questions),
+      };
+    }
   } else {
     submission = {
-      results: interview.questions
-        .filter((q) => q.score !== undefined)
-        .map((q) => ({
-          questionId: q.id,
-          answer: q.answer ?? "",
-          score: q.score!,
-          feedback: q.feedback ?? "",
-          answeredAt: q.answeredAt ?? Timestamp.now(),
-        })),
-      totalScore: calculateInterviewTotalScore(interview.questions),
-      answeredCount: countAnsweredQuestions(interview.questions),
+      results: [],
+      totalScore: calculateInterviewTotalScore([]),
+      answeredCount: 0,
     };
   }
 
@@ -455,20 +468,24 @@ export const finishInterview = async (
   try {
     const totalScore = calculateInterviewTotalScore(interview.questions);
 
-    const rawReport = await generateReport({
-      technology: getInterviewContextLabel(interview),
-      experienceLevel: getInterviewExperienceLevel(interview),
-      questions: interview.questions,
-    });
-
-    const report: InterviewReport = {
-      overallScore: resolveOverallScore(rawReport.overallScore, totalScore),
-      strengths: rawReport.strengths,
-      weaknesses: rawReport.weaknesses,
-      recommendations: rawReport.recommendations,
-      summary: rawReport.summary ?? "Interview completed.",
-      generatedAt: Timestamp.now(),
-    };
+    let report: InterviewReport;
+    if (interview.questions.length === 0) {
+      report = buildNoParticipationReport();
+    } else {
+      const rawReport = await generateReport({
+        technology: getInterviewContextLabel(interview),
+        experienceLevel: getInterviewExperienceLevel(interview),
+        questions: interview.questions,
+      });
+      report = {
+        overallScore: resolveOverallScore(rawReport.overallScore, totalScore),
+        strengths: rawReport.strengths,
+        weaknesses: rawReport.weaknesses,
+        recommendations: rawReport.recommendations,
+        summary: rawReport.summary ?? "Interview completed.",
+        generatedAt: Timestamp.now(),
+      };
+    }
 
     await repo.completeInterview(interviewId, report, interview);
 

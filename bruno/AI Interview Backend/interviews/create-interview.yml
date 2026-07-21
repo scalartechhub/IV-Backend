@@ -17,8 +17,7 @@ http:
         "experienceLevel": "3 years",
         "difficultyLevel": "medium",
         "interviewType": "technicalInterview",
-        "durationMinutes": 30,
-        "questionCount": 9
+        "durationMinutes": 30
       }
   auth:
     type: bearer
@@ -59,9 +58,7 @@ docs: |-
   - `difficultyLevel` — `easy` | `medium` | `hard` | `expert`
   - `interviewType` — `technicalInterview` | `codingInterview` | `systemDesign` | `hrInterview` | `behavioralInterview`
   - `durationMinutes` — interview duration in minutes (validated on frontend)
-  - `questionCount` — how many questions to generate (validated on frontend)
 
-  Questions are generated from the payload fields above and embedded in the interview document.
-  May take 30–60 seconds (Gemini AI).
+  Creates a live interview session. Questions are asked dynamically during the session.
 
   Auto-saves `interviewId`, `questionId` (first), and `questionIds` (JSON array) to environment.
