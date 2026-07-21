@@ -7,6 +7,7 @@ import {
   analysisIdParamSchema,
   analyzeResumeSchema,
   historyQuerySchema,
+  resumeIdParamSchema, // 👈 1. IMPORTED NEW VALIDATOR
 } from "./ats.validators";
 
 const router = Router();
@@ -24,6 +25,22 @@ router.get(
   },
 );
 
+router.get(
+  "/by-resume/:resumeId",
+  validate(resumeIdParamSchema, "params"),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const result = await atsController.getAnalysisByResumeId(
+        req.user!.uid,
+        String(req.params.resumeId),
+      );
+      sendSuccess(res, result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 router.post(
   "/analyze",
   validate(analyzeResumeSchema),
@@ -35,6 +52,7 @@ router.post(
         req.body.jobDescription,
         req.body.parsedResume,
         req.body.targetRole,
+        req.body.resumeId, 
       );
       sendCreated(res, result, "Resume analyzed successfully");
     } catch (error) {

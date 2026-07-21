@@ -3,7 +3,7 @@ export type { RoleBenchmark };
 
 export interface ParsedResume {
   skills?: string[];
-  experience: {
+  experience?: {
     title: string;
     company: string;
     duration: string;
@@ -33,13 +33,16 @@ export interface AtsAnalysisResult {
 export interface AtsAnalysisDoc {
   id?: string;
   userId: string;
+  resumeId?: string;       
+  targetRole?: string;     
   resumeSnippet: string;
   jobTitle: string;
   analysisResult: AtsAnalysisResult;
-  createdAt: string | FirebaseFirestore.Timestamp;
+  createdAt: string | any; 
 }
 
 export interface AnalyzeRequest {
+  resumeId?: string;    
   resumeText?: string;
   parsedResume?: ParsedResume;
   jobDescription?: string; 

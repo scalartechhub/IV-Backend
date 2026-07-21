@@ -2,6 +2,11 @@ import { z } from "zod";
 
 export const analyzeResumeSchema = z
   .object({
+    resumeId: z
+      .string()
+      .trim()
+      .min(1, "Resume ID is required"), 
+
     resumeText: z
       .string()
       .trim()
@@ -59,12 +64,10 @@ export const analyzeResumeSchema = z
     (data) => {
       const hasResume = !!(data.resumeText || data.parsedResume);
       const hasComparison = !!(data.jobDescription || data.targetRole);
-
       return hasResume && hasComparison;
     },
     {
-      message:
-        "You must provide either a jobDescription or a targetRole, and either resumeText or parsedResume.",
+      message: "You must provide either a jobDescription or a targetRole, and either resumeText or parsedResume.",
       path: ["resumeText"],
     },
   );
@@ -75,4 +78,8 @@ export const historyQuerySchema = z.object({
 
 export const analysisIdParamSchema = z.object({
   id: z.string().trim().min(1, "Analysis ID is required"),
+});
+
+export const resumeIdParamSchema = z.object({
+  resumeId: z.string().trim().min(1, "Resume ID is required"),
 });

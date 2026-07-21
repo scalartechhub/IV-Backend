@@ -8,9 +8,11 @@ export const analyzeResume = async (
   jobDescription: string | undefined,
   parsedResume?: ParsedResume,
   targetRole?: string,
+  resumeId?: string,
 ): Promise<{ analysisId: string } & AtsAnalysisResult> => {
   logger.debug("[atsController] Starting resume analysis", {
     userId,
+    resumeId,
     targetRole,
   });
 
@@ -20,15 +22,35 @@ export const analyzeResume = async (
     jobDescription,
     parsedResume,
     targetRole,
+    resumeId,
   );
 
   logger.info("[atsController] Resume analyzed successfully", {
     userId,
+    resumeId,
     analysisId: result.analysisId,
     matchScore: result.matchScore,
   });
 
   return result;
+};
+
+export const getAnalysisByResumeId = async (
+  userId: string,
+  resumeId: string,
+): Promise<AtsAnalysisDoc | null> => {
+  try {
+    logger.debug("[atsController] getAnalysisByResumeId called", { userId, resumeId });
+    const result = await atsService.getAnalysisByResumeId(userId, resumeId);
+    logger.debug("[atsController] getAnalysisByResumeId result", { 
+      found: result !== null,
+      result 
+    });
+    return result;
+  } catch (error) {
+    logger.error("[atsController] Error in getAnalysisByResumeId", error);
+    throw error;
+  }
 };
 
 export const getAvailableRoles = async (): Promise<

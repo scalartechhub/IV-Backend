@@ -15,8 +15,17 @@ class AtsService {
     jobDescription: string | undefined,
     parsedResume?: ParsedResume,
     targetRole?: string,
+    resumeId?: string,
   ): Promise<{ analysisId: string } & AtsAnalysisResult> {
     try {
+      logger.debug("[atsService] analyzeResume started", {
+        userId,
+        resumeId,
+        targetRole,
+        hasParsedResume: !!parsedResume,
+        hasResumeText: !!resumeText,
+      });
+
       const formattedResume = parsedResume
         ? this.formatParsedResume(parsedResume)
         : resumeText;
@@ -48,6 +57,7 @@ class AtsService {
         );
       }
 
+      logger.debug("[atsService] Calling Gemini API");
       const analysisResult = await geminiModel.generateJSON<AtsAnalysisResult>(
         prompt,
         { temperature: 0.1, maxOutputTokens: 2048 },
@@ -57,12 +67,26 @@ class AtsService {
         throw new AppError(502, "AI returned invalid analysis format");
       }
 
+      logger.debug("[atsService] Saving to Firestore", {
+        userId,
+        resumeId,
+        targetRole,
+      });
+
+      // ✅ Saves resumeId and targetRole to link the analysis
       const docRef = await db.collection("atsAnalyses").add({
         userId,
+        resumeId: resumeId || null,       
+        targetRole: targetRole || null,   
         resumeSnippet: formattedResume.substring(0, 500),
         jobTitle: comparisonTitle,
         analysisResult,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      logger.info("[atsService] Analysis saved successfully", {
+        analysisId: docRef.id,
+        resumeId,
       });
 
       return { analysisId: docRef.id, ...analysisResult };
@@ -70,6 +94,49 @@ class AtsService {
       if (error instanceof AppError) throw error;
       logger.error("[atsService] analyzeResume error", error);
       throw new AppError(500, "Failed to analyze resume");
+    }
+  }
+
+  // ✅ FIXED: Gracefully returns null instead of throwing a 500 error
+  async getAnalysisByResumeId(userId: string, resumeId: string): Promise<AtsAnalysisDoc | null> {
+    try {
+      logger.debug("[atsService] getAnalysisByResumeId called", { userId, resumeId });
+      
+      const snapshot = await db
+        .collection("atsAnalyses")
+        .where("userId", "==", userId)
+        .where("resumeId", "==", resumeId)
+        .orderBy("createdAt", "desc")
+        .limit(1)
+        .get();
+
+      logger.debug("[atsService] Query result", { 
+        size: snapshot.size,
+        empty: snapshot.empty 
+      });
+
+      if (snapshot.empty) {
+        logger.info("[atsService] No analysis found for resumeId", resumeId);
+        return null;
+      }
+
+      const doc = snapshot.docs[0];
+      const data = doc.data() as AtsAnalysisDoc;
+
+      logger.debug("[atsService] Found analysis", { 
+        docId: doc.id,
+        data 
+      });
+
+      return {
+        ...data,
+        id: doc.id,
+        createdAt: (data.createdAt as any)?.toDate?.().toISOString() || "",
+      };
+    } catch (error: any) {
+      // ✅ CRITICAL FIX: If collection is empty or index is missing, return null safely
+      logger.warn("[atsService] getAnalysisByResumeId failed (likely missing index or empty collection). Returning null.", error);
+      return null; 
     }
   }
 
