@@ -54,6 +54,22 @@ export const listInterviewsQuerySchema = z.object({
   startAfter: z.string().min(1).optional(),
 });
 
+export const resumePdfSchema = z.object({
+  html: z
+    .string()
+    .min(1, "html is required")
+    .max(500_000, "html payload is too large"),
+  fileName: z
+    .string()
+    .min(1, "fileName is required")
+    .max(200, "fileName is too long")
+    .regex(
+      /^[a-zA-Z0-9_-]+$/,
+      "fileName must contain only letters, numbers, hyphens, and underscores"
+    ),
+});
+
 export type CreateInterviewInput = z.infer<typeof createInterviewSchema>;
 export type InterviewIdParams = z.infer<typeof interviewIdParamSchema>;
 export type ListInterviewsQuery = z.infer<typeof listInterviewsQuerySchema>;
+export type ResumePdfInput = z.infer<typeof resumePdfSchema>;
