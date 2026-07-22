@@ -13,7 +13,6 @@ import { Firestore, getFirestore } from "firebase-admin/firestore";
 
 import { isCloudRuntime } from "../shared/runtime";
 import { appConfig } from "./app.config";
-import { secretService } from "./secrets";
 
 export let db: Firestore;
 export let auth: Auth;
@@ -63,7 +62,21 @@ export const initializeFirebase = (): void => {
       ...(_storageBucket && { storageBucket: _storageBucket }),
     });
   } else {
-    const credentials = secretService.getFirebaseCredentials();
+    const credentials = {
+      projectId:
+        process.env.FIREBASE_PROJECT_ID?.trim() ||
+        process.env.GCLOUD_PROJECT?.trim() ||
+        "",
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL?.trim() || "",
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.trim().replace(/\\n/g, "\n") || "",
+    };
+
+    if (!credentials.projectId || !credentials.clientEmail || !credentials.privateKey) {
+      throw new Error(
+        "Firebase credentials not found. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY."
+      );
+    }
+
     adminApp = initializeApp({
       credential: localServiceAccount
         ? cert(localServiceAccount)

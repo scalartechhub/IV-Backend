@@ -1,15 +1,16 @@
 import Razorpay from "razorpay";
+import { appConfig } from "./app.config";
 import { AppError } from "../shared/utils";
 
 let razorpayInstance: Razorpay | null = null;
 
 export const isRazorpayConfigured = (): boolean =>
-  Boolean(process.env.RAZORPAY_KEY_ID?.trim() && process.env.RAZORPAY_KEY_SECRET?.trim());
+  Boolean(appConfig.razorpayKeyId?.trim() && appConfig.razorpayKeySecret?.trim());
 
 export const getRazorpayConfig = () => ({
-  keyId: process.env.RAZORPAY_KEY_ID?.trim() ?? "",
-  keySecret: process.env.RAZORPAY_KEY_SECRET?.trim() ?? "",
-  webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET?.trim() ?? "",
+  keyId: appConfig.razorpayKeyId?.trim() ?? "",
+  keySecret: appConfig.razorpayKeySecret?.trim() ?? "",
+  webhookSecret: appConfig.razorpayWebhookSecret?.trim() ?? "",
 });
 
 /** Lazily initialized so the app can start when Razorpay env vars are unset (non-payment routes). */

@@ -8,11 +8,11 @@ import { AppError } from "../../shared/utils";
 let groqClient: Groq | null = null;
 
 const getGroqClient = (): Groq => {
-  const apiKey = process.env.GROQ_API_KEY?.trim();
+  const apiKey = appConfig.groqApiKey?.trim();
   if (!apiKey) {
     throw new AppError(
       503,
-      "Chat service is not configured. Set GROQ_API_KEY in your .env file."
+      "Chat service is not configured. Missing groqApiKey in Firestore config."
     );
   }
 
