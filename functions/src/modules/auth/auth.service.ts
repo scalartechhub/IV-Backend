@@ -1,19 +1,18 @@
 import { auth } from "../../config/firebase";
 import { secretService } from "../../config/secrets";
-import { Timestamp } from "firebase-admin/firestore";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
 import { mapFirebaseLoginError } from "../../shared/errors";
-import { parseResume } from "../ai/resume-parser.service";
-import { uploadUserResumeFile } from "../storage/storage.service";
+import {
+  analyzeResumeScorecard,
+  type ResumeAnalysisResponse,
+} from "../ai/resume-parser.service";
 import * as userRepo from "./auth.repository";
 import { assertCanUploadResume } from "../subscription/subscription.service";
 import type {
   AuthProvider,
   LoginResult,
   RegisterResult,
-  User,
-  UserResumeAnalysisEntry,
 } from "./auth.types";
 
 export const register = async (input: {
@@ -99,28 +98,25 @@ export const logout = async (uid: string): Promise<void> => {
   logger.info(`[auth.service] logout uid=${uid}`);
 };
 
+/**
+ * Analyze an uploaded resume PDF and return the dashboard scorecard.
+ * Does NOT write analysis data to the user collection.
+ */
 export const uploadResumeAnalysis = async (
   uid: string,
-  fileBuffer: Buffer
-): Promise<UserResumeAnalysisEntry> => {
-  logger.info(`[auth.service] user resume upload uid=${uid}`);
+  fileBuffer: Buffer,
+  fileName?: string
+): Promise<ResumeAnalysisResponse> => {
+  logger.info(`[auth.service] resume analysis uid=${uid}`);
 
   await assertCanUploadResume(uid);
 
-  const analysis = await parseResume(fileBuffer);
+  const analysis = await analyzeResumeScorecard(fileBuffer, fileName);
 
-  let resumeUrl: string | undefined;
-  try {
-    resumeUrl = await uploadUserResumeFile(uid, fileBuffer);
-  } catch (storageError) {
-    logger.warn(`[auth.service] user resume storage upload failed uid=${uid}`, storageError);
-  }
-
-  const entry = await userRepo.appendUserResumeAnalysis(uid, {
-    url: resumeUrl,
-    parsed: analysis,
-    uploadedAt: Timestamp.now(),
+  logger.info(`[auth.service] resume analysis complete uid=${uid}`, {
+    resumeId: analysis.resumeId,
+    overallScore: analysis.overallScore,
   });
 
-  return entry;
+  return analysis;
 };

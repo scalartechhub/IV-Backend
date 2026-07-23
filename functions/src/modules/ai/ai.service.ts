@@ -35,7 +35,9 @@ const isRateLimitError = (error: unknown): boolean =>
 const isInvalidApiKeyError = (error: unknown): boolean =>
   INVALID_API_KEY_PATTERN.test(errorMessage(error));
 
-const isRetryableAppError = (error: AppError): boolean => error.statusCode === 504;
+/** 504 timeouts and 502 unreadable/truncated AI JSON are worth retrying. */
+const isRetryableAppError = (error: AppError): boolean =>
+  error.statusCode === 504 || error.statusCode === 502;
 
 const isRetryableError = (error: unknown): boolean => {
   if (error instanceof AppError) return isRetryableAppError(error);
@@ -64,8 +66,33 @@ const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
   });
 };
 
+/** Gemini 2.x thinking models accept thinkingConfig; older models reject it. */
+const supportsThinkingConfig = (model: string): boolean =>
+  /gemini-2\./i.test(model);
+
+export type GenerateJSONOptions = {
+  maxOutputTokens?: number;
+  temperature?: number;
+};
+
+const resolveGenerateJSONOptions = (
+  options?: number | GenerateJSONOptions
+): { maxOutputTokens: number; temperature: number } => {
+  if (typeof options === "number") {
+    return { maxOutputTokens: options, temperature: 0.3 };
+  }
+  return {
+    maxOutputTokens: options?.maxOutputTokens ?? 4096,
+    temperature: options?.temperature ?? 0.3,
+  };
+};
+
 export class AIService {
-  async generateJSON<T>(prompt: string, maxOutputTokens = 4096): Promise<T> {
+  async generateJSON<T>(
+    prompt: string,
+    options?: number | GenerateJSONOptions
+  ): Promise<T> {
+    const { maxOutputTokens, temperature } = resolveGenerateJSONOptions(options);
     const trimmedPrompt = trimPrompt(prompt);
     let lastError: unknown;
     const primaryModel = GEMINI_FALLBACK_MODELS[0];
@@ -82,14 +109,20 @@ export class AIService {
               contents: trimmedPrompt,
               config: {
                 responseMimeType: "application/json",
-                temperature: 0.3,
+                temperature,
                 maxOutputTokens,
+                // Gemini 2.5+ thinking tokens count against maxOutputTokens and
+                // routinely truncate JSON mid-object. Disable for structured output.
+                ...(supportsThinkingConfig(model)
+                  ? { thinkingConfig: { thinkingBudget: 0 } }
+                  : {}),
               },
             }),
             GEMINI_REQUEST_TIMEOUT_MS
           );
 
           const text = response.text?.trim();
+          const finishReason = response.candidates?.[0]?.finishReason;
           if (!text) {
             console.warn(
               `[Gemini] Model "${model}" returned an empty response.\n` +
@@ -97,6 +130,17 @@ export class AIService {
               `  Try: (1) Check if your prompt contains restricted content. (2) Reduce maxOutputTokens. (3) Inspect prompt for unusual characters.`
             );
             throw new AppError(502, "AI returned an empty response. Please try again.");
+          }
+
+          if (finishReason === "MAX_TOKENS") {
+            console.warn(
+              `[Gemini] Model "${model}" hit maxOutputTokens (${maxOutputTokens}); response truncated.\n` +
+              `  HOW TO FIX: Increase maxOutputTokens for this call, or keep thinkingBudget at 0.`
+            );
+            throw new AppError(
+              502,
+              "AI response was truncated. Please try again."
+            );
           }
 
           const elapsedMs = Date.now() - startedAt;

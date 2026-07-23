@@ -1,6 +1,6 @@
 import { logger } from "../../shared/logger";
 import { atsService } from "./atsService";
-import { AtsAnalysisDoc, AtsAnalysisResult, ParsedResume } from "./ats.types";
+import { ParsedResume, ResumeAnalysisResponse } from "./ats.types";
 
 export const analyzeResume = async (
   userId: string,
@@ -9,7 +9,9 @@ export const analyzeResume = async (
   parsedResume?: ParsedResume,
   targetRole?: string,
   resumeId?: string,
-): Promise<{ analysisId: string } & AtsAnalysisResult> => {
+  fileName?: string,
+  experience?: string,
+): Promise<ResumeAnalysisResponse> => {
   logger.debug("[atsController] Starting resume analysis", {
     userId,
     resumeId,
@@ -23,13 +25,14 @@ export const analyzeResume = async (
     parsedResume,
     targetRole,
     resumeId,
+    fileName,
+    experience,
   );
 
   logger.info("[atsController] Resume analyzed successfully", {
     userId,
     resumeId,
-    analysisId: result.analysisId,
-    matchScore: result.matchScore,
+    overallScore: result.overallScore,
   });
 
   return result;
@@ -38,13 +41,12 @@ export const analyzeResume = async (
 export const getAnalysisByResumeId = async (
   userId: string,
   resumeId: string,
-): Promise<AtsAnalysisDoc | null> => {
+): Promise<ResumeAnalysisResponse | null> => {
   try {
     logger.debug("[atsController] getAnalysisByResumeId called", { userId, resumeId });
     const result = await atsService.getAnalysisByResumeId(userId, resumeId);
-    logger.debug("[atsController] getAnalysisByResumeId result", { 
+    logger.debug("[atsController] getAnalysisByResumeId result", {
       found: result !== null,
-      result 
     });
     return result;
   } catch (error) {
@@ -62,14 +64,14 @@ export const getAvailableRoles = async (): Promise<
 export const getHistory = async (
   userId: string,
   limit: number,
-): Promise<AtsAnalysisDoc[]> => {
+): Promise<ResumeAnalysisResponse[]> => {
   return atsService.getHistory(userId, limit);
 };
 
 export const getAnalysisById = async (
   userId: string,
   analysisId: string,
-): Promise<AtsAnalysisDoc> => {
+): Promise<ResumeAnalysisResponse> => {
   return atsService.getAnalysisById(userId, analysisId);
 };
 

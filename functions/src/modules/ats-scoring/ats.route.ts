@@ -52,7 +52,9 @@ router.post(
         req.body.jobDescription,
         req.body.parsedResume,
         req.body.targetRole,
-        req.body.resumeId, 
+        req.body.resumeId,
+        req.body.fileName,
+        req.body.experience,
       );
       sendCreated(res, result, "Resume analyzed successfully");
     } catch (error) {

@@ -1,10 +1,106 @@
+import { randomUUID } from "crypto";
 import { aiService } from "./ai.service";
 import { buildResumeParserPrompt } from "../interview/prompts/resume-parser.prompt";
+import { buildResumeScorecardPrompt } from "../interview/prompts/resume-scorecard.prompt";
 import { logger } from "../../shared/logger";
 import { AppError } from "../../shared/utils";
 import { extractPdfText } from "../../shared/utils/pdf";
 import type { ResumeAnalysis } from "../interview/interview.types";
 import { DIFFICULTY_LEVELS, INTERVIEW_TYPES } from "../../shared/constants";
+import type {
+  MetricScore,
+  PositiveItem,
+  ResumeAnalysisResponse,
+  Suggestion,
+} from "../ats-scoring/ats.types";
+
+export type {
+  MetricScore,
+  PositiveItem,
+  ResumeAnalysisResponse,
+  Suggestion,
+};
+
+type ScorecardAiPayload = {
+  overallScore: number;
+  peerPercentile: number;
+  experience?: string;
+  targetRole?: string;
+  subMetrics: ResumeAnalysisResponse["subMetrics"];
+  detailedMetrics: ResumeAnalysisResponse["detailedMetrics"];
+  fixSuggestions: Suggestion[];
+  workingWell: PositiveItem[];
+};
+
+const clampScore = (value: unknown, fallback = 0): number => {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(n)));
+};
+
+/** Snap to 0/5/10…100 so re-uploads don't jitter by a few points. */
+const snapScore = (value: unknown, fallback = 0): number => {
+  const clamped = clampScore(value, fallback);
+  return Math.max(0, Math.min(100, Math.round(clamped / 5) * 5));
+};
+
+const snapChange = (score: number): number => {
+  const raw = Math.round((score - 70) / 5) * 5;
+  return Math.max(-10, Math.min(10, raw));
+};
+
+const normalizeMetric = (raw: Partial<MetricScore> | undefined): MetricScore => {
+  const score = snapScore(raw?.score);
+  return { score, change: snapChange(score) };
+};
+
+const normalizeResumeText = (text: string): string =>
+  text
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+const normalizeSuggestions = (raw: unknown): Suggestion[] => {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item, index): Suggestion | null => {
+      if (!item || typeof item !== "object") return null;
+      const row = item as Partial<Suggestion>;
+      const text = typeof row.text === "string" ? row.text.trim() : "";
+      if (!text) return null;
+      const type = row.type === "info" ? "info" : "warning";
+      return {
+        type,
+        icon: typeof row.icon === "string" && row.icon.trim() ? row.icon.trim() : type,
+        text,
+        priority:
+          Number.isFinite(Number(row.priority)) && Number(row.priority) > 0
+            ? Math.round(Number(row.priority))
+            : index + 1,
+      };
+    })
+    .filter((item): item is Suggestion => item !== null)
+    .slice(0, 8);
+};
+
+const normalizeWorkingWell = (raw: unknown): PositiveItem[] => {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item): PositiveItem | null => {
+      if (typeof item === "string" && item.trim()) return { text: item.trim() };
+      if (item && typeof item === "object") {
+        const text =
+          typeof (item as PositiveItem).text === "string"
+            ? (item as PositiveItem).text.trim()
+            : "";
+        if (text) return { text };
+      }
+      return null;
+    })
+    .filter((item): item is PositiveItem => item !== null)
+    .slice(0, 8);
+};
 
 export const extractTextFromPDF = async (buffer: Buffer): Promise<string> => {
   try {
@@ -116,4 +212,80 @@ export const parseResume = async (pdfBuffer: Buffer): Promise<ResumeAnalysis> =>
   });
 
   return analysis;
+};
+
+/** Scorecard analysis for the resume dashboard — does not persist anything. */
+export const analyzeResumeScorecard = async (
+  pdfBuffer: Buffer,
+  fileName?: string
+): Promise<ResumeAnalysisResponse> => {
+  logger.info("[resume-parser] starting resume scorecard analysis");
+
+  const text = normalizeResumeText(await extractTextFromPDF(pdfBuffer));
+  const prompt = buildResumeScorecardPrompt(text, fileName);
+  const raw = await aiService.generateJSON<ScorecardAiPayload>(prompt, {
+    temperature: 0,
+    // Scorecard JSON is ~1–2k tokens; keep headroom in case a model ignores thinkingBudget.
+    maxOutputTokens: 8192,
+  });
+
+  if (typeof raw.overallScore !== "number" && typeof raw.overallScore !== "string") {
+    throw new AppError(502, "AI returned invalid resume analysis format");
+  }
+
+  const subMetrics = {
+    ats: snapScore(raw.subMetrics?.ats),
+    impact: snapScore(raw.subMetrics?.impact),
+    clarity: snapScore(raw.subMetrics?.clarity),
+  };
+  const detailedMetrics = {
+    keywordMatch: normalizeMetric(raw.detailedMetrics?.keywordMatch),
+    quantifiedImpact: normalizeMetric(raw.detailedMetrics?.quantifiedImpact),
+    actionVerbs: normalizeMetric(raw.detailedMetrics?.actionVerbs),
+    structureLength: normalizeMetric(raw.detailedMetrics?.structureLength),
+  };
+
+  // Deterministic overall/peer from metric average so re-uploads stay stable.
+  const metricAverage =
+    (subMetrics.ats +
+      subMetrics.impact +
+      subMetrics.clarity +
+      detailedMetrics.keywordMatch.score +
+      detailedMetrics.quantifiedImpact.score +
+      detailedMetrics.actionVerbs.score +
+      detailedMetrics.structureLength.score) /
+    7;
+  const overallScore = snapScore(metricAverage);
+  const peerPercentile = snapScore(overallScore - 5);
+
+  const response: ResumeAnalysisResponse = {
+    resumeId: randomUUID(),
+    fileName:
+      typeof fileName === "string" && fileName.trim().length > 0
+        ? fileName.trim()
+        : "resume.pdf",
+    targetRole:
+      typeof raw.targetRole === "string" && raw.targetRole.trim().length > 0
+        ? raw.targetRole.trim()
+        : "Unknown role",
+    experience:
+      typeof raw.experience === "string" && raw.experience.trim().length > 0
+        ? raw.experience.trim()
+        : "",
+    aiReviewed: true,
+    overallScore,
+    peerPercentile,
+    subMetrics,
+    detailedMetrics,
+    fixSuggestions: normalizeSuggestions(raw.fixSuggestions),
+    workingWell: normalizeWorkingWell(raw.workingWell),
+    analyzedAt: new Date().toISOString(),
+  };
+
+  logger.info("[resume-parser] scorecard complete", {
+    overallScore: response.overallScore,
+    targetRole: response.targetRole,
+  });
+
+  return response;
 };

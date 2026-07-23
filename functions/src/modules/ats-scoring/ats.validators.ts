@@ -5,7 +5,20 @@ export const analyzeResumeSchema = z
     resumeId: z
       .string()
       .trim()
-      .min(1, "Resume ID is required"), 
+      .min(1, "Resume ID is required"),
+
+    fileName: z
+      .string()
+      .trim()
+      .min(1, "fileName cannot be empty")
+      .max(255, "fileName is too long")
+      .optional(),
+
+    experience: z
+      .string()
+      .trim()
+      .max(50, "experience is too long")
+      .optional(),
 
     resumeText: z
       .string()
