@@ -20,6 +20,7 @@ import {
   type InterviewTypeStat,
   type MonthlyPerformance,
   type RecentScore,
+  type SkillTrendPoint,
 } from "./auth.types";
 import { DIFFICULTY_LEVELS, INTERVIEW_TYPES } from "../../shared/constants";
 // When re-enabling plan-based difficulty limits, also import SubscriptionPlan:
@@ -34,12 +35,29 @@ const toMonthKey = (date: Date): string => {
   return `${year}-${month}`;
 };
 
+const SKILL_TRENDS_LIMIT = 6;
+
+/** ISO date (Monday) of the week containing `date`, used to bucket skill trend points. */
+const toWeekStartKey = (date: Date): string => {
+  const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = utcDate.getUTCDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  utcDate.setUTCDate(utcDate.getUTCDate() + diffToMonday);
+  return utcDate.toISOString().slice(0, 10);
+};
+
 export type InterviewAnalyticsInput = {
   overallScore: number;
   domain: string;
   interviewType: string;
   targetTechnology: string;
   interviewDate?: Timestamp;
+  /** Per-answer AI evaluation dimensions (0-100), averaged across this interview. */
+  technicalScore?: number;
+  communicationScore?: number;
+  completenessScore?: number;
+  confidenceScore?: number;
+  hiringProbability?: number;
 };
 
 const defaultUserAnalytics = (): UserAnalytics => ({
@@ -53,6 +71,12 @@ const defaultUserAnalytics = (): UserAnalytics => ({
   domainPerformance: [],
   interviewTypes: [],
   monthlyPerformance: [],
+  technicalAverage: 0,
+  communicationAverage: 0,
+  completenessAverage: 0,
+  confidenceAverage: 0,
+  hiringProbability: 0,
+  skillTrends: [],
 });
 
 const normalizeUserFields = (
@@ -1039,6 +1063,42 @@ const updateMonthlyPerformance = (
   return next;
 };
 
+const updateSkillTrends = (
+  existing: SkillTrendPoint[],
+  weekStart: string,
+  scores: { technical: number; communication: number; confidence: number; hiring: number }
+): SkillTrendPoint[] => {
+  const next = [...existing];
+  const index = next.findIndex((item) => item.weekStart === weekStart);
+
+  if (index === -1) {
+    next.push({
+      weekStart,
+      interviews: 1,
+      technical: roundScore(scores.technical),
+      communication: roundScore(scores.communication),
+      confidence: roundScore(scores.confidence),
+      hiring: roundScore(scores.hiring),
+    });
+    return next.sort((a, b) => a.weekStart.localeCompare(b.weekStart)).slice(-SKILL_TRENDS_LIMIT);
+  }
+
+  const current = next[index];
+  next[index] = {
+    weekStart: current.weekStart,
+    interviews: current.interviews + 1,
+    technical: updateRollingAverage(current.technical, current.interviews, scores.technical),
+    communication: updateRollingAverage(
+      current.communication,
+      current.interviews,
+      scores.communication
+    ),
+    confidence: updateRollingAverage(current.confidence, current.interviews, scores.confidence),
+    hiring: updateRollingAverage(current.hiring, current.interviews, scores.hiring),
+  };
+  return next.sort((a, b) => a.weekStart.localeCompare(b.weekStart)).slice(-SKILL_TRENDS_LIMIT);
+};
+
 const buildUpdatedAnalytics = (
   existing: UserAnalytics | undefined,
   input: InterviewAnalyticsInput
@@ -1074,6 +1134,13 @@ const buildUpdatedAnalytics = (
     score
   );
 
+  const technicalScore = roundScore(input.technicalScore ?? 0);
+  const communicationScore = roundScore(input.communicationScore ?? 0);
+  const completenessScore = roundScore(input.completenessScore ?? 0);
+  const confidenceScore = roundScore(input.confidenceScore ?? 0);
+  const hiringProbability = roundScore(input.hiringProbability ?? score);
+  const prevCompleted = current.completedInterviews ?? 0;
+
   return {
     completedInterviews,
     averageScore,
@@ -1092,6 +1159,37 @@ const buildUpdatedAnalytics = (
       month,
       score
     ),
+    technicalAverage: updateRollingAverage(
+      current.technicalAverage ?? 0,
+      prevCompleted,
+      technicalScore
+    ),
+    communicationAverage: updateRollingAverage(
+      current.communicationAverage ?? 0,
+      prevCompleted,
+      communicationScore
+    ),
+    completenessAverage: updateRollingAverage(
+      current.completenessAverage ?? 0,
+      prevCompleted,
+      completenessScore
+    ),
+    confidenceAverage: updateRollingAverage(
+      current.confidenceAverage ?? 0,
+      prevCompleted,
+      confidenceScore
+    ),
+    hiringProbability: updateRollingAverage(
+      current.hiringProbability ?? 0,
+      prevCompleted,
+      hiringProbability
+    ),
+    skillTrends: updateSkillTrends(current.skillTrends ?? [], toWeekStartKey(interviewDate.toDate()), {
+      technical: technicalScore,
+      communication: communicationScore,
+      confidence: confidenceScore,
+      hiring: hiringProbability,
+    }),
   };
 };
 

@@ -33,6 +33,11 @@ export interface InterviewQuestion {
   difficulty: QuestionDifficulty;
   answer?: string;
   score?: number;
+  /** Raw evaluation dimensions (0-10) behind `score`, kept for reports/analytics breakdowns. */
+  technicalScore?: number;
+  communicationScore?: number;
+  completenessScore?: number;
+  confidenceScore?: number;
   feedback?: string;
   answeredAt?: Timestamp;
 }

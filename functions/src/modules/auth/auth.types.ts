@@ -73,6 +73,17 @@ export interface MonthlyPerformance {
   averageScore: number;
 }
 
+/** One weekly data point (0-100 scale) powering the Reports "skill trends" chart. */
+export interface SkillTrendPoint {
+  /** ISO date (Monday) of the week this point summarizes, e.g. "2026-07-20". */
+  weekStart: string;
+  interviews: number;
+  technical: number;
+  communication: number;
+  confidence: number;
+  hiring: number;
+}
+
 /** Aggregated dashboard analytics stored on users/{uid}.interview */
 export interface UserAnalytics {
   completedInterviews: number;
@@ -85,6 +96,15 @@ export interface UserAnalytics {
   domainPerformance: DomainPerformance[];
   interviewTypes: InterviewTypeStat[];
   monthlyPerformance: MonthlyPerformance[];
+  /** Rolling averages (0-100) of the per-answer AI evaluation dimensions, for the Reports page. */
+  technicalAverage: number;
+  communicationAverage: number;
+  completenessAverage: number;
+  confidenceAverage: number;
+  /** Blended technical/communication/confidence/overall signal (0-100). */
+  hiringProbability: number;
+  /** Last 6 weekly buckets, oldest first — feeds the Reports skill-trends chart. */
+  skillTrends: SkillTrendPoint[];
 }
 
 export interface UserSubscription {
