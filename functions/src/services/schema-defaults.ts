@@ -3,7 +3,7 @@
  */
 
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
-import { SKILL_IDS, DEFAULT_SKILL_SCORE } from '../lib/skills';
+import { SKILL_IDS, DEFAULT_SKILL_SCORE } from '../library/skills';
 import { skillRef, userRef } from '../utils/firestore-refs';
 
 /**

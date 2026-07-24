@@ -10,17 +10,17 @@ import type {
   InterviewStatus,
 } from '../interfaces/interview.interface';
 import type { GoalDoc } from '../interfaces/user.interface';
-import { buildGeminiSessionConfig } from '../lib/gemini-client';
-import { applyLevelUpdate, resolveLevel } from '../lib/level';
-import { writeReadiness } from '../lib/readiness';
-import { scoreInterview } from '../lib/scoring';
-import { updateSkills, type SkillScoreMap } from '../lib/skills';
-import { updateStreak } from '../lib/streak';
+import { buildGeminiSessionConfig } from '../library/gemini-client';
+import { applyLevelUpdate, resolveLevel } from '../library/level';
+import { writeReadiness } from '../library/readiness';
+import { scoreInterview } from '../library/scoring';
+import { updateSkills, type SkillScoreMap } from '../library/skills';
+import { updateStreak } from '../library/streak';
 import {
   calculateInterviewXp,
   creditXpInTransaction,
   normalizeXpAmount,
-} from '../lib/xp';
+} from '../library/xp';
 import { AppError } from '../shared/utils';
 import { ensureAdmin } from '../utils/callable-auth';
 import { dayAbbrev, formatDate, getWeekStart } from '../utils/date-helpers';

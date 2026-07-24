@@ -5,7 +5,7 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { z } from 'zod';
 import type { RoadmapDoc, RoadmapWeek } from '../interfaces/roadmap.interface';
-import { generateJson } from '../lib/gemini-client';
+import { generateJson } from '../library/gemini-client';
 import { AppError } from '../shared/utils';
 import { ensureAdmin } from '../utils/callable-auth';
 import { roadmapCol, userRef } from '../utils/firestore-refs';

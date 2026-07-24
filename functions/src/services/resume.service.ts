@@ -5,7 +5,7 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { z } from 'zod';
 import type { ResumeAnalysis, ResumeDoc } from '../interfaces/resume.interface';
-import { generateJson } from '../lib/gemini-client';
+import { generateJson } from '../library/gemini-client';
 import { AppError } from '../shared/utils';
 import { extractPdfText } from '../shared/utils/pdf';
 import { ensureAdmin, ensureStorage } from '../utils/callable-auth';
