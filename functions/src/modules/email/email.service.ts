@@ -1,4 +1,5 @@
 import sgMail from '@sendgrid/mail';
+import { appConfig } from '../../config/app.config';
 import { AppError } from '../../shared/utils';
 
 export interface ContactFormData {
@@ -20,7 +21,7 @@ const esc = (s: string): string =>
  * Called lazily on the first send so that Firebase secrets are available.
  */
 function getSgClient(): typeof sgMail {
-  const apiKey = process.env.SENDGRID_API_KEY;
+  const apiKey = appConfig.sendgridApiKey ?? process.env.SENDGRID_API_KEY;
   if (!apiKey) {
     throw new AppError(503, 'Email service is not configured. Please contact support.');
   }
@@ -34,7 +35,10 @@ export async function sendContactEmail(data: ContactFormData): Promise<void> {
   const client = getSgClient();
 
   const { fullName, email, subject, message } = data;
-  const fromEmail = process.env.SENDGRID_FROM_EMAIL!;
+  const fromEmail = appConfig.sendgridFromEmail ?? process.env.SENDGRID_FROM_EMAIL;
+  if (!fromEmail) {
+    throw new AppError(503, 'Email sender is not configured. Please contact support.');
+  }
 
   await client.send({
     to: OWNER_EMAIL,
