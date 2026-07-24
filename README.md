@@ -88,3 +88,32 @@ Open `bruno/AI Interview Backend` in Bruno. Use the **local** environment.
 | `npm run dev` | Start dev server |
 | `npm run build` | Compile TypeScript |
 | `npm start` | Run compiled server |
+
+## Coding platform (Judge0)
+
+Local code execution uses Judge0 in Docker. Your host is likely **cgroup v2** (Ubuntu 22+/modern Linux); the compose file uses a cgroup-v2-compatible image plus **workers** (required — API alone only queues jobs).
+
+```bash
+# 1. Start Judge0 (from repo root)
+cd judge0 && docker compose down --remove-orphans && docker compose up -d
+# Wait ~25s, verify:
+curl -s -X POST 'http://localhost:2358/submissions?base64_encoded=false&wait=true' \
+  -H 'Content-Type: application/json' \
+  -d '{"source_code":"print(42)","language_id":71}'
+# Expect status.description = "Accepted"
+
+# 2. Seed Firestore problems (requires firebase-service-account.json)
+npm run seed:coding
+
+# 3. Start API (set JUDGE0_URL=http://localhost:2358 in .env)
+npm run dev
+```
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/coding/run` | Bearer | Run code against public tests or custom input |
+| POST | `/api/coding/submit` | Bearer | Submit against public + hidden tests |
+
+Firestore collections: `codingProblems`, `codingProblemSecrets`, `users/{uid}/codingProgress`, `users/{uid}/codingSubmissions`.
+
+**Troubleshooting:** If Run fails with poll timeout, ensure `workers` is up (`docker compose ps`). If you see `/sys/fs/cgroup/memory` errors on official `judge0/judge0`, stay on the cgroup-v2 image in `judge0/docker-compose.yml` (or boot the host with cgroup v1).

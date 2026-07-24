@@ -83,6 +83,8 @@ app.use(apiPath("/v2/coding/submit"), aiLimiter);
 app.use(apiPath("/chat"), aiLimiter);
 app.use(apiPath("/chat-bot"), aiLimiter);
 app.use(apiPath("/ats/analyze"), aiLimiter);
+app.use(apiPath("/coding/run"), aiLimiter);
+app.use(apiPath("/coding/submit"), aiLimiter);
 app.use(apiPath("/payment/create-order"), paymentLimiter);
 app.use(apiPath("/payment/verify"), paymentLimiter);
 

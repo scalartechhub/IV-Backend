@@ -6,6 +6,13 @@ export const COLLECTIONS = {
   PLANS: "plans",
   PAYMENTS: "payments",
   FAQS: "faqs",
+  CODING_PROBLEMS: "codingProblems",
+  CODING_PROBLEM_SECRETS: "codingProblemSecrets",
+} as const;
+
+export const CODING_SUBCOLLECTIONS = {
+  PROGRESS: "codingProgress",
+  SUBMISSIONS: "codingSubmissions",
 } as const;
 
 /** Chat module Firestore collection names */
