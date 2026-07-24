@@ -11,7 +11,8 @@
     "deploy-functions": "firebase deploy --only functions --force --project=interview-89e09",
     "emulators:start": "firebase emulators:start --project=interview-89e09",
     "sync:secrets": "node scripts/sync-firebase-secrets.js",
-    "seed": "node scripts/seed.js"
+    "seed": "node scripts/seed.js",
+    "seed:coding": "node scripts/seed-coding-problems.js"
   },
   "author": "",
   "license": "ISC",

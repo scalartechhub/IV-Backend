@@ -1,0 +1,78 @@
+# Judge0 CE with cgroup v2-compatible image (official 1.13.x needs cgroup v1).
+# Host check: `docker info | grep -i cgroup` → Version: 2 on modern Linux.
+#
+# Start:
+#   cd judge0 && docker compose down --remove-orphans && docker compose up -d
+# Wait ~25s, then test:
+#   curl -s -X POST 'http://localhost:2358/submissions?base64_encoded=false&wait=true' \
+#     -H 'Content-Type: application/json' \
+#     -d '{"source_code":"print(42)","language_id":71}'
+
+x-judge0-common: &judge0-common
+  # Community build with isolate cgroup v2 support (see judge0/judge0#543)
+  image: mrkushalsm/judge0:latest
+  privileged: true
+  cgroup: host
+  volumes:
+    - /sys/fs/cgroup:/sys/fs/cgroup:rw
+  environment: &judge0-env
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+    POSTGRES_HOST: db
+    POSTGRES_PORT: 5432
+    POSTGRES_DB: judge0
+    POSTGRES_USER: judge0
+    POSTGRES_PASSWORD: judge0
+    MAX_CPU_TIME_LIMIT: "15"
+    MAX_MEMORY_LIMIT: "512000"
+    ENABLE_WAIT_RESULT: "true"
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: judge0
+      POSTGRES_PASSWORD: judge0
+      POSTGRES_DB: judge0
+    volumes:
+      - judge0-db-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U judge0 -d judge0"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  server:
+    <<: *judge0-common
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "2358:2358"
+
+  workers:
+    <<: *judge0-common
+    command: ["./scripts/workers"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      server:
+        condition: service_started
+
+volumes:
+  judge0-db-data:

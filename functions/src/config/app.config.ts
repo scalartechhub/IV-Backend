@@ -19,6 +19,7 @@ const appConfigSchema = z.object({
     .transform((v) => parseInt(v, 10))
     .pipe(z.number().int().min(5000).max(300_000)),
   CORS_ORIGIN: z.string().optional(),
+  JUDGE0_URL: z.string().url().default("http://localhost:2358"),
   GROQ_MODEL: z.string().default("llama-3.3-70b-versatile"), 
 });
 
@@ -44,6 +45,7 @@ export const appConfig = {
   groqModel: data.GROQ_MODEL,
   geminiTimeoutMs: data.GEMINI_TIMEOUT_MS,
   corsOrigin: data.CORS_ORIGIN,
+  judge0Url: data.JUDGE0_URL,
 } as const;
 
 export type AppConfig = typeof appConfig;
