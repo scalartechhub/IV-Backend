@@ -334,6 +334,33 @@ export const assertUserCanAnalyzeResume = async (
   assertResumeAnalysisAllowed(billingPlan, usedThisMonth, monthlyResumeAnalysisLimit);
 };
 
+/** Bump the monthly resume-analysis entitlement counter on the user doc. */
+export const incrementResumeAnalysisMonthlyCount = async (uid: string): Promise<void> => {
+  const ref = db.collection(COLLECTIONS.USERS).doc(uid);
+  const monthKey = toMonthKey(new Date());
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new AppError(404, "User account not found.");
+
+    const user = snap.data() as User;
+    const stats = user.stats ?? defaultUserStats();
+    const monthlyUsed =
+      stats.resumeAnalysesMonthKey === monthKey
+        ? (stats.resumeAnalysesCreatedThisMonth ?? 0)
+        : 0;
+
+    tx.update(ref, {
+      stats: {
+        ...stats,
+        resumeAnalysesCreatedThisMonth: monthlyUsed + 1,
+        resumeAnalysesMonthKey: monthKey,
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+};
+
 export const getUserProfile = async (uid: string): Promise<User> => requireUserById(uid);
 
 const isValidInterviewSettings = (

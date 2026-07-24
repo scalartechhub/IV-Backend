@@ -217,7 +217,9 @@ export const parseResume = async (pdfBuffer: Buffer): Promise<ResumeAnalysis> =>
 /** Scorecard analysis for the resume dashboard — does not persist anything. */
 export const analyzeResumeScorecard = async (
   pdfBuffer: Buffer,
-  fileName?: string
+  fileName?: string,
+  /** Stable id — use userId so `resumes/{userId}` can upsert. */
+  resumeId: string = randomUUID()
 ): Promise<ResumeAnalysisResponse> => {
   logger.info("[resume-parser] starting resume scorecard analysis");
 
@@ -259,7 +261,7 @@ export const analyzeResumeScorecard = async (
   const peerPercentile = snapScore(overallScore - 5);
 
   const response: ResumeAnalysisResponse = {
-    resumeId: randomUUID(),
+    resumeId,
     fileName:
       typeof fileName === "string" && fileName.trim().length > 0
         ? fileName.trim()

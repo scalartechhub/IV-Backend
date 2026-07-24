@@ -17,7 +17,11 @@ http:
         "email": "{{email}}",
         "password": "{{password}}"
       }
-  auth: none
+
+runtime:
+  variables:
+    - name: baseUrl
+      value: http://localhost:5000/api
 
 settings:
   encodeUrl: true

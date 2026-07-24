@@ -8,6 +8,7 @@ import {
   type ResumeAnalysisResponse,
 } from "../ai/resume-parser.service";
 import * as userRepo from "./auth.repository";
+import * as resumeRepo from "../interview/resume.repository";
 import { assertCanUploadResume } from "../subscription/subscription.service";
 import type {
   AuthProvider,
@@ -99,8 +100,8 @@ export const logout = async (uid: string): Promise<void> => {
 };
 
 /**
- * Analyze an uploaded resume PDF and return the dashboard scorecard.
- * Does NOT write analysis data to the user collection.
+ * Analyze an uploaded resume PDF and upsert the scorecard at `resumes/{uid}`.
+ * Does NOT upload the PDF to Firebase Storage.
  */
 export const uploadResumeAnalysis = async (
   uid: string,
@@ -111,12 +112,14 @@ export const uploadResumeAnalysis = async (
 
   await assertCanUploadResume(uid);
 
-  const analysis = await analyzeResumeScorecard(fileBuffer, fileName);
+  const analysis = await analyzeResumeScorecard(fileBuffer, fileName, uid);
+  const saved = await resumeRepo.upsertResumeAnalysis(uid, analysis);
+  await userRepo.incrementResumeAnalysisMonthlyCount(uid);
 
   logger.info(`[auth.service] resume analysis complete uid=${uid}`, {
-    resumeId: analysis.resumeId,
-    overallScore: analysis.overallScore,
+    resumeId: saved.resumeId,
+    overallScore: saved.overallScore,
   });
 
-  return analysis;
+  return saved;
 };

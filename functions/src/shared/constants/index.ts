@@ -1,6 +1,7 @@
 export const COLLECTIONS = {
   USERS: "users",
   INTERVIEWS: "interviews",
+  RESUMES: "resumes",
   NOTIFICATIONS: "notifications",
   PLANS: "plans",
   PAYMENTS: "payments",
