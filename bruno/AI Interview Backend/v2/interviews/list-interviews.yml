@@ -1,0 +1,29 @@
+info:
+  name: List Interviews
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: "{{baseUrl}}/v2/interviews?limit=20"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  List the authenticated user's v2 interviews.
+
+  Query (optional):
+  - `status` — created | device_check | in_progress | completed | abandoned | expired
+  - `mode` — conversational | coding | behavioral | system_design
+  - `limit` — 1–50 (default 20)
+
+  Examples:
+  - `{{baseUrl}}/v2/interviews?status=completed&limit=10`
+  - `{{baseUrl}}/v2/interviews?mode=coding`

@@ -1,0 +1,57 @@
+info:
+  name: Start Interview
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/interviews/start"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "skills": ["Angular", "RxJS"],
+        "technologies": ["TypeScript"],
+        "difficulty": "medium",
+        "durationMinutes": 45,
+        "currentRole": "Angular Developer",
+        "targetRole": "Senior Angular Engineer",
+        "mode": "conversational",
+        "topic": "RxJS + State Management",
+        "company": "Google"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body?.data?.interviewId) {
+          bru.setEnvVar("v2InterviewId", body.data.interviewId);
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 120000
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Create a v2 interview (`status: created`) and return Gemini Live session config.
+
+  Body (InterviewConfig + mode):
+  - `skills` — string[]
+  - `technologies` — string[]
+  - `difficulty` — `easy` | `medium` | `hard`
+  - `durationMinutes` — number
+  - `currentRole`, `targetRole` — strings
+  - `mode` — `conversational` | `coding` | `behavioral` | `system_design`
+  - optional: `topic`, `company`, `resumeVersionUsed`, `sourceRoadmapActivityId`
+
+  Auto-saves `v2InterviewId` from `data.interviewId`.

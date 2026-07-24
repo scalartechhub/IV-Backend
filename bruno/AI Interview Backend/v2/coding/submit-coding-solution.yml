@@ -1,0 +1,50 @@
+info:
+  name: Submit Coding Solution
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/coding/submit"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "interviewId": "{{v2InterviewId}}",
+        "problemId": "{{problemId}}",
+        "code": "function twoSum(nums, target) {\n  const map = new Map();\n  for (let i = 0; i < nums.length; i++) {\n    const need = target - nums[i];\n    if (map.has(need)) return [map.get(need), i];\n    map.set(nums[i], i);\n  }\n  return [];\n}",
+        "language": "javascript"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body?.data?.submissionId) {
+          bru.setEnvVar("submissionId", body.data.submissionId);
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 120000
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Submit a coding solution for a problem in a v2 interview.
+
+  Body:
+  - `interviewId` — owner interview
+  - `problemId` — `codingProblems/{id}`
+  - `code` — source
+  - `language` — e.g. javascript, python
+
+  Requires `CODE_RUNNER_URL` for real tests; otherwise stub returns 0 passed.
+  Set `{{problemId}}` in the environment. Auto-saves `submissionId`.

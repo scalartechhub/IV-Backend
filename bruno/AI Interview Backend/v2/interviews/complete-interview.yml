@@ -1,0 +1,40 @@
+info:
+  name: Complete Interview
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/interviews/{{v2InterviewId}}/complete"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "transcriptSummary": "Candidate discussed Angular signals, change detection, and RxJS operators. Strong on architecture; weaker on edge-case testing.",
+        "durationSec": 2400,
+        "endReason": "user_ended"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 300000
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Score the interview and run XP / skills / streak / weeklyStats / goals pipeline.
+
+  Body:
+  - `transcriptSummary` — string (required)
+  - `durationSec` — number (required)
+  - `endReason` — `time_expired` | `user_ended` | `connection_lost` | `max_questions_signal`
+
+  Response `data`: `xpEarned`, `newLevel`, `levelUp`, `updatedSkills`, `streakCount`, `readinessScore`.
+
+  Uses `{{v2InterviewId}}` from Start Interview. May take 30–90s (Gemini scoring).

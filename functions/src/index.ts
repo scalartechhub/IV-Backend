@@ -5,6 +5,25 @@ import { onRequest } from "firebase-functions/v2/https";
 import app from "./app";
 import { bootstrapApplication } from "./bootstrap";
 
+// Callable functions (AllInterviewPro architecture)
+export { startInterview } from "./callable/start-interview";
+export { completeInterview } from "./callable/complete-interview";
+export { submitCodingSolution } from "./callable/submit-coding-solution";
+export { uploadResume } from "./callable/upload-resume";
+export { regenerateRoadmap } from "./callable/regenerate-roadmap";
+export { saveProfileSettings } from "./callable/save-profile-settings";
+
+// Triggers
+export { onInterviewComplete } from "./triggers/on-interview-complete";
+export { onResumeUploaded } from "./triggers/on-resume-uploaded";
+export { onAchievementCheck } from "./triggers/on-achievement-check";
+
+// Scheduled
+export { computeCareerProgress } from "./scheduled/compute-career-progress";
+export { computeJobMatches } from "./scheduled/compute-job-matches";
+export { resetWeeklyDeltas } from "./scheduled/reset-weekly-deltas";
+export { archiveOldTranscripts } from "./scheduled/archive-old-transcripts";
+
 const geminiApiKey = defineSecret("GEMINI_API_KEY");
 const firebaseApiKey = defineSecret("FIREBASE_API_KEY");
 const groqApiKey = defineSecret("GROQ_API_KEY");

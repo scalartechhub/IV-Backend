@@ -1,0 +1,43 @@
+info:
+  name: Regenerate Roadmap
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/roadmap/regenerate"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "targetRole": "Senior Angular Engineer"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body?.data?.roadmapId) {
+          bru.setEnvVar("roadmapId", body.data.roadmapId);
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 180000
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Generate a new 4-week learning roadmap via Gemini and deactivate previous active ones.
+
+  Body (optional):
+  - `targetRole` — defaults to `users/{uid}.profile.targetRole`
+
+  Auto-saves `roadmapId`.

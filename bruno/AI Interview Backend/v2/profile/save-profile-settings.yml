@@ -1,0 +1,45 @@
+info:
+  name: Save Profile Settings
+  type: http
+  seq: 2
+
+http:
+  method: PATCH
+  url: "{{baseUrl}}/v2/profile/settings"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "displayName": "Demo User",
+        "profile": {
+          "currentRole": "Angular Developer",
+          "yearsExperience": 3,
+          "targetRole": "Senior Angular Engineer",
+          "targetCompanies": ["Google", "Stripe"],
+          "location": "India"
+        },
+        "preferences": {
+          "dailyReminders": true,
+          "aiVoiceFeedback": true,
+          "focusMode": false,
+          "weeklyProgressEmail": true,
+          "darkMode": true
+        }
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Update profile / coaching preferences / displayName.
+
+  Does **not** allow writing `gamification` or `readiness` (server-only).

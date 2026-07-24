@@ -1,0 +1,49 @@
+info:
+  name: Upload Resume (Storage path)
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/resumes/upload"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "storagePath": "resumes/{{uid}}/sample-resume.pdf",
+        "fileName": "sample-resume.pdf",
+        "targetRole": "Senior Angular Engineer"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body?.data?.resumeId) {
+          bru.setEnvVar("v2ResumeId", body.data.resumeId);
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 180000
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  After uploading a PDF to Firebase Storage, call this to parse + Gemini ATS analysis
+  and set the resume as the only active one.
+
+  Body:
+  - `storagePath` — must start with `resumes/{uid}/`
+  - `fileName` — display name
+  - `targetRole` — role used for keyword matching
+  - `resumeId` — optional explicit doc id
+
+  Set `{{uid}}` in the environment (or replace in body). Auto-saves `v2ResumeId`.

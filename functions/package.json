@@ -10,7 +10,8 @@
     "start": "node lib/server.js",
     "serve": "npm run build && firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "test": "node -r ts-node/register --test src/lib/xp.spec.ts src/lib/skills.spec.ts src/lib/readiness.spec.ts src/lib/level.spec.ts src/lib/streak.spec.ts"
   },
   "engines": {
     "node": "22"

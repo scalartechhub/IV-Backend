@@ -1,0 +1,56 @@
+info:
+  name: Resume Analysis
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/resumes/analyze"
+  body:
+    type: multipart-form
+    data:
+      - name: file
+        type: file
+        value:
+          - C:\Users\shubh\Downloads\Shubham_Chaudhari_Angular_Developer_Resume.pdf
+      - name: targetRole
+        type: text
+        value: Senior Angular Engineer
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body?.data?.resumeId) {
+          bru.setEnvVar("v2ResumeId", body.data.resumeId);
+        }
+        if (body?.data?.storagePath) {
+          bru.setEnvVar("v2ResumeStoragePath", body.data.storagePath);
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 180000
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  V2 resume analysis — multipart field: `file` (PDF).
+
+  Optional form field:
+  - `targetRole` — defaults to "Software Engineer" if omitted
+
+  Flow:
+  1. Uploads PDF to Storage at `resumes/{uid}/{resumeId}.pdf`
+  2. Runs Gemini ATS scorecard
+  3. Writes `users/{uid}/resumes/{resumeId}` and sets it as the only active resume
+
+  Response `data`: `resumeId`, `storagePath`, `analysisStatus`, `analysis`
+
+  Auto-saves `v2ResumeId` and `v2ResumeStoragePath`.
+  Requires Bearer token — run **Auth > Login** first.
+  Update the PDF path (or pick a file in Bruno) before sending.

@@ -1,0 +1,27 @@
+info:
+  name: Get Interview
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: "{{baseUrl}}/v2/interviews/{{v2InterviewId}}"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  variables:
+    - name: v2InterviewId
+      value: ivpXgbzeEgZTKVZCyCvX
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Fetch a single v2 interview by id (owner only).
+
+  Uses `{{v2InterviewId}}` from Start Interview.

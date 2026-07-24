@@ -1,0 +1,21 @@
+info:
+  name: Get Active Roadmap
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{baseUrl}}/v2/roadmap/active"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Fetch the currently active roadmap (`isActive: true`).
+  Returns 404 if none exists.
