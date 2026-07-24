@@ -249,6 +249,10 @@ export const applyAnswerEvaluations = async (
     questionId: string;
     answer: string;
     score: number;
+    technicalScore?: number;
+    communicationScore?: number;
+    completenessScore?: number;
+    confidenceScore?: number;
     feedback: string;
     answeredAt: Timestamp;
   }>
@@ -270,6 +274,10 @@ export const applyAnswerEvaluations = async (
         ...q,
         answer: update.answer,
         score: update.score,
+        technicalScore: update.technicalScore,
+        communicationScore: update.communicationScore,
+        completenessScore: update.completenessScore,
+        confidenceScore: update.confidenceScore,
         feedback: update.feedback,
         answeredAt: update.answeredAt,
       };

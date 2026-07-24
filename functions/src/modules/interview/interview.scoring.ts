@@ -45,6 +45,60 @@ export const calculateInterviewTotalScore = (
 export const countAnsweredQuestions = (questions: InterviewQuestion[]): number =>
   questions.filter((q) => q.answer !== undefined && q.answer.length > 0).length;
 
+export interface DimensionAverages {
+  technical: number;
+  communication: number;
+  completeness: number;
+  confidence: number;
+}
+
+/** Averages each 0–10 evaluation dimension across answered questions and scales to 0–100 for reports. */
+export const calculateDimensionAverages = (
+  questions: InterviewQuestion[]
+): DimensionAverages => {
+  const answered = questions.filter((q) => (q.answer ?? "").trim().length > 0);
+
+  if (answered.length === 0) {
+    return { technical: 0, communication: 0, completeness: 0, confidence: 0 };
+  }
+
+  const totals = answered.reduce(
+    (acc, q) => ({
+      technical: acc.technical + (q.technicalScore ?? 0),
+      communication: acc.communication + (q.communicationScore ?? 0),
+      completeness: acc.completeness + (q.completenessScore ?? 0),
+      confidence: acc.confidence + (q.confidenceScore ?? 0),
+    }),
+    { technical: 0, communication: 0, completeness: 0, confidence: 0 }
+  );
+
+  const toPercent = (sum: number): number =>
+    clamp(Math.round((sum / answered.length) * 10), 0, 100);
+
+  return {
+    technical: toPercent(totals.technical),
+    communication: toPercent(totals.communication),
+    completeness: toPercent(totals.completeness),
+    confidence: toPercent(totals.confidence),
+  };
+};
+
+/** Blends technical/communication/confidence with the AI overall score into a single hiring signal. */
+export const calculateHiringProbability = (
+  dimensions: DimensionAverages,
+  overallScore: number
+): number =>
+  clamp(
+    Math.round(
+      dimensions.technical * 0.3 +
+        dimensions.communication * 0.25 +
+        dimensions.confidence * 0.25 +
+        overallScore * 0.2
+    ),
+    0,
+    100
+  );
+
 /**
  * Prefer the AI report overall score, but never invent points when the
  * candidate demonstrated no knowledge (all empty / zero-scored answers).

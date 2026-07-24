@@ -35,6 +35,8 @@ import type {
 import { InterviewMode, InterviewStatus } from "./interview.types";
 import { buildInterviewDocuments } from "./interview.document";
 import {
+  calculateDimensionAverages,
+  calculateHiringProbability,
   calculateInterviewTotalScore,
   countAnsweredQuestions,
   getRawEvaluationScore,
@@ -300,6 +302,10 @@ const evaluateSubmittedAnswers = async (
       questionId: item.questionId,
       answer: item.answer,
       score: getRawEvaluationScore(rawEvaluation),
+      technicalScore: rawEvaluation.technical,
+      communicationScore: rawEvaluation.communication,
+      completenessScore: rawEvaluation.completeness,
+      confidenceScore: rawEvaluation.confidence,
       feedback: rawEvaluation.feedback,
       answeredAt,
     };
@@ -312,6 +318,10 @@ const evaluateSubmittedAnswers = async (
       ...q,
       answer: update.answer,
       score: update.score,
+      technicalScore: update.technicalScore,
+      communicationScore: update.communicationScore,
+      completenessScore: update.completenessScore,
+      confidenceScore: update.confidenceScore,
       feedback: update.feedback,
       answeredAt: update.answeredAt,
     };
@@ -497,12 +507,19 @@ export const finishInterview = async (
       "General";
     const domain = interview.domain?.trim() || "General";
     const interviewType = interview.interviewType?.trim() || "technicalInterview";
+    const dimensionAverages = calculateDimensionAverages(interview.questions);
+    const hiringProbability = calculateHiringProbability(dimensionAverages, analyticsScore);
 
     await updateStatsOnInterviewFinish(userId, analyticsScore, {
       domain,
       interviewType,
       targetTechnology,
       interviewDate: Timestamp.now(),
+      technicalScore: dimensionAverages.technical,
+      communicationScore: dimensionAverages.communication,
+      completenessScore: dimensionAverages.completeness,
+      confidenceScore: dimensionAverages.confidence,
+      hiringProbability,
     });
 
     const notificationPrefs = notificationPreferencesFromUser(user);
