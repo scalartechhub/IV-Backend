@@ -43,12 +43,11 @@ export const createInterviewWithDocuments = async (req: Request, res: Response):
 };
 
 export const resumeAnalysis = async (req: Request, res: Response): Promise<void> => {
-  const analysis = await authService.uploadResumeAnalysis(
+  const resumeAnalysisEntry = await authService.uploadResumeAnalysis(
     req.user!.uid,
-    req.file!.buffer,
-    req.file!.originalname
+    req.file!.buffer
   );
-  sendSuccess(res, analysis, "Resume analyzed successfully");
+  sendSuccess(res, resumeAnalysisEntry, "Resume uploaded and analyzed successfully");
 };
 
 export const resumePdf = async (req: Request, res: Response): Promise<void> => {
