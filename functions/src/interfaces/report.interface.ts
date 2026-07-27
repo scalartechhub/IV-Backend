@@ -1,4 +1,4 @@
-// Mirrors src/app/interfaces/report.interface.ts — keep in sync
+// Mirrors src/app/interfaces/report.interface.ts ï¿½ keep in sync
 import type { Timestamp } from 'firebase-admin/firestore';
 
 /** Path: users/{uid}/reports/{reportId} */
@@ -30,4 +30,6 @@ export interface WeeklyStatsDoc {
   interviewsCompleted: number;
   practiceMinutes: number;
   practiceMinutesByDay: Record<string, number>;
+  /** YYYY-MM-DD ? session count within this week (powers Reports heatmap) */
+  sessionsByDay?: Record<string, number>;
 }

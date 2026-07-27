@@ -22,6 +22,9 @@ import {
   userConverter,
   weeklyStatsConverter,
   xpTransactionConverter,
+  companyConverter,
+  practiceTemplateConverter,
+  practiceCategoryConverter,
 } from '../interfaces/converters';
 
 export function userRef(db: Firestore, uid: string) {
@@ -58,6 +61,13 @@ export function conversationCol(db: Firestore, interviewId: string) {
     .doc(interviewId)
     .collection('conversation')
     .withConverter(conversationTurnConverter);
+}
+
+export function faceSignalsCol(db: Firestore, interviewId: string) {
+  return db
+    .collection('interviews')
+    .doc(interviewId)
+    .collection('faceSignals');
 }
 
 export function submissionsCol(db: Firestore, interviewId: string) {
@@ -189,4 +199,54 @@ export function applicationsCol(db: Firestore, uid: string) {
 export function goalsCol(db: Firestore, uid: string) {
   // TODO: goals collection not in architecture.md
   return db.collection('users').doc(uid).collection('goals');
+}
+
+export function companiesCol(db: Firestore) {
+  return db.collection('companies').withConverter(companyConverter);
+}
+
+export function companyRef(db: Firestore, companyId: string) {
+  return companiesCol(db).doc(companyId);
+}
+
+export function practiceTemplatesCol(db: Firestore) {
+  return db
+    .collection('practiceTemplates')
+    .withConverter(practiceTemplateConverter);
+}
+
+export function practiceTemplateRef(db: Firestore, templateId: string) {
+  return practiceTemplatesCol(db).doc(templateId);
+}
+
+export function practiceCategoriesCol(db: Firestore) {
+  return db
+    .collection('practiceCategories')
+    .withConverter(practiceCategoryConverter);
+}
+
+/** Career domain catalog — one doc per domain (id = domain.id). */
+export function interviewDomainsCol(db: Firestore) {
+  return db.collection('interview_domain');
+}
+
+export function interviewDomainRef(db: Firestore, domainId: string) {
+  return interviewDomainsCol(db).doc(domainId);
+}
+
+/** Shared onboarding / catalog lists (journeyStages, experienceBuckets, …). */
+export function appMetadataCol(db: Firestore) {
+  return db.collection('appMetadata');
+}
+
+export function appMetadataRef(db: Firestore, listId: string) {
+  return appMetadataCol(db).doc(listId);
+}
+
+export function weeklyStatsCol(db: Firestore, uid: string) {
+  return db
+    .collection('users')
+    .doc(uid)
+    .collection('weeklyStats')
+    .withConverter(weeklyStatsConverter);
 }

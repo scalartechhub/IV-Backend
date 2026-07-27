@@ -1,4 +1,4 @@
-// Mirrors src/app/interfaces/interview.interface.ts � keep in sync
+// Mirrors src/app/interfaces/interview.interface.ts � keep in sync
 import type { Timestamp } from 'firebase-admin/firestore';
 
 export type InterviewMode = 'conversational' | 'coding' | 'behavioral' | 'system_design';
@@ -11,7 +11,7 @@ export type InterviewStatus =
   | 'expired';
 export type InterviewDifficulty = 'easy' | 'medium' | 'hard';
 export type ConnectionQuality = 'good' | 'fair' | 'poor';
-/** Architecture §Review gap — add endReason for natural finish vs dropped connection */
+/** Architecture �Review gap � add endReason for natural finish vs dropped connection */
 export type EndReason =
   | 'time_expired'
   | 'user_ended'
@@ -29,8 +29,12 @@ export interface InterviewConfig {
   resumeVersionUsed?: string;
   currentRole: string;
   targetRole: string;
-  // TODO: architecture §Review — reverse link from roadmap activity
+  // TODO: architecture �Review � reverse link from roadmap activity
   sourceRoadmapActivityId?: string;
+  /** Practice template that spawned this interview */
+  sourceTemplateId?: string;
+  /** Company prep card that spawned this interview */
+  sourceCompanyId?: string;
 }
 
 /** Nested Gemini Live session metadata on interviews/{interviewId} */
@@ -41,6 +45,8 @@ export interface InterviewAiSession {
   estimatedCostUsd: number;
   connectionQuality: ConnectionQuality;
   reconnectCount: number;
+  /** Cached system prompt built at /start — reused to mint Live ephemeral tokens. */
+  systemInstructions?: string;
 }
 
 /** Nested device/environment block on interviews/{interviewId} */
@@ -52,7 +58,7 @@ export interface InterviewEnvironment {
   internetQualityMbps: number;
 }
 
-/** Nested scoring results on interviews/{interviewId} — server-written only */
+/** Nested scoring results on interviews/{interviewId} � server-written only */
 export interface InterviewResults {
   overallScore: number;
   technicalScore: number;
@@ -84,7 +90,7 @@ export interface InterviewDoc {
   completedAt?: Timestamp;
   durationSec?: number;
   autoEnded: boolean;
-  // TODO: endReason listed as missing in architecture §Review — required by complete-interview
+  // TODO: endReason listed as missing in architecture �Review � required by complete-interview
   endReason?: EndReason;
   aiSession: InterviewAiSession;
   environment: InterviewEnvironment;
@@ -92,8 +98,36 @@ export interface InterviewDoc {
   xpEarned: number;
   reportId?: string;
   codingData?: InterviewCodingData;
-  // TODO: transcriptArchived not in architecture §3 — required by archive-old-transcripts
+  // TODO: transcriptArchived not in architecture �3 � required by archive-old-transcripts
   transcriptArchived?: boolean;
+  /** Soft-delete flag � heatmap / list queries filter isDeleted == false */
+  isDeleted?: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+export type DominantEmotion =
+  | 'confident'
+  | 'neutral'
+  | 'nervous'
+  | 'confused'
+  | 'calm'
+  | 'fear'
+  | 'angry';
+
+export interface FaceEmotionScores {
+  confident?: number;
+  calm?: number;
+  neutral?: number;
+  nervous?: number;
+  confused?: number;
+  fear?: number;
+  angry?: number;
+}
+
+/** interviews/{interviewId}/faceSignals/{signalId} — emotion aggregates only */
+export interface FaceSignalDoc {
+  dominantEmotion: DominantEmotion;
+  emotionScores: FaceEmotionScores;
+  capturedAt?: Timestamp;
 }

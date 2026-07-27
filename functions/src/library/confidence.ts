@@ -107,7 +107,7 @@ export async function calculateFacialConfidence(
 ): Promise<number | null> {
   const snap = await faceSignalsCol(db, interviewId).limit(200).get();
   if (snap.empty) return null;
-  const signals = snap.docs.map((d) => d.data());
+  const signals = snap.docs.map((d) => d.data() as FaceSignalDoc);
   return aggregateFacialConfidence(signals);
 }
 
