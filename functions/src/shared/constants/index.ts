@@ -8,6 +8,8 @@ export const COLLECTIONS = {
   FAQS: "faqs",
   CODING_PROBLEMS: "codingProblems",
   CODING_PROBLEM_SECRETS: "codingProblemSecrets",
+  INTERVIEW_DOMAIN: "interview_domain",
+  APP_METADATA: "appMetadata",
 } as const;
 
 export const CODING_SUBCOLLECTIONS = {

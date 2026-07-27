@@ -1,4 +1,4 @@
-// Mirrors src/app/interfaces/converters.ts — keep in sync
+// Mirrors src/app/interfaces/converters.ts ï¿½ keep in sync
 import type {
   DocumentData,
   FirestoreDataConverter,
@@ -30,6 +30,11 @@ import type { BookmarkDoc } from './bookmark.interface';
 import type { FeedbackDoc } from './feedback.interface';
 import type { AnalyticsEventDoc } from './analytics-event.interface';
 import type { XpTransactionDoc } from './xp-transaction.interface';
+import type {
+  CompanyDoc,
+  PracticeCategoryDoc,
+  PracticeTemplateDoc,
+} from './practice.interface';
 
 function identityConverter<T extends DocumentData>(): FirestoreDataConverter<T> {
   return {
@@ -64,3 +69,6 @@ export const bookmarkConverter = identityConverter<BookmarkDoc>();
 export const feedbackConverter = identityConverter<FeedbackDoc>();
 export const analyticsEventConverter = identityConverter<AnalyticsEventDoc>();
 export const xpTransactionConverter = identityConverter<XpTransactionDoc>();
+export const companyConverter = identityConverter<CompanyDoc>();
+export const practiceTemplateConverter = identityConverter<PracticeTemplateDoc>();
+export const practiceCategoryConverter = identityConverter<PracticeCategoryDoc>();

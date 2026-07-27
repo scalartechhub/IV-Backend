@@ -1,0 +1,2103 @@
+{
+  "careerDomains": [
+    {
+      "id": "information-technology",
+      "label": "Information Technology",
+      "icon": "code",
+      "roles": [
+        {
+          "id": "it-software-engineer",
+          "label": "Software Engineer",
+          "domainId": "information-technology",
+          "skillGroups": [
+            {
+              "id": "languages",
+              "label": "Languages",
+              "multiSelect": true,
+              "options": [
+                { "id": "languages-javascript", "label": "JavaScript" },
+                { "id": "languages-typescript", "label": "TypeScript" },
+                { "id": "languages-python", "label": "Python" },
+                { "id": "languages-java", "label": "Java" },
+                { "id": "languages-go", "label": "Go" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-data-structures", "label": "Data Structures" },
+                { "id": "skills-system-design", "label": "System Design" },
+                { "id": "skills-git", "label": "Git" },
+                { "id": "skills-testing", "label": "Testing" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        },
+        {
+          "id": "it-frontend-developer",
+          "label": "Frontend Developer",
+          "domainId": "information-technology",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "languages",
+              "label": "Languages",
+              "multiSelect": true,
+              "options": [
+                { "id": "languages-javascript", "label": "JavaScript" },
+                { "id": "languages-typescript", "label": "TypeScript" }
+              ]
+            },
+            {
+              "id": "frameworks",
+              "label": "Frameworks",
+              "multiSelect": true,
+              "options": [
+                { "id": "frameworks-react", "label": "React" },
+                { "id": "frameworks-angular", "label": "Angular" },
+                { "id": "frameworks-vue", "label": "Vue" },
+                { "id": "frameworks-next-js", "label": "Next.js" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-responsive-design", "label": "Responsive Design" },
+                { "id": "skills-state-management", "label": "State Management" },
+                { "id": "skills-testing", "label": "Testing" },
+                { "id": "skills-performance-optimization", "label": "Performance Optimization" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        },
+        {
+          "id": "it-backend-developer",
+          "label": "Backend Developer",
+          "domainId": "information-technology",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "languages",
+              "label": "Languages",
+              "multiSelect": true,
+              "options": [
+                { "id": "languages-node-js", "label": "Node.js" },
+                { "id": "languages-python", "label": "Python" },
+                { "id": "languages-java", "label": "Java" },
+                { "id": "languages-go", "label": "Go" }
+              ]
+            },
+            {
+              "id": "databases",
+              "label": "Databases",
+              "multiSelect": true,
+              "options": [
+                { "id": "databases-postgresql", "label": "PostgreSQL" },
+                { "id": "databases-mongodb", "label": "MongoDB" },
+                { "id": "databases-redis", "label": "Redis" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-rest-api", "label": "REST API" },
+                { "id": "skills-graphql", "label": "GraphQL" },
+                { "id": "skills-microservices", "label": "Microservices" },
+                { "id": "skills-system-design", "label": "System Design" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        },
+        {
+          "id": "it-fullstack-developer",
+          "label": "Full Stack Developer",
+          "domainId": "information-technology",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "frontend",
+              "label": "Frontend",
+              "multiSelect": true,
+              "options": [
+                { "id": "frontend-react", "label": "React" },
+                { "id": "frontend-angular", "label": "Angular" },
+                { "id": "frontend-typescript", "label": "TypeScript" }
+              ]
+            },
+            {
+              "id": "backend",
+              "label": "Backend",
+              "multiSelect": true,
+              "options": [
+                { "id": "backend-node-js", "label": "Node.js" },
+                { "id": "backend-python", "label": "Python" },
+                { "id": "backend-java", "label": "Java" }
+              ]
+            },
+            {
+              "id": "databases",
+              "label": "Databases",
+              "multiSelect": true,
+              "options": [
+                { "id": "databases-postgresql", "label": "PostgreSQL" },
+                { "id": "databases-mongodb", "label": "MongoDB" },
+                { "id": "databases-redis", "label": "Redis" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        },
+        {
+          "id": "it-data-scientist",
+          "label": "Data Scientist",
+          "domainId": "information-technology",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "languages",
+              "label": "Languages",
+              "multiSelect": true,
+              "options": [
+                { "id": "languages-python", "label": "Python" },
+                { "id": "languages-r", "label": "R" },
+                { "id": "languages-sql", "label": "SQL" }
+              ]
+            },
+            {
+              "id": "tools",
+              "label": "Tools & Libraries",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-pandas", "label": "Pandas" },
+                { "id": "tools-tensorflow", "label": "TensorFlow" },
+                { "id": "tools-pytorch", "label": "PyTorch" },
+                { "id": "tools-scikit-learn", "label": "Scikit-learn" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-statistics", "label": "Statistics" },
+                { "id": "skills-data-visualization", "label": "Data Visualization" },
+                { "id": "skills-machine-learning", "label": "Machine Learning" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        },
+        {
+          "id": "it-devops-engineer",
+          "label": "DevOps Engineer",
+          "domainId": "information-technology",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "cloud",
+              "label": "Cloud Platforms",
+              "multiSelect": true,
+              "options": [
+                { "id": "cloud-aws", "label": "AWS" },
+                { "id": "cloud-azure", "label": "Azure" },
+                { "id": "cloud-gcp", "label": "GCP" }
+              ]
+            },
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-docker", "label": "Docker" },
+                { "id": "tools-kubernetes", "label": "Kubernetes" },
+                { "id": "tools-terraform", "label": "Terraform" },
+                { "id": "tools-jenkins", "label": "Jenkins" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-ci-cd", "label": "CI/CD" },
+                { "id": "skills-monitoring", "label": "Monitoring" },
+                { "id": "skills-infrastructure-as-code", "label": "Infrastructure as Code" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        },
+        {
+          "id": "it-cloud-engineer",
+          "label": "Cloud Engineer",
+          "domainId": "information-technology",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "cloud",
+              "label": "Cloud Platforms",
+              "multiSelect": true,
+              "options": [
+                { "id": "cloud-aws", "label": "AWS" },
+                { "id": "cloud-azure", "label": "Azure" },
+                { "id": "cloud-gcp", "label": "GCP" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-networking", "label": "Networking" },
+                { "id": "skills-security", "label": "Security" },
+                { "id": "skills-cost-optimization", "label": "Cost Optimization" },
+                { "id": "skills-iac", "label": "IaC" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        },
+        {
+          "id": "it-qa-engineer",
+          "label": "QA Engineer",
+          "domainId": "information-technology",
+          "skillGroups": [
+            {
+              "id": "testing",
+              "label": "Testing Types",
+              "multiSelect": true,
+              "options": [
+                { "id": "testing-manual", "label": "Manual" },
+                { "id": "testing-automation", "label": "Automation" },
+                { "id": "testing-performance", "label": "Performance" },
+                { "id": "testing-security", "label": "Security" }
+              ]
+            },
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-selenium", "label": "Selenium" },
+                { "id": "tools-postman", "label": "Postman" },
+                { "id": "tools-jmeter", "label": "JMeter" },
+                { "id": "tools-cypress", "label": "Cypress" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        },
+        {
+          "id": "it-ux-designer",
+          "label": "UX Designer",
+          "domainId": "information-technology",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-figma", "label": "Figma" },
+                { "id": "tools-sketch", "label": "Sketch" },
+                { "id": "tools-adobe-xd", "label": "Adobe XD" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-wireframing", "label": "Wireframing" },
+                { "id": "skills-user-research", "label": "User Research" },
+                { "id": "skills-prototyping", "label": "Prototyping" },
+                { "id": "skills-usability-testing", "label": "Usability Testing" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Portfolio Review", "Design Challenge"]
+        },
+        {
+          "id": "it-product-manager",
+          "label": "Product Manager",
+          "domainId": "information-technology",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-roadmapping", "label": "Roadmapping" },
+                { "id": "skills-agile-scrum", "label": "Agile/Scrum" },
+                { "id": "skills-stakeholder-management", "label": "Stakeholder Management" },
+                { "id": "skills-analytics", "label": "Analytics" }
+              ]
+            },
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-jira", "label": "Jira" },
+                { "id": "tools-notion", "label": "Notion" },
+                { "id": "tools-figma", "label": "Figma" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Case Study", "Stakeholder Simulation"]
+        },
+        {
+          "id": "it-business-analyst",
+          "label": "Business Analyst",
+          "domainId": "information-technology",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-requirements-gathering", "label": "Requirements Gathering" },
+                { "id": "skills-process-modeling", "label": "Process Modeling" },
+                { "id": "skills-sql", "label": "SQL" },
+                { "id": "skills-data-analysis", "label": "Data Analysis" }
+              ]
+            },
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-excel", "label": "Excel" },
+                { "id": "tools-power-bi", "label": "Power BI" },
+                { "id": "tools-tableau", "label": "Tableau" },
+                { "id": "tools-jira", "label": "Jira" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Case Study", "Stakeholder Simulation"]
+        }
+      ]
+    },
+    {
+      "id": "civil-engineering",
+      "label": "Civil Engineering",
+      "icon": "wrench",
+      "roles": [
+        {
+          "id": "civil-site-engineer",
+          "label": "Site Engineer",
+          "domainId": "civil-engineering",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "software",
+              "label": "Software",
+              "multiSelect": true,
+              "options": [
+                { "id": "software-autocad", "label": "AutoCAD" },
+                { "id": "software-staad-pro", "label": "STAAD Pro" },
+                { "id": "software-revit", "label": "Revit" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-structural-design", "label": "Structural Design" },
+                { "id": "skills-site-execution", "label": "Site Execution" },
+                { "id": "skills-quantity-surveying", "label": "Quantity Surveying" },
+                { "id": "skills-safety-management", "label": "Safety Management" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Site Assessment"]
+        },
+        {
+          "id": "civil-structural-engineer",
+          "label": "Structural Engineer",
+          "domainId": "civil-engineering",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "software",
+              "label": "Software",
+              "multiSelect": true,
+              "options": [
+                { "id": "software-staad-pro", "label": "STAAD Pro" },
+                { "id": "software-etabs", "label": "ETABS" },
+                { "id": "software-sap2000", "label": "SAP2000" },
+                { "id": "software-revit", "label": "Revit" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-structural-analysis", "label": "Structural Analysis" },
+                { "id": "skills-load-calculation", "label": "Load Calculation" },
+                { "id": "skills-seismic-design", "label": "Seismic Design" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Site Assessment"]
+        },
+        {
+          "id": "civil-project-manager",
+          "label": "Project Manager",
+          "domainId": "civil-engineering",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-project-scheduling", "label": "Project Scheduling" },
+                { "id": "skills-cost-estimation", "label": "Cost Estimation" },
+                { "id": "skills-contract-management", "label": "Contract Management" },
+                { "id": "skills-team-leadership", "label": "Team Leadership" }
+              ]
+            },
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-ms-project", "label": "MS Project" },
+                { "id": "tools-primavera", "label": "Primavera" },
+                { "id": "tools-autocad", "label": "AutoCAD" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Case Study", "Stakeholder Simulation"]
+        }
+      ]
+    },
+    {
+      "id": "mechanical-engineering",
+      "label": "Mechanical Engineering",
+      "icon": "cpu",
+      "roles": [
+        {
+          "id": "mech-design-engineer",
+          "label": "Design Engineer",
+          "domainId": "mechanical-engineering",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "software",
+              "label": "Software",
+              "multiSelect": true,
+              "options": [
+                { "id": "software-solidworks", "label": "SolidWorks" },
+                { "id": "software-autocad", "label": "AutoCAD" },
+                { "id": "software-catia", "label": "CATIA" },
+                { "id": "software-ansys", "label": "ANSYS" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-3d-modeling", "label": "3D Modeling" },
+                { "id": "skills-gd-t", "label": "GD&T" },
+                { "id": "skills-fea", "label": "FEA" },
+                { "id": "skills-product-design", "label": "Product Design" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        },
+        {
+          "id": "mech-production-engineer",
+          "label": "Production Engineer",
+          "domainId": "mechanical-engineering",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-process-planning", "label": "Process Planning" },
+                { "id": "skills-lean-manufacturing", "label": "Lean Manufacturing" },
+                { "id": "skills-quality-control", "label": "Quality Control" },
+                { "id": "skills-six-sigma", "label": "Six Sigma" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        },
+        {
+          "id": "mech-maintenance-engineer",
+          "label": "Maintenance Engineer",
+          "domainId": "mechanical-engineering",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-preventive-maintenance", "label": "Preventive Maintenance" },
+                { "id": "skills-root-cause-analysis", "label": "Root Cause Analysis" },
+                { "id": "skills-equipment-troubleshooting", "label": "Equipment Troubleshooting" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        }
+      ]
+    },
+    {
+      "id": "marketing",
+      "label": "Marketing",
+      "icon": "megaphone",
+      "roles": [
+        {
+          "id": "mkt-marketing-manager",
+          "label": "Marketing Manager",
+          "domainId": "marketing",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "channels",
+              "label": "Channels",
+              "multiSelect": true,
+              "options": [
+                { "id": "channels-seo", "label": "SEO" },
+                { "id": "channels-meta-ads", "label": "Meta Ads" },
+                { "id": "channels-google-ads", "label": "Google Ads" },
+                { "id": "channels-email-marketing", "label": "Email Marketing" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-campaign-strategy", "label": "Campaign Strategy" },
+                { "id": "skills-brand-management", "label": "Brand Management" },
+                { "id": "skills-analytics", "label": "Analytics" },
+                { "id": "skills-content-planning", "label": "Content Planning" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Case Study", "Portfolio Review"]
+        },
+        {
+          "id": "mkt-digital-marketer",
+          "label": "Digital Marketing Specialist",
+          "domainId": "marketing",
+          "skillGroups": [
+            {
+              "id": "channels",
+              "label": "Channels",
+              "multiSelect": true,
+              "options": [
+                { "id": "channels-seo", "label": "SEO" },
+                { "id": "channels-sem", "label": "SEM" },
+                { "id": "channels-social-media", "label": "Social Media" },
+                { "id": "channels-email-marketing", "label": "Email Marketing" }
+              ]
+            },
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-google-analytics", "label": "Google Analytics" },
+                { "id": "tools-hubspot", "label": "HubSpot" },
+                { "id": "tools-canva", "label": "Canva" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Case Study", "Portfolio Review"]
+        },
+        {
+          "id": "mkt-content-strategist",
+          "label": "Content Strategist",
+          "domainId": "marketing",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-content-planning", "label": "Content Planning" },
+                { "id": "skills-seo-writing", "label": "SEO Writing" },
+                { "id": "skills-copywriting", "label": "Copywriting" },
+                { "id": "skills-editorial-calendars", "label": "Editorial Calendars" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Case Study", "Portfolio Review"]
+        }
+      ]
+    },
+    {
+      "id": "finance",
+      "label": "Finance",
+      "icon": "calculator",
+      "roles": [
+        {
+          "id": "fin-financial-analyst",
+          "label": "Financial Analyst",
+          "domainId": "finance",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-financial-modeling", "label": "Financial Modeling" },
+                { "id": "skills-valuation", "label": "Valuation" },
+                { "id": "skills-forecasting", "label": "Forecasting" },
+                { "id": "skills-risk-analysis", "label": "Risk Analysis" }
+              ]
+            },
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-excel", "label": "Excel" },
+                { "id": "tools-power-bi", "label": "Power BI" },
+                { "id": "tools-bloomberg-terminal", "label": "Bloomberg Terminal" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Case Study"]
+        },
+        {
+          "id": "fin-accountant",
+          "label": "Accountant",
+          "domainId": "finance",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-bookkeeping", "label": "Bookkeeping" },
+                { "id": "skills-tax-compliance", "label": "Tax Compliance" },
+                { "id": "skills-auditing", "label": "Auditing" },
+                { "id": "skills-reconciliation", "label": "Reconciliation" }
+              ]
+            },
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-tally", "label": "Tally" },
+                { "id": "tools-quickbooks", "label": "QuickBooks" },
+                { "id": "tools-sap", "label": "SAP" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Case Study"]
+        }
+      ]
+    },
+    {
+      "id": "healthcare",
+      "label": "Healthcare",
+      "icon": "stethoscope",
+      "roles": [
+        {
+          "id": "health-doctor",
+          "label": "Doctor",
+          "domainId": "healthcare",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "specializations",
+              "label": "Specializations",
+              "multiSelect": true,
+              "options": [
+                { "id": "specializations-general-medicine", "label": "General Medicine" },
+                { "id": "specializations-cardiology", "label": "Cardiology" },
+                { "id": "specializations-pediatrics", "label": "Pediatrics" },
+                { "id": "specializations-orthopedics", "label": "Orthopedics" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-patient-diagnosis", "label": "Patient Diagnosis" },
+                { "id": "skills-clinical-documentation", "label": "Clinical Documentation" },
+                { "id": "skills-emergency-care", "label": "Emergency Care" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Clinical Case Discussion"]
+        },
+        {
+          "id": "health-nurse",
+          "label": "Nurse",
+          "domainId": "healthcare",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-patient-care", "label": "Patient Care" },
+                { "id": "skills-medication-administration", "label": "Medication Administration" },
+                { "id": "skills-clinical-procedures", "label": "Clinical Procedures" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Clinical Case Discussion"]
+        }
+      ]
+    },
+    {
+      "id": "education",
+      "label": "Education",
+      "icon": "bookOpen",
+      "roles": [
+        {
+          "id": "edu-teacher",
+          "label": "Teacher",
+          "domainId": "education",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "subjects",
+              "label": "Subjects",
+              "multiSelect": true,
+              "options": [
+                { "id": "subjects-mathematics", "label": "Mathematics" },
+                { "id": "subjects-science", "label": "Science" },
+                { "id": "subjects-english", "label": "English" },
+                { "id": "subjects-social-studies", "label": "Social Studies" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-curriculum-planning", "label": "Curriculum Planning" },
+                { "id": "skills-classroom-management", "label": "Classroom Management" },
+                { "id": "skills-assessment-design", "label": "Assessment Design" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Demo Lesson", "Subject Knowledge Test"]
+        },
+        {
+          "id": "edu-academic-counselor",
+          "label": "Academic Counselor",
+          "domainId": "education",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-career-guidance", "label": "Career Guidance" },
+                { "id": "skills-student-assessment", "label": "Student Assessment" },
+                { "id": "skills-counseling-techniques", "label": "Counseling Techniques" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Demo Lesson", "Subject Knowledge Test"]
+        }
+      ]
+    },
+    {
+      "id": "law",
+      "label": "Law",
+      "icon": "scale",
+      "roles": [
+        {
+          "id": "law-lawyer",
+          "label": "Lawyer",
+          "domainId": "law",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "practice-areas",
+              "label": "Practice Areas",
+              "multiSelect": true,
+              "options": [
+                { "id": "practice-areas-corporate-law", "label": "Corporate Law" },
+                { "id": "practice-areas-criminal-law", "label": "Criminal Law" },
+                { "id": "practice-areas-civil-litigation", "label": "Civil Litigation" },
+                { "id": "practice-areas-intellectual-property", "label": "Intellectual Property" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-legal-research", "label": "Legal Research" },
+                { "id": "skills-case-drafting", "label": "Case Drafting" },
+                { "id": "skills-negotiation", "label": "Negotiation" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Case Analysis", "Legal Reasoning"]
+        }
+      ]
+    },
+    {
+      "id": "government",
+      "label": "Government / Public Sector",
+      "icon": "landmark",
+      "roles": [
+        {
+          "id": "gov-engineer",
+          "label": "Government Engineer",
+          "domainId": "government",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-public-works", "label": "Public Works" },
+                { "id": "skills-regulatory-compliance", "label": "Regulatory Compliance" },
+                { "id": "skills-project-execution", "label": "Project Execution" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Site Assessment"]
+        },
+        {
+          "id": "gov-aspirant",
+          "label": "Government Jobs Aspirant",
+          "domainId": "government",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-general-studies", "label": "General Studies" },
+                { "id": "skills-reasoning", "label": "Reasoning" },
+                { "id": "skills-quantitative-aptitude", "label": "Quantitative Aptitude" },
+                { "id": "skills-current-affairs", "label": "Current Affairs" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "General Studies Test", "Interview Round"]
+        }
+      ]
+    },
+    {
+      "id": "banking-insurance",
+      "label": "Banking & Insurance",
+      "icon": "banknote",
+      "roles": [
+        {
+          "id": "bank-relationship-manager",
+          "label": "Relationship Manager",
+          "domainId": "banking-insurance",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-cross-selling", "label": "Cross-selling" },
+                { "id": "skills-credit-analysis", "label": "Credit Analysis" },
+                { "id": "skills-kyc-compliance", "label": "KYC & Compliance" },
+                { "id": "skills-client-retention", "label": "Client Retention" }
+              ]
+            },
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-core-banking-systems", "label": "Core Banking Systems" },
+                { "id": "tools-crm", "label": "CRM" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Case Study"]
+        },
+        {
+          "id": "insurance-underwriter",
+          "label": "Insurance Underwriter",
+          "domainId": "banking-insurance",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-risk-assessment", "label": "Risk Assessment" },
+                { "id": "skills-policy-structuring", "label": "Policy Structuring" },
+                { "id": "skills-claims-analysis", "label": "Claims Analysis" },
+                { "id": "skills-actuarial-basics", "label": "Actuarial Basics" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Case Study"]
+        }
+      ]
+    },
+    {
+      "id": "human-resources",
+      "label": "Human Resources",
+      "icon": "userCog",
+      "roles": [
+        {
+          "id": "hr-manager",
+          "label": "HR Manager",
+          "domainId": "human-resources",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-talent-acquisition", "label": "Talent Acquisition" },
+                { "id": "skills-performance-management", "label": "Performance Management" },
+                { "id": "skills-employee-relations", "label": "Employee Relations" },
+                { "id": "skills-compensation-benefits", "label": "Compensation & Benefits" }
+              ]
+            },
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-hris", "label": "HRIS" },
+                { "id": "tools-excel", "label": "Excel" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Case Study", "Stakeholder Simulation"]
+        },
+        {
+          "id": "hr-talent-acquisition-specialist",
+          "label": "Talent Acquisition Specialist",
+          "domainId": "human-resources",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-sourcing", "label": "Sourcing" },
+                { "id": "skills-interviewing", "label": "Interviewing" },
+                { "id": "skills-employer-branding", "label": "Employer Branding" },
+                { "id": "skills-ats-management", "label": "ATS Management" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Case Study", "Stakeholder Simulation"]
+        }
+      ]
+    },
+    {
+      "id": "sales",
+      "label": "Sales & Business Development",
+      "icon": "handshake",
+      "roles": [
+        {
+          "id": "sales-executive",
+          "label": "Sales Executive",
+          "domainId": "sales",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-lead-generation", "label": "Lead Generation" },
+                { "id": "skills-negotiation", "label": "Negotiation" },
+                { "id": "skills-pipeline-management", "label": "Pipeline Management" },
+                { "id": "skills-cold-calling", "label": "Cold Calling" }
+              ]
+            },
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-salesforce", "label": "Salesforce" },
+                { "id": "tools-hubspot", "label": "HubSpot" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Role Play", "Case Study"]
+        },
+        {
+          "id": "sales-business-development-manager",
+          "label": "Business Development Manager",
+          "domainId": "sales",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-partnership-strategy", "label": "Partnership Strategy" },
+                { "id": "skills-market-research", "label": "Market Research" },
+                { "id": "skills-client-relationship", "label": "Client Relationship" },
+                { "id": "skills-contract-negotiation", "label": "Contract Negotiation" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Role Play", "Case Study"]
+        }
+      ]
+    },
+    {
+      "id": "hospitality",
+      "label": "Hospitality & Tourism",
+      "icon": "hotel",
+      "roles": [
+        {
+          "id": "hospitality-hotel-manager",
+          "label": "Hotel Manager",
+          "domainId": "hospitality",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-guest-relations", "label": "Guest Relations" },
+                { "id": "skills-revenue-management", "label": "Revenue Management" },
+                { "id": "skills-staff-supervision", "label": "Staff Supervision" },
+                { "id": "skills-housekeeping-operations", "label": "Housekeeping Operations" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Situational Interview", "Guest Service Roleplay"]
+        },
+        {
+          "id": "hospitality-chef",
+          "label": "Chef / Culinary Specialist",
+          "domainId": "hospitality",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-menu-planning", "label": "Menu Planning" },
+                { "id": "skills-food-safety", "label": "Food Safety" },
+                { "id": "skills-kitchen-management", "label": "Kitchen Management" },
+                { "id": "skills-cost-control", "label": "Cost Control" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Situational Interview", "Guest Service Roleplay"]
+        },
+        {
+          "id": "hospitality-travel-consultant",
+          "label": "Travel Consultant",
+          "domainId": "hospitality",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-itinerary-planning", "label": "Itinerary Planning" },
+                { "id": "skills-ticketing-systems-gds", "label": "Ticketing Systems (GDS)" },
+                { "id": "skills-customer-service", "label": "Customer Service" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Situational Interview", "Guest Service Roleplay"]
+        }
+      ]
+    },
+    {
+      "id": "retail",
+      "label": "Retail & E-commerce",
+      "icon": "shoppingBag",
+      "roles": [
+        {
+          "id": "retail-store-manager",
+          "label": "Retail Store Manager",
+          "domainId": "retail",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-inventory-management", "label": "Inventory Management" },
+                { "id": "skills-visual-merchandising", "label": "Visual Merchandising" },
+                { "id": "skills-team-leadership", "label": "Team Leadership" },
+                { "id": "skills-sales-targets", "label": "Sales Targets" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Case Study", "Stakeholder Simulation"]
+        },
+        {
+          "id": "retail-ecommerce-manager",
+          "label": "E-commerce Manager",
+          "domainId": "retail",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-marketplace-management", "label": "Marketplace Management" },
+                { "id": "skills-catalog-optimization", "label": "Catalog Optimization" },
+                { "id": "skills-performance-marketing", "label": "Performance Marketing" }
+              ]
+            },
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-shopify", "label": "Shopify" },
+                { "id": "tools-amazon-seller-central", "label": "Amazon Seller Central" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Case Study", "Portfolio Review"]
+        }
+      ]
+    },
+    {
+      "id": "media",
+      "label": "Media, Journalism & Entertainment",
+      "icon": "newspaper",
+      "roles": [
+        {
+          "id": "media-journalist",
+          "label": "Journalist / Reporter",
+          "domainId": "media",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-investigative-reporting", "label": "Investigative Reporting" },
+                { "id": "skills-news-writing", "label": "News Writing" },
+                { "id": "skills-fact-checking", "label": "Fact-Checking" },
+                { "id": "skills-interviewing", "label": "Interviewing" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Portfolio Review", "Writing/Editing Test"]
+        },
+        {
+          "id": "media-video-editor",
+          "label": "Video Editor / Content Producer",
+          "domainId": "media",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-premiere-pro", "label": "Premiere Pro" },
+                { "id": "tools-after-effects", "label": "After Effects" },
+                { "id": "tools-final-cut-pro", "label": "Final Cut Pro" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-storytelling", "label": "Storytelling" },
+                { "id": "skills-color-grading", "label": "Color Grading" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Portfolio Review", "Writing/Editing Test"]
+        }
+      ]
+    },
+    {
+      "id": "architecture",
+      "label": "Architecture & Interior Design",
+      "icon": "draftingCompass",
+      "roles": [
+        {
+          "id": "architecture-architect",
+          "label": "Architect",
+          "domainId": "architecture",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-autocad", "label": "AutoCAD" },
+                { "id": "tools-revit", "label": "Revit" },
+                { "id": "tools-sketchup", "label": "SketchUp" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-site-planning", "label": "Site Planning" },
+                { "id": "skills-building-codes", "label": "Building Codes" },
+                { "id": "skills-3d-visualization", "label": "3D Visualization" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Portfolio Review", "Design Challenge"]
+        },
+        {
+          "id": "architecture-interior-designer",
+          "label": "Interior Designer",
+          "domainId": "architecture",
+          "skillGroups": [
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-autocad", "label": "AutoCAD" },
+                { "id": "tools-3ds-max", "label": "3ds Max" },
+                { "id": "tools-sketchup", "label": "SketchUp" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-space-planning", "label": "Space Planning" },
+                { "id": "skills-material-selection", "label": "Material Selection" },
+                { "id": "skills-client-presentations", "label": "Client Presentations" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Portfolio Review", "Design Challenge"]
+        }
+      ]
+    },
+    {
+      "id": "logistics",
+      "label": "Logistics & Supply Chain",
+      "icon": "truck",
+      "roles": [
+        {
+          "id": "logistics-supply-chain-manager",
+          "label": "Supply Chain Manager",
+          "domainId": "logistics",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-demand-planning", "label": "Demand Planning" },
+                { "id": "skills-inventory-optimization", "label": "Inventory Optimization" },
+                { "id": "skills-vendor-management", "label": "Vendor Management" },
+                { "id": "skills-logistics-coordination", "label": "Logistics Coordination" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Case Study", "Stakeholder Simulation"]
+        },
+        {
+          "id": "logistics-warehouse-operations-manager",
+          "label": "Warehouse / Operations Manager",
+          "domainId": "logistics",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-fleet-management", "label": "Fleet Management" },
+                { "id": "skills-route-planning", "label": "Route Planning" },
+                { "id": "skills-warehouse-management-systems-wms", "label": "Warehouse Management Systems (WMS)" },
+                { "id": "skills-safety-compliance", "label": "Safety Compliance" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Site Assessment"]
+        }
+      ]
+    },
+    {
+      "id": "agriculture",
+      "label": "Agriculture & Farming",
+      "icon": "sprout",
+      "roles": [
+        {
+          "id": "agriculture-agricultural-engineer",
+          "label": "Agricultural Engineer",
+          "domainId": "agriculture",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-irrigation-systems", "label": "Irrigation Systems" },
+                { "id": "skills-crop-planning", "label": "Crop Planning" },
+                { "id": "skills-farm-machinery", "label": "Farm Machinery" },
+                { "id": "skills-soil-analysis", "label": "Soil Analysis" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        },
+        {
+          "id": "agriculture-farm-manager",
+          "label": "Farm Manager",
+          "domainId": "agriculture",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-crop-rotation", "label": "Crop Rotation" },
+                { "id": "skills-livestock-management", "label": "Livestock Management" },
+                { "id": "skills-yield-optimization", "label": "Yield Optimization" },
+                { "id": "skills-budgeting", "label": "Budgeting" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Case Study", "Stakeholder Simulation"]
+        }
+      ]
+    },
+    {
+      "id": "manufacturing",
+      "label": "Manufacturing & Skilled Trades",
+      "icon": "hardHat",
+      "roles": [
+        {
+          "id": "manufacturing-electrician",
+          "label": "Electrician",
+          "domainId": "manufacturing",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-wiring-circuits", "label": "Wiring & Circuits" },
+                { "id": "skills-safety-standards", "label": "Safety Standards" },
+                { "id": "skills-troubleshooting", "label": "Troubleshooting" },
+                { "id": "skills-blueprint-reading", "label": "Blueprint Reading" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Practical Skills Test", "Safety Assessment"]
+        },
+        {
+          "id": "manufacturing-plumber",
+          "label": "Plumber",
+          "domainId": "manufacturing",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-pipefitting", "label": "Pipefitting" },
+                { "id": "skills-blueprint-reading", "label": "Blueprint Reading" },
+                { "id": "skills-safety-codes", "label": "Safety Codes" },
+                { "id": "skills-troubleshooting", "label": "Troubleshooting" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Practical Skills Test", "Safety Assessment"]
+        },
+        {
+          "id": "manufacturing-plant-supervisor",
+          "label": "Factory / Plant Supervisor",
+          "domainId": "manufacturing",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-lean-manufacturing", "label": "Lean Manufacturing" },
+                { "id": "skills-quality-control", "label": "Quality Control" },
+                { "id": "skills-team-supervision", "label": "Team Supervision" },
+                { "id": "skills-safety-compliance", "label": "Safety Compliance" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Case Study", "Stakeholder Simulation"]
+        }
+      ]
+    },
+    {
+      "id": "aviation",
+      "label": "Aviation & Aerospace",
+      "icon": "planeTakeoff",
+      "roles": [
+        {
+          "id": "aviation-pilot",
+          "label": "Pilot",
+          "domainId": "aviation",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-flight-planning", "label": "Flight Planning" },
+                { "id": "skills-navigation", "label": "Navigation" },
+                { "id": "skills-aviation-regulations", "label": "Aviation Regulations" },
+                { "id": "skills-emergency-procedures", "label": "Emergency Procedures" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Physical Fitness Test", "Situational Judgement"]
+        },
+        {
+          "id": "aviation-maintenance-engineer",
+          "label": "Aircraft Maintenance Engineer",
+          "domainId": "aviation",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-airframe-systems", "label": "Airframe Systems" },
+                { "id": "skills-avionics", "label": "Avionics" },
+                { "id": "skills-regulatory-compliance", "label": "Regulatory Compliance" },
+                { "id": "skills-troubleshooting", "label": "Troubleshooting" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        },
+        {
+          "id": "aviation-cabin-crew",
+          "label": "Cabin Crew",
+          "domainId": "aviation",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-passenger-safety", "label": "Passenger Safety" },
+                { "id": "skills-customer-service", "label": "Customer Service" },
+                { "id": "skills-emergency-response", "label": "Emergency Response" },
+                { "id": "skills-grooming-standards", "label": "Grooming Standards" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Situational Interview", "Guest Service Roleplay"]
+        }
+      ]
+    },
+    {
+      "id": "telecommunications",
+      "label": "Telecommunications",
+      "icon": "radio",
+      "roles": [
+        {
+          "id": "telecom-network-engineer",
+          "label": "Network Engineer",
+          "domainId": "telecommunications",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-4g-5g-networks", "label": "4G/5G Networks" },
+                { "id": "skills-rf-planning", "label": "RF Planning" },
+                { "id": "skills-network-troubleshooting", "label": "Network Troubleshooting" }
+              ]
+            },
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-cisco", "label": "Cisco" },
+                { "id": "tools-nokia", "label": "Nokia" },
+                { "id": "tools-ericsson", "label": "Ericsson" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        },
+        {
+          "id": "telecom-sales-executive",
+          "label": "Telecom Sales Executive",
+          "domainId": "telecommunications",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-b2b-sales", "label": "B2B Sales" },
+                { "id": "skills-product-knowledge", "label": "Product Knowledge" },
+                { "id": "skills-account-management", "label": "Account Management" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Role Play", "Case Study"]
+        }
+      ]
+    },
+    {
+      "id": "energy",
+      "label": "Energy & Utilities",
+      "icon": "fuel",
+      "roles": [
+        {
+          "id": "energy-oil-gas-engineer",
+          "label": "Oil & Gas Engineer",
+          "domainId": "energy",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-drilling-operations", "label": "Drilling Operations" },
+                { "id": "skills-reservoir-analysis", "label": "Reservoir Analysis" },
+                { "id": "skills-hse-compliance", "label": "HSE Compliance" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        },
+        {
+          "id": "energy-renewable-energy-engineer",
+          "label": "Renewable Energy Engineer",
+          "domainId": "energy",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-solar-wind-system-design", "label": "Solar/Wind System Design" },
+                { "id": "skills-energy-auditing", "label": "Energy Auditing" },
+                { "id": "skills-grid-integration", "label": "Grid Integration" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        },
+        {
+          "id": "energy-power-plant-operator",
+          "label": "Power Plant Operator",
+          "domainId": "energy",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-plant-operations", "label": "Plant Operations" },
+                { "id": "skills-safety-protocols", "label": "Safety Protocols" },
+                { "id": "skills-equipment-maintenance", "label": "Equipment Maintenance" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Site Assessment"]
+        }
+      ]
+    },
+    {
+      "id": "real-estate",
+      "label": "Real Estate",
+      "icon": "house",
+      "roles": [
+        {
+          "id": "real-estate-agent",
+          "label": "Real Estate Agent",
+          "domainId": "real-estate",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-property-valuation", "label": "Property Valuation" },
+                { "id": "skills-negotiation", "label": "Negotiation" },
+                { "id": "skills-client-relationship", "label": "Client Relationship" },
+                { "id": "skills-market-analysis", "label": "Market Analysis" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Role Play", "Case Study"]
+        },
+        {
+          "id": "real-estate-property-manager",
+          "label": "Property Manager",
+          "domainId": "real-estate",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-lease-administration", "label": "Lease Administration" },
+                { "id": "skills-facility-maintenance", "label": "Facility Maintenance" },
+                { "id": "skills-tenant-relations", "label": "Tenant Relations" },
+                { "id": "skills-budgeting", "label": "Budgeting" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Case Study", "Stakeholder Simulation"]
+        }
+      ]
+    },
+    {
+      "id": "nonprofit",
+      "label": "Non-Profit & Social Work",
+      "icon": "heartHandshake",
+      "roles": [
+        {
+          "id": "nonprofit-social-worker",
+          "label": "Social Worker",
+          "domainId": "nonprofit",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-case-management", "label": "Case Management" },
+                { "id": "skills-community-outreach", "label": "Community Outreach" },
+                { "id": "skills-counseling", "label": "Counseling" },
+                { "id": "skills-crisis-intervention", "label": "Crisis Intervention" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Clinical Case Discussion"]
+        },
+        {
+          "id": "nonprofit-program-manager",
+          "label": "Program Manager (NGO)",
+          "domainId": "nonprofit",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-grant-writing", "label": "Grant Writing" },
+                { "id": "skills-program-evaluation", "label": "Program Evaluation" },
+                { "id": "skills-stakeholder-management", "label": "Stakeholder Management" },
+                { "id": "skills-fundraising", "label": "Fundraising" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Case Study", "Stakeholder Simulation"]
+        }
+      ]
+    },
+    {
+      "id": "science",
+      "label": "Science & Research",
+      "icon": "microscope",
+      "roles": [
+        {
+          "id": "science-research-scientist",
+          "label": "Research Scientist",
+          "domainId": "science",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-experimental-design", "label": "Experimental Design" },
+                { "id": "skills-data-analysis", "label": "Data Analysis" },
+                { "id": "skills-scientific-writing", "label": "Scientific Writing" },
+                { "id": "skills-lab-techniques", "label": "Lab Techniques" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Research Presentation", "Technical Interview"]
+        },
+        {
+          "id": "science-lab-technician",
+          "label": "Lab Technician",
+          "domainId": "science",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-sample-analysis", "label": "Sample Analysis" },
+                { "id": "skills-lab-safety", "label": "Lab Safety" },
+                { "id": "skills-instrumentation", "label": "Instrumentation" },
+                { "id": "skills-quality-control", "label": "Quality Control" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        }
+      ]
+    },
+    {
+      "id": "sports",
+      "label": "Sports & Fitness",
+      "icon": "dumbbell",
+      "roles": [
+        {
+          "id": "sports-fitness-trainer",
+          "label": "Fitness Trainer",
+          "domainId": "sports",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-exercise-programming", "label": "Exercise Programming" },
+                { "id": "skills-nutrition-basics", "label": "Nutrition Basics" },
+                { "id": "skills-client-assessment", "label": "Client Assessment" },
+                { "id": "skills-motivation-coaching", "label": "Motivation Coaching" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview"]
+        },
+        {
+          "id": "sports-coach",
+          "label": "Sports Coach",
+          "domainId": "sports",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-game-strategy", "label": "Game Strategy" },
+                { "id": "skills-athlete-development", "label": "Athlete Development" },
+                { "id": "skills-performance-analysis", "label": "Performance Analysis" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview"]
+        }
+      ]
+    },
+    {
+      "id": "pharma",
+      "label": "Pharmaceuticals & Biotechnology",
+      "icon": "pill",
+      "roles": [
+        {
+          "id": "pharma-pharmacist",
+          "label": "Pharmacist",
+          "domainId": "pharma",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-drug-dispensing", "label": "Drug Dispensing" },
+                { "id": "skills-patient-counseling", "label": "Patient Counseling" },
+                { "id": "skills-regulatory-compliance", "label": "Regulatory Compliance" },
+                { "id": "skills-inventory-management", "label": "Inventory Management" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Clinical Case Discussion"]
+        },
+        {
+          "id": "pharma-biotechnologist",
+          "label": "Biotechnologist / R&D Scientist",
+          "domainId": "pharma",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-molecular-biology", "label": "Molecular Biology" },
+                { "id": "skills-lab-techniques", "label": "Lab Techniques" },
+                { "id": "skills-clinical-trials", "label": "Clinical Trials" },
+                { "id": "skills-data-analysis", "label": "Data Analysis" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Research Presentation", "Technical Interview"]
+        }
+      ]
+    },
+    {
+      "id": "customer-service",
+      "label": "Customer Service & BPO",
+      "icon": "headphones",
+      "roles": [
+        {
+          "id": "customer-service-support-executive",
+          "label": "Customer Support Executive",
+          "domainId": "customer-service",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-communication", "label": "Communication" },
+                { "id": "skills-problem-solving", "label": "Problem Solving" },
+                { "id": "skills-crm-tools", "label": "CRM Tools" },
+                { "id": "skills-conflict-resolution", "label": "Conflict Resolution" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview"]
+        },
+        {
+          "id": "customer-service-team-lead",
+          "label": "Call Center Team Lead",
+          "domainId": "customer-service",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-team-management", "label": "Team Management" },
+                { "id": "skills-quality-monitoring", "label": "Quality Monitoring" },
+                { "id": "skills-performance-coaching", "label": "Performance Coaching" },
+                { "id": "skills-reporting", "label": "Reporting" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Case Study", "Stakeholder Simulation"]
+        }
+      ]
+    },
+    {
+      "id": "automotive",
+      "label": "Automotive",
+      "icon": "car",
+      "roles": [
+        {
+          "id": "automotive-engineer",
+          "label": "Automotive Engineer",
+          "domainId": "automotive",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "tools",
+              "label": "Tools",
+              "multiSelect": true,
+              "options": [
+                { "id": "tools-catia", "label": "CATIA" },
+                { "id": "tools-solidworks", "label": "SolidWorks" }
+              ]
+            },
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-vehicle-design", "label": "Vehicle Design" },
+                { "id": "skills-powertrain-systems", "label": "Powertrain Systems" },
+                { "id": "skills-testing-validation", "label": "Testing & Validation" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview", "Coding Interview"]
+        },
+        {
+          "id": "automotive-service-technician",
+          "label": "Automobile Service Technician",
+          "domainId": "automotive",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-diagnostics", "label": "Diagnostics" },
+                { "id": "skills-engine-repair", "label": "Engine Repair" },
+                { "id": "skills-electrical-systems", "label": "Electrical Systems" },
+                { "id": "skills-customer-communication", "label": "Customer Communication" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Practical Skills Test", "Safety Assessment"]
+        }
+      ]
+    },
+    {
+      "id": "public-safety",
+      "label": "Public Safety & Defense",
+      "icon": "siren",
+      "roles": [
+        {
+          "id": "public-safety-police-officer",
+          "label": "Police Officer",
+          "domainId": "public-safety",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-law-enforcement", "label": "Law Enforcement" },
+                { "id": "skills-community-policing", "label": "Community Policing" },
+                { "id": "skills-crisis-management", "label": "Crisis Management" },
+                { "id": "skills-physical-fitness", "label": "Physical Fitness" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Physical Fitness Test", "Situational Judgement"]
+        },
+        {
+          "id": "public-safety-defense-officer",
+          "label": "Defense Forces / Military Officer",
+          "domainId": "public-safety",
+          "featured": true,
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-leadership", "label": "Leadership" },
+                { "id": "skills-tactical-planning", "label": "Tactical Planning" },
+                { "id": "skills-physical-fitness", "label": "Physical Fitness" },
+                { "id": "skills-discipline", "label": "Discipline" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Physical Fitness Test", "Situational Judgement"]
+        },
+        {
+          "id": "public-safety-firefighter",
+          "label": "Firefighter",
+          "domainId": "public-safety",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-fire-suppression", "label": "Fire Suppression" },
+                { "id": "skills-rescue-operations", "label": "Rescue Operations" },
+                { "id": "skills-emergency-medical-response", "label": "Emergency Medical Response" },
+                { "id": "skills-equipment-handling", "label": "Equipment Handling" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Physical Fitness Test", "Situational Judgement"]
+        }
+      ]
+    },
+    {
+      "id": "other",
+      "label": "Other",
+      "icon": "layers",
+      "roles": [
+        {
+          "id": "other-general",
+          "label": "Other",
+          "domainId": "other",
+          "skillGroups": [
+            {
+              "id": "skills",
+              "label": "Skills",
+              "multiSelect": true,
+              "options": [
+                { "id": "skills-communication", "label": "Communication" },
+                { "id": "skills-problem-solving", "label": "Problem Solving" },
+                { "id": "skills-leadership", "label": "Leadership" },
+                { "id": "skills-time-management", "label": "Time Management" }
+              ]
+            }
+          ],
+          "interviewTypes": ["HR Interview", "Technical Interview"]
+        }
+      ]
+    }
+  ],
+  "welcomeDomainShortcuts": [
+    { "domainId": "information-technology", "label": "Engineer", "icon": "code" },
+    { "domainId": "civil-engineering", "label": "Civil", "icon": "wrench" },
+    { "domainId": "healthcare", "label": "Doctor", "icon": "stethoscope" },
+    { "domainId": "law", "label": "Lawyer", "icon": "scale" },
+    { "domainId": "marketing", "label": "Marketing", "icon": "megaphone" },
+    { "domainId": "education", "label": "Teacher", "icon": "bookOpen" }
+  ],
+  "journeyStages": [
+    { "id": "student", "label": "Student", "description": "Currently studying, exploring career paths", "icon": "graduationCap" },
+    { "id": "working_professional", "label": "Working Professional", "description": "Employed and building on experience", "icon": "briefcase" },
+    { "id": "career_switcher", "label": "Career Switcher", "description": "Moving into a new domain or role", "icon": "rotateCw" },
+    { "id": "fresher", "label": "Fresher", "description": "Recently graduated, starting out", "icon": "rocket" },
+    { "id": "government_prep", "label": "Preparing for Government Jobs", "description": "Focused on public sector exams & interviews", "icon": "target" },
+    { "id": "other", "label": "Other", "description": "None of the above quite fits — that's fine too", "icon": "layers" }
+  ],
+  "experienceBuckets": [
+    { "id": "student", "label": "Student" },
+    { "id": "0-1", "label": "0-1 years" },
+    { "id": "1-3", "label": "1-3 years" },
+    { "id": "3-5", "label": "3-5 years" },
+    { "id": "5-10", "label": "5-10 years" },
+    { "id": "10-plus", "label": "10+ years" }
+  ],
+  "suggestedCompanies": ["Google", "Amazon", "Microsoft", "L&T", "TCS", "Infosys", "Accenture", "Government Jobs", "Startup"],
+  "educationLevels": ["High School", "Diploma", "Bachelor's Degree", "Master's Degree", "PhD", "Other"]
+}

@@ -1,4 +1,4 @@
-// Mirrors src/app/interfaces/index.ts — keep in sync
+// Mirrors src/app/interfaces/index.ts ï¿½ keep in sync
 export * from './user.interface';
 export * from './resume.interface';
 export * from './interview.interface';
@@ -15,4 +15,5 @@ export * from './bookmark.interface';
 export * from './feedback.interface';
 export * from './analytics-event.interface';
 export * from './xp-transaction.interface';
+export * from './practice.interface';
 export * from './converters';
