@@ -29,7 +29,6 @@ Same middleware as legacy routes (`verifyToken`).
 | PATCH | `/v2/interviews/:id/environment` | device fields | Save setup device-check; may move status to `device_check` |
 | GET | `/v2/interviews` | `?status=&mode=&limit=` | List owner interviews |
 | GET | `/v2/interviews/:id` | — | Get one interview (owner only) |
-| GET | `/v2/interviews/:id/live-token` | — | Mint a short-lived Gemini Live ephemeral token so the browser can connect directly to Gemini's Live API (see below) |
 | GET | `/v2/practice/catalog` | `?q=&categoryId=` | Categories + companies + recommended sessions |
 | GET | `/v2/reports/summary` | — | Metrics, skill trends, radar, heatmap for `/reports` |
 | GET | `/v2/reports` | `?limit=` | List per-interview reports |
@@ -93,22 +92,48 @@ Content-Type: application/json
 
 `endReason`: `time_expired` | `user_ended` | `connection_lost` | `max_questions_signal`
 
-### Live interview session (client-side Gemini Live)
+### Live interview session (server-side WebSocket bridge)
 
-The v2 architecture runs the actual audio session **directly from the browser** against Gemini's
-Live API — the backend never proxies audio. Flow:
+The v2 architecture proxies the live audio session through a backend WebSocket bridge — the same
+technique the legacy `/interviews/*` flow uses — so `GEMINI_API_KEY` never reaches the browser.
+This bridge only runs on the long-lived Node server (`npm run dev` locally, Render in production);
+it is **not** available on the Cloud Functions deployment (`isCloudRuntime()` gate), matching the
+legacy bridge's hosting constraints (Cloud Functions cannot hold WebSocket connections open).
+
+**Turn-taking:** Gemini automatic VAD is disabled. The browser marks answer boundaries with
+`activityStart` / `activityEnd` (typically when the candidate taps **Done answering**), so long
+answers with thinking pauses are not cut off. **Candidate captions** in the UI come from the
+browser Web Speech API (`en-US`); the bridge only forwards **AI** transcripts/audio.
+
+Flow:
 
 1. `POST /v2/interviews/start` → `{ interviewId }`.
-2. After device check / guidelines, call `GET /v2/interviews/{id}/live-token` → `{ token, model, expireTime }`.
-3. In the browser: `new GoogleGenAI({ apiKey: token, httpOptions: { apiVersion: 'v1alpha' } })`, then
-   `ai.live.connect({ model, config: { responseModalities: ['AUDIO'] }, callbacks })`.
-4. Stream mic audio (16kHz PCM16) via `session.sendRealtimeInput({ audio: { data, mimeType: 'audio/pcm;rate=16000' } })`
-   and play back model audio (24kHz PCM16) from `serverContent.modelTurn.parts[].inlineData`.
-5. On end, call `POST /v2/interviews/{id}/complete` with a transcript summary built from the
-   session's input/output transcriptions.
+2. After device check / guidelines, open a WebSocket:
+   `wss://<host>/ws/v2/interview?interviewId=<id>&token=<Firebase ID token>`.
+3. The server verifies the token + interview ownership/status, connects to Gemini Live itself
+   (`ai.live.connect`) using the interview's cached `aiSession.systemInstructions`, and relays
+   messages using this protocol:
 
-Tokens are single-use and expire in 30 minutes (new sessions must start within 5 minutes of minting),
-so request a fresh token right before connecting.
+   | Direction | `type` | Payload |
+   |-----------|--------|---------|
+   | Client → Server | `audio` | `{ data, mimeType? }` — mic audio, 16kHz PCM16 base64 |
+   | Client → Server | `activityStart` | Marks the start of the candidate's answer turn |
+   | Client → Server | `activityEnd` | Marks the end of the answer — Gemini may speak next |
+   | Client → Server | `end` | Ends the call and closes the Gemini session |
+   | Server → Client | `open` | Gemini session is ready; mic streaming triggers kickoff |
+   | Server → Client | `transcript` | `{ role: 'ai', text, final }` — interviewer captions only |
+   | Server → Client | `audio` | `{ data, mimeType }` — model audio, 24kHz PCM16 base64 |
+   | Server → Client | `turnComplete` | Interviewer finished a turn; candidate may answer |
+   | Server → Client | `interrupted` | Model generation was interrupted |
+   | Server → Client | `error` | `{ message }` |
+   | Server → Client | `close` | `{ reason? }` — session ended |
+
+4. On end, call `POST /v2/interviews/{id}/complete` with a transcript summary built from the
+   conversation log (browser STT for the candidate + AI `transcript` events).
+
+The server pins `speechConfig`/transcription `languageHints` to English (`en-US`, `en-IN`), and
+kicks off the interviewer's first question via `sendRealtimeInput({ text })` once mic audio is
+flowing — the candidate never has to speak first.
 
 ### Response envelope
 

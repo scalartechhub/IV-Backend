@@ -212,3 +212,13 @@ export async function analyzeResume(uid: string, input: AnalyzeResumeInput) {
     analysis,
   };
 }
+
+/** Only one resume analysis exists per account — fixed doc at users/{uid}/resume/analysis. */
+export async function getActiveResume(uid: string) {
+  const db = ensureAdmin();
+  const snap = await resumeAnalysisRef(db, uid).get();
+  if (!snap.exists) {
+    throw new AppError(404, 'No active resume found.');
+  }
+  return { id: 'active', ...snap.data()! };
+}

@@ -13,11 +13,7 @@ import type {
   InterviewStatus,
 } from '../interfaces/interview.interface';
 import type { GoalDoc } from '../interfaces/user.interface';
-import {
-  buildGeminiSessionConfig,
-  createLiveEphemeralToken,
-  type LiveEphemeralToken,
-} from '../library/gemini-client';
+import { buildGeminiSessionConfig } from '../library/gemini-client';
 import { applyLevelUpdate, resolveLevel } from '../library/level';
 import { writeReadiness } from '../library/readiness';
 import { scoreInterview } from '../library/scoring';
@@ -39,8 +35,7 @@ import { dayAbbrev, formatDate, getWeekStart } from '../utils/date-helpers';
 import {
   goalsCol,
   interviewRef,
-  resumeRef,
-  resumesCol,
+  resumeAnalysisRef,
   skillRef,
   userRef,
   weeklyStatsRef,
@@ -247,19 +242,14 @@ export async function startInterview(
   const mode = resolved.mode;
   const config = omitUndefinedDeep(resolved.config);
 
-  if (config.resumeVersionUsed) {
-    const resumeSnap = await resumeRef(db, uid, config.resumeVersionUsed).get();
-    if (!resumeSnap.exists) {
-      throw new AppError(404, 'Referenced resume does not exist.');
-    }
-  } else {
-    const active = await resumesCol(db, uid)
-      .where('isActive', '==', true)
-      .limit(1)
-      .get();
-    if (!active.empty) {
-      config.resumeVersionUsed = active.docs[0].id;
-    }
+  // Only one resume analysis is stored per account (users/{uid}/resume/analysis) — no more
+  // per-version subcollection, so resumeVersionUsed is just a flag for "use my analyzed resume".
+  const resumeSnap = await resumeAnalysisRef(db, uid).get();
+  if (config.resumeVersionUsed && !resumeSnap.exists) {
+    throw new AppError(404, 'No resume analysis found for this account.');
+  }
+  if (resumeSnap.exists) {
+    config.resumeVersionUsed = config.resumeVersionUsed ?? 'active';
   }
 
   const recent = await db
@@ -279,9 +269,8 @@ export async function startInterview(
   }
 
   let resumeContext = '';
-  if (config.resumeVersionUsed) {
-    const resume = (await resumeRef(db, uid, config.resumeVersionUsed).get())
-      .data();
+  if (config.resumeVersionUsed && resumeSnap.exists) {
+    const resume = resumeSnap.data();
     if (resume?.analysis) {
       resumeContext = [
         `Keywords: ${(resume.analysis.extractedKeywords ?? []).join(', ')}`,
@@ -307,7 +296,10 @@ export async function startInterview(
     'Keep questions concise. Probe depth. Be encouraging but rigorous.',
     'Conduct this entire interview in English only, and always reply in English. ' +
       'The candidate speaks English (possibly with an accent) — interpret their answers as ' +
-      'English even if they sound unusual, and never switch to another language.',
+      'English even if they sound unusual, and never switch to another language. ' +
+      'When transcribing or repeating back anything the candidate said, always write it in ' +
+      'English using the Latin alphabet only — never output Hindi, Marathi, or any other ' +
+      'non-Latin script, even if their accent sounds like a regional Indian language.',
   ]
     .filter(Boolean)
     .join('\n');
@@ -349,35 +341,6 @@ export async function startInterview(
     interviewId: interviewDocRef.id,
     geminiSessionConfig,
   };
-}
-
-/**
- * Mint a short-lived Gemini Live token so the browser can run the live interview
- * session directly against Gemini without ever holding GEMINI_API_KEY.
- */
-export async function createLiveToken(
-  uid: string,
-  interviewId: string,
-): Promise<LiveEphemeralToken> {
-  const db = ensureAdmin();
-  const snap = await interviewRef(db, interviewId).get();
-  if (!snap.exists) throw new AppError(404, 'Interview not found.');
-  const interview = snap.data()!;
-  if (interview.userId !== uid) {
-    throw new AppError(403, 'Interview does not belong to the authenticated user.');
-  }
-  if (['completed', 'abandoned', 'expired'].includes(interview.status)) {
-    throw new AppError(412, 'Interview is no longer active.');
-  }
-
-  const systemInstructions =
-    interview.aiSession?.systemInstructions ||
-    `You are an expert interviewer conducting a ${interview.mode} interview for a ${interview.config.targetRole} role. Keep questions concise, probe depth, and be encouraging but rigorous. Conduct this entire interview in English only, and always reply in English, even if the candidate's speech sounds unusual due to accent.`;
-
-  return createLiveEphemeralToken({
-    systemInstructions,
-    model: interview.aiSession?.modelVersion,
-  });
 }
 
 /**

@@ -191,16 +191,4 @@ router.get(
   }),
 );
 
-router.get(
-  '/:id/live-token',
-  validate(idParamSchema, 'params'),
-  asyncHandler(async (req, res) => {
-    const result = await interviewService.createLiveToken(
-      req.user!.uid,
-      String(req.params.id),
-    );
-    sendSuccess(res, result, 'Live token issued');
-  }),
-);
-
 export default router;

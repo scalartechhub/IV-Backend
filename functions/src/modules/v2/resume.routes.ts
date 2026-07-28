@@ -6,7 +6,7 @@ import { Router } from 'express';
 import { asyncHandler } from '../../middleware/async.middleware';
 import { requirePdfUpload } from '../../middleware/upload.middleware';
 import { AppError } from '../../shared/utils';
-import { sendCreated } from '../../shared/responses';
+import { sendCreated, sendSuccess } from '../../shared/responses';
 import * as resumeService from '../../services/resume.service';
 
 const router = Router();
@@ -31,6 +31,14 @@ router.post(
       targetRole,
     });
     sendCreated(res, result, 'Resume analyzed successfully');
+  }),
+);
+
+router.get(
+  '/active',
+  asyncHandler(async (req, res) => {
+    const result = await resumeService.getActiveResume(req.user!.uid);
+    sendSuccess(res, result, 'Active resume fetched');
   }),
 );
 
