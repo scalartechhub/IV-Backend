@@ -11,10 +11,6 @@
 x-judge0-common: &judge0-common
   # Community build with isolate cgroup v2 support (see judge0/judge0#543)
   image: mrkushalsm/judge0:latest
-  privileged: true
-  cgroup: host
-  volumes:
-    - /sys/fs/cgroup:/sys/fs/cgroup:rw
   environment: &judge0-env
     REDIS_HOST: redis
     REDIS_PORT: 6379
