@@ -80,6 +80,16 @@ export interface InterviewCodingData {
   passRate: number;
 }
 
+export type InterviewConversationRole = 'assistant' | 'candidate';
+
+/** Persisted mid-call transcript turns on interviews/{interviewId} */
+export interface InterviewConversationMessage {
+  id: string;
+  role: InterviewConversationRole;
+  text: string;
+  createdAt: Timestamp;
+}
+
 /** Path: interviews/{interviewId} */
 export interface InterviewDoc {
   userId: string;
@@ -98,6 +108,13 @@ export interface InterviewDoc {
   xpEarned: number;
   reportId?: string;
   codingData?: InterviewCodingData;
+  /** Mid-call transcript for refresh recovery and scoring fallback */
+  conversation?: InterviewConversationMessage[];
+  lastSpeaker?: InterviewConversationRole;
+  /** Snapshot of time left; derived from startedAt + config.durationMinutes when live */
+  remainingSeconds?: number;
+  /** Elapsed live seconds (durationMinutes * 60 - remainingSeconds), persisted for refresh */
+  liveElapsedSec?: number;
   // TODO: transcriptArchived not in architecture �3 � required by archive-old-transcripts
   transcriptArchived?: boolean;
   /** Soft-delete flag � heatmap / list queries filter isDeleted == false */

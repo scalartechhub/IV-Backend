@@ -8,6 +8,7 @@ import type {
   EndReason,
   InterviewConfig,
   InterviewDifficulty,
+  InterviewDoc,
   InterviewEnvironment,
   InterviewMode,
   InterviewStatus,
@@ -40,6 +41,11 @@ import {
   userRef,
   weeklyStatsRef,
 } from '../utils/firestore-refs';
+import {
+  computeLiveElapsedSec,
+  computeRemainingSeconds,
+  formatConversationTranscript,
+} from '../modules/v2/v2-live-interview.persistence';
 import { checkAchievements } from './achievement.service';
 import { getCompany, getPracticeTemplate } from './practice.service';
 import { generateReport } from './report.service';
@@ -441,8 +447,13 @@ export async function completeInterview(
     throw new AppError(412, 'Interview is already completed.');
   }
 
+  const resolvedTranscript =
+    transcriptSummary.trim() ||
+    formatConversationTranscript(interview.conversation) ||
+    'No conversation was captured during this session.';
+
   const results = await scoreInterview({
-    transcriptSummary,
+    transcriptSummary: resolvedTranscript,
     config: interview.config,
     mode: interview.mode,
   });
@@ -625,7 +636,12 @@ export async function getInterview(uid: string, interviewId: string) {
   if (data.userId !== uid) {
     throw new AppError(403, 'Interview does not belong to the authenticated user.');
   }
-  return { id: snap.id, ...data };
+  return {
+    id: snap.id,
+    ...data,
+    remainingSeconds: computeRemainingSeconds(data as InterviewDoc),
+    liveElapsedSec: computeLiveElapsedSec(data as InterviewDoc),
+  };
 }
 
 export async function listInterviews(
