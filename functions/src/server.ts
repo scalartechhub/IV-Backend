@@ -5,6 +5,7 @@ import { isStorageConfigured } from "./config/firebase";
 import app from "./app";
 import { logger } from "./shared/logger";
 import { setupLiveInterviewWebSocket } from "./modules/live-interview/live-interview.ws";
+import { setupV2LiveInterviewWebSocket } from "./modules/v2/live-interview-ws";
 import { isCloudRuntime } from "./shared/runtime";
 
 try {
@@ -35,6 +36,7 @@ const server = app.listen(appConfig.port, () => {
   }
   if (!isCloudRuntime()) {
     setupLiveInterviewWebSocket(server);
+    setupV2LiveInterviewWebSocket(server);
   }
 });
 
