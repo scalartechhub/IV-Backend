@@ -41,10 +41,11 @@ export interface ResumeAnalysis {
   extractedText?: string;
 }
 
-/** Path: users/{uid}/resumes/{resumeId} */
+/** Path: users/{uid}/resumes/{resumeId} or users/{uid}/resume/analysis */
 export interface ResumeDoc {
   fileName: string;
-  storagePath: string;
+  /** Omitted when PDF is analyzed in-memory and not uploaded to Storage. */
+  storagePath?: string;
   version: number;
   isActive: boolean;
   uploadedAt: Timestamp;

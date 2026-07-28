@@ -9,7 +9,6 @@ import { bootstrapApplication } from "./bootstrap";
 export { startInterview } from "./callable/start-interview";
 export { completeInterview } from "./callable/complete-interview";
 export { submitCodingSolution } from "./callable/submit-coding-solution";
-export { uploadResume } from "./callable/upload-resume";
 export { regenerateRoadmap } from "./callable/regenerate-roadmap";
 export { saveProfileSettings } from "./callable/save-profile-settings";
 
