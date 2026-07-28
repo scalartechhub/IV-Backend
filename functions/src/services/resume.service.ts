@@ -1,5 +1,5 @@
 /**
- * V2 resume service — upload/analyze + list/active.
+ * V2 resume service — multipart PDF analyze + upsert.
  */
 
 import { FieldValue } from 'firebase-admin/firestore';
@@ -8,8 +8,8 @@ import type { ResumeAnalysis, ResumeDoc } from '../interfaces/resume.interface';
 import { generateJson } from '../library/gemini-client';
 import { AppError } from '../shared/utils';
 import { extractPdfText } from '../shared/utils/pdf';
-import { ensureAdmin, ensureStorage } from '../utils/callable-auth';
-import { resumeRef, resumesCol } from '../utils/firestore-refs';
+import { ensureAdmin } from '../utils/callable-auth';
+import { resumeAnalysisRef } from '../utils/firestore-refs';
 
 const analysisSchema = z.object({
   overallScore: z.number(),
@@ -122,18 +122,10 @@ function normalizeRawAnalysis(raw: unknown): unknown {
   };
 }
 
-export interface UploadResumeInput {
-  storagePath: string;
-  fileName: string;
-  targetRole: string;
-  resumeId?: string;
-}
-
 export interface AnalyzeResumeInput {
   fileBuffer: Buffer;
   fileName: string;
   targetRole: string;
-  contentType?: string;
 }
 
 async function runAtsAnalysis(
@@ -181,79 +173,9 @@ IMPORTANT: fixesFirst and workingWell MUST be arrays of objects, never plain str
   };
 }
 
-async function activateResumeDoc(
-  uid: string,
-  newId: string,
-  fields: {
-    fileName: string;
-    storagePath: string;
-    targetRole: string;
-    analysis: ResumeAnalysis;
-  },
-): Promise<void> {
-  const db = ensureAdmin();
-
-  await db.runTransaction(async (tx) => {
-    // All reads must happen before any writes (Firestore transaction rule).
-    const [activeSnap, existingVersions] = await Promise.all([
-      tx.get(resumesCol(db, uid).where('isActive', '==', true)),
-      tx.get(resumesCol(db, uid)),
-    ]);
-    const version = existingVersions.size + 1;
-
-    for (const doc of activeSnap.docs) {
-      if (doc.id !== newId) {
-        tx.update(doc.ref, { isActive: false });
-      }
-    }
-
-    const doc: ResumeDoc = {
-      fileName: fields.fileName,
-      storagePath: fields.storagePath,
-      version,
-      isActive: true,
-      uploadedAt: FieldValue.serverTimestamp() as never,
-      targetRole: fields.targetRole,
-      analysis: fields.analysis,
-      aiReviewedAt: FieldValue.serverTimestamp() as never,
-      analysisStatus: 'completed',
-    };
-
-    tx.set(resumeRef(db, uid, newId), doc);
-  });
-}
-
 /**
- * Analyze a resume already in Storage (client uploaded first).
- */
-export async function uploadResume(uid: string, input: UploadResumeInput) {
-  const db = ensureAdmin();
-  const storage = ensureStorage();
-  const { storagePath, fileName, targetRole, resumeId } = input;
-
-  if (!storagePath.startsWith(`resumes/${uid}/`)) {
-    throw new AppError(403, 'storagePath must be under resumes/{uid}/.');
-  }
-
-  const bucket = storage.bucket();
-  const [buffer] = await bucket.file(storagePath).download();
-  const { text: extractedText } = await extractPdfText(buffer);
-  const analysis = await runAtsAnalysis(extractedText, targetRole);
-  const newId = resumeId ?? db.collection('_').doc().id;
-
-  await activateResumeDoc(uid, newId, {
-    fileName,
-    storagePath,
-    targetRole,
-    analysis,
-  });
-
-  return { resumeId: newId, analysisStatus: 'completed' as const, analysis };
-}
-
-/**
- * Multipart PDF resume analysis: upload to Storage + ATS scorecard + activate.
- * Architecture path: resumes/{uid}/{resumeId}.pdf + users/{uid}/resumes/{resumeId}
+ * Multipart PDF resume analysis: ATS scorecard only (PDF is not stored).
+ * Upserts a single doc at users/{uid}/resume/analysis — re-analyze overwrites.
  */
 export async function analyzeResume(uid: string, input: AnalyzeResumeInput) {
   if (!input.fileBuffer?.length) {
@@ -261,52 +183,32 @@ export async function analyzeResume(uid: string, input: AnalyzeResumeInput) {
   }
 
   const db = ensureAdmin();
-  const storage = ensureStorage();
-  const newId = db.collection('_').doc().id;
-  const storagePath = `resumes/${uid}/${newId}.pdf`;
-
-  const bucket = storage.bucket();
-  await bucket.file(storagePath).save(input.fileBuffer, {
-    contentType: input.contentType ?? 'application/pdf',
-    metadata: {
-      metadata: {
-        uploadedBy: uid,
-        originalFileName: input.fileName,
-      },
-    },
-  });
+  const ref = resumeAnalysisRef(db, uid);
 
   const { text: extractedText } = await extractPdfText(input.fileBuffer);
   const analysis = await runAtsAnalysis(extractedText, input.targetRole);
 
-  await activateResumeDoc(uid, newId, {
+  const existing = await ref.get();
+  const version = existing.exists
+    ? ((existing.data()?.version ?? 0) as number) + 1
+    : 1;
+
+  const doc: ResumeDoc = {
     fileName: input.fileName,
-    storagePath,
+    version,
+    isActive: true,
+    uploadedAt: FieldValue.serverTimestamp() as never,
     targetRole: input.targetRole,
     analysis,
-  });
+    aiReviewedAt: FieldValue.serverTimestamp() as never,
+    analysisStatus: 'completed',
+  };
+
+  await ref.set(doc);
 
   return {
-    resumeId: newId,
-    storagePath,
+    resumeId: 'analysis',
     analysisStatus: 'completed' as const,
     analysis,
   };
-}
-
-export async function listResumes(uid: string) {
-  const db = ensureAdmin();
-  const snap = await resumesCol(db, uid).orderBy('uploadedAt', 'desc').get();
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-}
-
-export async function getActiveResume(uid: string) {
-  const db = ensureAdmin();
-  const snap = await resumesCol(db, uid)
-    .where('isActive', '==', true)
-    .limit(1)
-    .get();
-  if (snap.empty) throw new AppError(404, 'No active resume found.');
-  const doc = snap.docs[0];
-  return { id: doc.id, ...doc.data() };
 }

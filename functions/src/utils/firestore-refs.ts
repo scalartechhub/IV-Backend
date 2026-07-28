@@ -48,6 +48,16 @@ export function resumesCol(db: Firestore, uid: string) {
     .withConverter(resumeConverter);
 }
 
+/** Fixed upsert path: users/{uid}/resume/analysis */
+export function resumeAnalysisRef(db: Firestore, uid: string) {
+  return db
+    .collection('users')
+    .doc(uid)
+    .collection('resume')
+    .doc('analysis')
+    .withConverter(resumeConverter);
+}
+
 export function interviewRef(db: Firestore, interviewId: string) {
   return db
     .collection('interviews')
