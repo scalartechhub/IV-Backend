@@ -344,16 +344,6 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
 
         const parts = serverContent.modelTurn?.parts ?? [];
         for (const part of parts) {
-          if (part.text && !userTurnOpen) {
-            firstAiSignalReceived = true;
-            clearKickoffRetry();
-            aiTranscriptBuffer += part.text;
-            const text = aiTranscriptBuffer.trim();
-            if (text) {
-              sendJson(clientSocket, { type: 'transcript', role: 'ai', text, final: false });
-            }
-          }
-
           const data = part.inlineData?.data;
           if (!data) continue;
           if (userTurnOpen) {
@@ -373,7 +363,15 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
             aiTranscriptBuffer = '';
             return;
           }
-          const aiText = aiTranscriptBuffer.trim();
+          let aiText = aiTranscriptBuffer.trim();
+          // Fallback only when audio transcription produced no text.
+          if (!aiText) {
+            aiText = parts
+              .map((part) => part.text?.trim() ?? '')
+              .filter(Boolean)
+              .join(' ')
+              .trim();
+          }
           if (aiText) {
             sendJson(clientSocket, { type: 'transcript', role: 'ai', text: aiText, final: true });
             persistAssistantText(aiText);

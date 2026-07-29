@@ -38,8 +38,9 @@ settings:
 docs: |-
   V2 resume analysis — multipart field: `file` (PDF).
 
-  Optional form field:
-  - `targetRole` — defaults to "Software Engineer" if omitted
+  Optional form fields:
+  - `targetRole` — omit for onboarding; ATS/plan infer role from the resume
+  - `onboarding` — `true` to generate the interview-prep onboarding plan (write-once)
 
   Flow:
   1. Extracts text from the PDF in memory (PDF is not stored in Storage)

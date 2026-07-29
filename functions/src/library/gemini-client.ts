@@ -7,6 +7,13 @@ import { GoogleGenAI, Modality } from '@google/genai';
 
 const DEFAULT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
 
+/** Faster model for resume scoring when set (e.g. gemini-2.0-flash). */
+export const RESUME_GEMINI_MODEL =
+  process.env.RESUME_GEMINI_MODEL ?? DEFAULT_MODEL;
+
+const supportsThinkingConfig = (model: string): boolean =>
+  /gemini-2\./i.test(model);
+
 let client: GoogleGenAI | null = null;
 
 /** Shared GoogleGenAI client, reused by text generation and the v2 live WS bridge. */
@@ -31,14 +38,19 @@ export async function generateJson<T>(params: {
   temperature?: number;
   maxOutputTokens?: number;
 }): Promise<T> {
+  const model = params.model ?? DEFAULT_MODEL;
   const result = await getClient().models.generateContent({
-    model: params.model ?? DEFAULT_MODEL,
+    model,
     contents: params.userPrompt,
     config: {
       systemInstruction: params.systemInstruction,
       temperature: params.temperature ?? 0.2,
       maxOutputTokens: params.maxOutputTokens ?? 4096,
       responseMimeType: 'application/json',
+      // Gemini 2.5+ thinking tokens add latency and burn output budget on JSON tasks.
+      ...(supportsThinkingConfig(model)
+        ? { thinkingConfig: { thinkingBudget: 0 } }
+        : {}),
     },
   });
 
