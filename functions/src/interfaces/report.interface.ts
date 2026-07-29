@@ -30,6 +30,10 @@ export interface WeeklyStatsDoc {
   interviewsCompleted: number;
   practiceMinutes: number;
   practiceMinutesByDay: Record<string, number>;
-  /** YYYY-MM-DD ? session count within this week (powers Reports heatmap) */
+  /** YYYY-MM-DD → session count within this week (powers Reports heatmap) */
   sessionsByDay?: Record<string, number>;
+  /** Longest single-session duration (seconds) recorded this week. */
+  longestSessionSec?: number;
+  /** Lowercase 3-letter day abbrev of the longest session (e.g. "fri"). */
+  longestSessionDay?: string;
 }

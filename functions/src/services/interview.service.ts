@@ -536,6 +536,11 @@ export async function completeInterview(
     const streak = updateStreak(tx, db, uid, gamification, now);
 
     const minutes = Math.round(durationSec / 60);
+    const prevLongestSec: number = statsSnap.exists
+      ? ((statsSnap.data() as { longestSessionSec?: number }).longestSessionSec ?? 0)
+      : 0;
+    const isNewLongest = durationSec > prevLongestSec;
+
     if (statsSnap.exists) {
       tx.update(statsRef, {
         technical: updatedSkills.technical,
@@ -549,6 +554,10 @@ export async function completeInterview(
         practiceMinutes: FieldValue.increment(minutes),
         [`practiceMinutesByDay.${todayAbbrev}`]: FieldValue.increment(minutes),
         [`sessionsByDay.${today}`]: FieldValue.increment(1),
+        ...(isNewLongest && {
+          longestSessionSec: durationSec,
+          longestSessionDay: todayAbbrev,
+        }),
       });
     } else {
       tx.set(statsRef, {
@@ -564,6 +573,8 @@ export async function completeInterview(
         practiceMinutes: minutes,
         practiceMinutesByDay: { [todayAbbrev]: minutes },
         sessionsByDay: { [today]: 1 },
+        longestSessionSec: durationSec,
+        longestSessionDay: todayAbbrev,
       });
     }
 
