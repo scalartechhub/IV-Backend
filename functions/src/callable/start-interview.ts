@@ -48,13 +48,6 @@ const startSchema = z
         path: ['durationMinutes'],
       });
     }
-    if (!data.currentRole || !data.targetRole) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'currentRole and targetRole required without shortcut',
-        path: ['currentRole'],
-      });
-    }
   });
 
 export const startInterview = onCall(

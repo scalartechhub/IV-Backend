@@ -121,10 +121,15 @@ export function notificationsCol(db: Firestore, uid: string) {
     .withConverter(notificationConverter);
 }
 
-export function achievementsCatalogCol(db: Firestore) {
+export function achievementsCol(db: Firestore) {
   return db
-    .collection('achievementsCatalog')
+    .collection('achievements')
     .withConverter(achievementCatalogConverter);
+}
+
+/** @deprecated Prefer achievementsCol — old shared catalog path */
+export function achievementsCatalogCol(db: Firestore) {
+  return achievementsCol(db);
 }
 
 export function userAchievementRef(

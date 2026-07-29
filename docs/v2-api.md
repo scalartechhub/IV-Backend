@@ -36,7 +36,6 @@ Same middleware as legacy routes (`verifyToken`).
 | POST | `/v2/resumes/analyze` | multipart `file` (+ optional `targetRole`) | Upload PDF → Storage + Gemini ATS → activate resume |
 | POST | `/v2/resumes/upload` | `{ storagePath, fileName, targetRole, resumeId? }` | Analyze a PDF already in Storage → activate |
 | GET | `/v2/resumes` | — | List resumes |
-| GET | `/v2/resumes/active` | — | Active resume |
 | POST | `/v2/coding/submit` | `{ interviewId, problemId, code, language }` | Sandboxed tests via `CODE_RUNNER_URL` |
 | POST | `/v2/roadmap/regenerate` | `{ targetRole? }` | New active roadmap; archive previous |
 | GET | `/v2/roadmap/active` | — | Active roadmap |

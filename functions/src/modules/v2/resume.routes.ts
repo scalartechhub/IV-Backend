@@ -20,7 +20,7 @@ import { requirePdfUpload } from "../../middleware/upload.middleware";
 
 import { AppError } from "../../shared/utils";
 
-import { sendCreated, sendSuccess } from "../../shared/responses";
+import { sendCreated } from "../../shared/responses";
 
 import * as resumeService from "../../services/resume.service";
 
@@ -88,16 +88,6 @@ router.post(
         ? "Resume analyzed and onboarding plan generated successfully"
         : "Resume analyzed successfully",
     );
-  }),
-);
-
-router.get(
-  "/active",
-
-  asyncHandler(async (req, res) => {
-    const result = await resumeService.getActiveResume(req.user!.uid);
-
-    sendSuccess(res, result, "Active resume fetched");
   }),
 );
 

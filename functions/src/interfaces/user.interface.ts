@@ -80,6 +80,8 @@ export interface UserSubscription {
 export interface UserStats {
   totalInterviews: number;
   problemsSolved: number;
+  /** Interviews with overallScore >= 70 — used by successful_interviews achievements */
+  successfulInterviews?: number;
 }
 
 /**

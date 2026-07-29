@@ -30,6 +30,7 @@ import {
   DEFAULT_LIVE_MODEL,
   getClient,
 } from '../../library/gemini-client';
+import { buildInterviewSystemInstructions } from '../../services/interview-prompt';
 import {
   appendAssistantTurn,
   appendCandidateTurn,
@@ -128,6 +129,11 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
     let timerTickId: ReturnType<typeof setInterval> | null = null;
     /** True between client activityStart and activityEnd — hold AI audio so it cannot talk over the user. */
     let userTurnOpen = false;
+    /** Caption text from the browser STT — forwarded to Gemini if audio alone is insufficient. */
+    let pendingCandidateText = '';
+    let receivedUserAudioThisTurn = false;
+    /** Set after activityEnd until the model produces the next assistant turn. */
+    let awaitingAiResponse = false;
     let latestInterview: InterviewDoc | null = null;
     let persistQueue: Promise<void> = Promise.resolve();
 
@@ -285,7 +291,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
 
       const baseInstructions =
         interview.aiSession?.systemInstructions ||
-        `You are an expert interviewer conducting a ${interview.mode} interview for a ${interview.config.targetRole} role. Keep questions concise, probe depth, and be encouraging but rigorous. Conduct this entire interview in English only, and always reply in English, even if the candidate's speech sounds unusual due to accent. When transcribing or repeating back anything the candidate said, always write it in English using the Latin alphabet only — never output Hindi, Marathi, or any other non-Latin script.`;
+        buildInterviewSystemInstructions(interview.mode, interview.config);
 
       const systemInstructions = buildResumeSystemInstruction(
         baseInstructions,
@@ -375,6 +381,33 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
           if (aiText) {
             sendJson(clientSocket, { type: 'transcript', role: 'ai', text: aiText, final: true });
             persistAssistantText(aiText);
+            awaitingAiResponse = false;
+          } else if (awaitingAiResponse && geminiSession) {
+            logger.warn(
+              `[v2-live-interview] empty AI turn after candidate answer, nudging interviewId=${interviewId}`,
+            );
+            awaitingAiResponse = false;
+            try {
+              geminiSession.sendClientContent({
+                turns: [
+                  {
+                    role: 'user',
+                    parts: [
+                      {
+                        text:
+                          'The candidate has finished their answer. Acknowledge briefly and ask your next interview question now.',
+                      },
+                    ],
+                  },
+                ],
+                turnComplete: true,
+              });
+            } catch (error) {
+              logger.warn(
+                `[v2-live-interview] next-question nudge failed interviewId=${interviewId}`,
+                error,
+              );
+            }
           }
           aiTranscriptBuffer = '';
           sendJson(clientSocket, { type: 'turnComplete' });
@@ -471,11 +504,14 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
         if (!message || !geminiSession) return;
 
         if (message.type === 'userTurnFinal' && message.text?.trim()) {
-          persistCandidateText(message.text.trim());
+          pendingCandidateText = message.text.trim();
+          persistCandidateText(pendingCandidateText);
           return;
         }
 
         if (message.type === 'activityStart') {
+          pendingCandidateText = '';
+          receivedUserAudioThisTurn = false;
           userTurnOpen = true;
           aiTranscriptBuffer = '';
           try {
@@ -488,16 +524,33 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
 
         if (message.type === 'activityEnd') {
           userTurnOpen = false;
+          const captionText = pendingCandidateText;
+          pendingCandidateText = '';
+          awaitingAiResponse = true;
           try {
             geminiSession.sendRealtimeInput({ activityEnd: {} });
           } catch (error) {
             logger.warn(`[v2-live-interview] activityEnd failed interviewId=${interviewId}`, error);
+          }
+          if (captionText && !receivedUserAudioThisTurn) {
+            try {
+              geminiSession.sendClientContent({
+                turns: [{ role: 'user', parts: [{ text: captionText }] }],
+                turnComplete: true,
+              });
+            } catch (error) {
+              logger.warn(
+                `[v2-live-interview] candidate caption forward failed interviewId=${interviewId}`,
+                error,
+              );
+            }
           }
           return;
         }
 
         if (message.type === 'audio' && message.data) {
           if (userTurnOpen) {
+            receivedUserAudioThisTurn = true;
             geminiSession.sendRealtimeInput({
               audio: { data: message.data, mimeType: message.mimeType ?? 'audio/pcm;rate=16000' },
             });

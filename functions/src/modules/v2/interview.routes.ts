@@ -61,22 +61,6 @@ const startBodySchema = z
         path: ['durationMinutes'],
       });
     }
-    if (!data.currentRole) {
-      ctx.addIssue({
-        code: 'custom',
-        message:
-          'currentRole is required unless templateId, companyId, or quickStart is set',
-        path: ['currentRole'],
-      });
-    }
-    if (!data.targetRole) {
-      ctx.addIssue({
-        code: 'custom',
-        message:
-          'targetRole is required unless templateId, companyId, or quickStart is set',
-        path: ['targetRole'],
-      });
-    }
   });
 
 const completeBodySchema = z.object({

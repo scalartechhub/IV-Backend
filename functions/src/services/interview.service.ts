@@ -50,6 +50,10 @@ import { checkAchievements } from './achievement.service';
 import { getCompany, getPracticeTemplate } from './practice.service';
 import { generateReport } from './report.service';
 import { ensureUserDefaults } from './schema-defaults';
+import {
+  buildInterviewSystemInstructions,
+  buildResumeContextFromAnalysis,
+} from './interview-prompt';
 
 export interface StartInterviewInput {
   mode?: InterviewMode;
@@ -204,34 +208,33 @@ async function resolveStartConfig(
     };
   }
 
-  // 4) Explicit config (setup / advanced)
-  if (
-    input.difficulty === undefined ||
-    input.durationMinutes === undefined ||
-    !input.currentRole ||
-    !input.targetRole
-  ) {
-    throw new AppError(
-      400,
-      'Provide full interview config, or templateId / companyId / quickStart.',
-    );
+  // 4) Explicit config from Setup (type, technology, difficulty, duration)
+  if (input.difficulty !== undefined && input.durationMinutes !== undefined) {
+    const technologies = input.technologies ?? input.skills ?? [];
+    const skills = input.skills ?? input.technologies ?? [];
+    return {
+      mode: input.mode ?? 'conversational',
+      config: {
+        topic:
+          input.topic ??
+          `${technologies[0] ?? skills[0] ?? profileTarget} interview`,
+        company: input.company,
+        skills,
+        technologies,
+        difficulty: input.difficulty,
+        durationMinutes: input.durationMinutes,
+        resumeVersionUsed: input.resumeVersionUsed,
+        currentRole: input.currentRole ?? profileCurrent,
+        targetRole: input.targetRole ?? profileTarget,
+        sourceRoadmapActivityId: input.sourceRoadmapActivityId,
+      },
+    };
   }
 
-  return {
-    mode: input.mode ?? 'conversational',
-    config: {
-      topic: input.topic,
-      company: input.company,
-      skills: input.skills ?? [],
-      technologies: input.technologies ?? [],
-      difficulty: input.difficulty,
-      durationMinutes: input.durationMinutes,
-      resumeVersionUsed: input.resumeVersionUsed,
-      currentRole: input.currentRole,
-      targetRole: input.targetRole,
-      sourceRoadmapActivityId: input.sourceRoadmapActivityId,
-    },
-  };
+  throw new AppError(
+    400,
+    'Provide difficulty and durationMinutes (with mode/technology), or templateId / companyId / quickStart.',
+  );
 }
 
 /**
@@ -248,14 +251,14 @@ export async function startInterview(
   const mode = resolved.mode;
   const config = omitUndefinedDeep(resolved.config);
 
-  // Only one resume analysis is stored per account (users/{uid}/resume/analysis) — no more
-  // per-version subcollection, so resumeVersionUsed is just a flag for "use my analyzed resume".
-  const resumeSnap = await resumeAnalysisRef(db, uid).get();
-  if (config.resumeVersionUsed && !resumeSnap.exists) {
+  // resumeVersionUsed is only set when Setup explicitly opts in ("Using resume").
+  const useResume = Boolean(config.resumeVersionUsed);
+  const resumeSnap = useResume ? await resumeAnalysisRef(db, uid).get() : null;
+  if (useResume && !resumeSnap?.exists) {
     throw new AppError(404, 'No resume analysis found for this account.');
   }
-  if (resumeSnap.exists) {
-    config.resumeVersionUsed = config.resumeVersionUsed ?? 'active';
+  if (!useResume) {
+    delete config.resumeVersionUsed;
   }
 
   const recent = await db
@@ -275,40 +278,17 @@ export async function startInterview(
   }
 
   let resumeContext = '';
-  if (config.resumeVersionUsed && resumeSnap.exists) {
+  if (useResume && resumeSnap?.exists) {
     const resume = resumeSnap.data();
-    if (resume?.analysis) {
-      resumeContext = [
-        `Keywords: ${(resume.analysis.extractedKeywords ?? []).join(', ')}`,
-        `Recommended skills: ${(resume.analysis.recommendedSkills ?? []).join(', ')}`,
-        `Missing keywords: ${(resume.analysis.missingKeywords ?? []).join(', ')}`,
-      ].join('\n');
+    if (resume) {
+      resumeContext = buildResumeContextFromAnalysis(resume);
     }
   }
 
-  const systemInstructions = [
-    `You are an expert interviewer conducting a ${mode} interview.`,
-    `Candidate current role: ${config.currentRole}.`,
-    `Target role: ${config.targetRole}.`,
-    `Difficulty: ${config.difficulty}. Duration: ${config.durationMinutes} minutes.`,
-    `Focus skills: ${config.skills.join(', ') || 'general'}.`,
-    `Technologies: ${config.technologies.join(', ') || 'general'}.`,
-    config.topic ? `Topic: ${config.topic}.` : '',
-    config.company ? `Company style: ${config.company}.` : '',
-    resumeContext ? `Resume signals:\n${resumeContext}` : '',
-    previousWeaknesses.length
-      ? `Bias follow-ups toward prior weaknesses: ${previousWeaknesses.slice(0, 9).join('; ')}`
-      : '',
-    'Keep questions concise. Probe depth. Be encouraging but rigorous.',
-    'Conduct this entire interview in English only, and always reply in English. ' +
-      'The candidate speaks English (possibly with an accent) — interpret their answers as ' +
-      'English even if they sound unusual, and never switch to another language. ' +
-      'When transcribing or repeating back anything the candidate said, always write it in ' +
-      'English using the Latin alphabet only — never output Hindi, Marathi, or any other ' +
-      'non-Latin script, even if their accent sounds like a regional Indian language.',
-  ]
-    .filter(Boolean)
-    .join('\n');
+  const systemInstructions = buildInterviewSystemInstructions(mode, config, {
+    resumeContext: resumeContext || undefined,
+    previousWeaknesses,
+  });
 
   const interviewDocRef = interviewRef(db, db.collection('interviews').doc().id);
   const now = FieldValue.serverTimestamp();
@@ -615,6 +595,9 @@ export async function completeInterview(
 
     tx.update(userRef(db, uid), {
       'stats.totalInterviews': FieldValue.increment(1),
+      ...(results.overallScore >= 70
+        ? { 'stats.successfulInterviews': FieldValue.increment(1) }
+        : {}),
     });
 
     return {
@@ -627,11 +610,30 @@ export async function completeInterview(
     };
   });
 
-  await checkAchievements(uid, { overallScore: results.overallScore }).catch(
-    (err: unknown) => {
-      console.error('[completeInterview] checkAchievements failed', err);
+  await checkAchievements(uid, {
+    completed: true,
+    overallScore: results.overallScore,
+    xpEarned: txResult.xpEarned,
+    success: results.overallScore >= 70,
+    deliveryScore: results.communicationScore,
+    contentScore: results.technicalScore,
+    skillScores: {
+      technical: results.technicalScore,
+      communication: results.communicationScore,
+      confidence: results.confidenceScore,
+      problemSolving: results.problemSolvingScore,
+      behavior: results.behaviorScore ?? 0,
     },
-  );
+    tracks: [
+      interview.mode,
+      ...(interview.config.technologies ?? []),
+      ...(interview.config.skills ?? []),
+      interview.config.topic,
+      interview.config.company,
+    ].filter((value): value is string => Boolean(value?.trim())),
+  }).catch((err: unknown) => {
+    console.error('[completeInterview] checkAchievements failed', err);
+  });
   await generateReport(uid, interviewId, results).catch((err: unknown) => {
     console.error('[completeInterview] generateReport failed', err);
   });
