@@ -436,6 +436,10 @@ export async function completeInterview(
     transcriptSummary: resolvedTranscript,
     config: interview.config,
     mode: interview.mode,
+    durationSec,
+    durationMinutes: interview.config.durationMinutes,
+    endReason,
+    conversation: interview.conversation,
   });
 
   const xpEarned = calculateInterviewXp({
