@@ -138,6 +138,7 @@ export function buildInterviewSystemInstructions(
   opts: {
     resumeContext?: string;
     previousWeaknesses?: string[];
+    topicProfile?: { strong: string[]; weak: string[] };
   } = {},
 ): string {
   const interviewType = interviewModeLabel(mode);
@@ -179,6 +180,12 @@ export function buildInterviewSystemInstructions(
     ...questioningStrategy,
     opts.previousWeaknesses?.length
       ? `Bias follow-ups toward prior weaknesses: ${opts.previousWeaknesses.slice(0, 9).join('; ')}`
+      : '',
+    opts.topicProfile?.strong.length
+      ? `Candidate has already demonstrated mastery of these topics in past interviews — do NOT repeat them: ${opts.topicProfile.strong.slice(0, 20).join(', ')}`
+      : '',
+    opts.topicProfile?.weak.length
+      ? `Candidate previously struggled with these topics — prioritize probing them again this session: ${opts.topicProfile.weak.slice(0, 20).join(', ')}`
       : '',
     'Keep questions concise. Probe depth. Be encouraging but rigorous.',
     'Session closing rules:',

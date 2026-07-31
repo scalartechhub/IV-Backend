@@ -19,6 +19,10 @@ const baseScores = (): ScoreInterviewResult => ({
   strengths: ['Clear answers'],
   weaknesses: [],
   recommendations: ['Keep practicing'],
+  topicOutcomes: [
+    { topic: 'useEffect cleanup', status: 'strong' },
+    { topic: 'closures', status: 'weak' },
+  ],
 });
 
 describe('expectedQuestionCount', () => {
@@ -115,5 +119,18 @@ describe('applyCoverageAdjustment', () => {
       questionsAsked: 10,
     });
     assert.equal(adjusted.overallScore, 90);
+  });
+
+  it('passes topicOutcomes through unchanged regardless of coverage adjustment', () => {
+    const adjusted = applyCoverageAdjustment(baseScores(), {
+      durationSec: 5 * 60,
+      durationMinutes: 30,
+      endReason: 'user_ended',
+      questionsAnswered: 2,
+    });
+    assert.deepEqual(adjusted.topicOutcomes, [
+      { topic: 'useEffect cleanup', status: 'strong' },
+      { topic: 'closures', status: 'weak' },
+    ]);
   });
 });

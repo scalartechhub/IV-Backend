@@ -216,6 +216,15 @@ export function goalsCol(db: Firestore, uid: string) {
   return db.collection('users').doc(uid).collection('goals');
 }
 
+/** Fixed singleton path: users/{uid}/interviewTopics/profile — cross-interview strong/weak topics. */
+export function topicProfileRef(db: Firestore, uid: string) {
+  return db
+    .collection('users')
+    .doc(uid)
+    .collection('interviewTopics')
+    .doc('profile');
+}
+
 export function companiesCol(db: Firestore) {
   return db.collection('companies').withConverter(companyConverter);
 }

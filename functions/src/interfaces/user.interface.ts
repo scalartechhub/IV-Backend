@@ -1,4 +1,4 @@
-// Mirrors src/app/interfaces/user.interface.ts ó keep in sync
+// Mirrors src/app/interfaces/user.interface.ts ù keep in sync
 import type { Timestamp } from 'firebase-admin/firestore';
 import type { LearningRoadmapWeek } from './resume.interface';
 
@@ -48,13 +48,13 @@ export interface UserGamification {
   longestStreak: number;
 }
 
-/** Nested readiness block on users/{uid} ó server-written only */
+/** Nested readiness block on users/{uid} ù server-written only */
 export interface UserReadiness {
   score: number;
   deltaWeek: number;
   percentileVsRole: number;
   lastComputedAt: Timestamp;
-  // TODO: readinessScore7dAgo not in architecture ß1 ó used by complete-interview deltaWeek calc
+  // TODO: readinessScore7dAgo not in architecture ù1 ù used by complete-interview deltaWeek calc
   readinessScore7dAgo?: number;
 }
 
@@ -75,18 +75,18 @@ export interface UserSubscription {
 
 /**
  * Denormalized counters for achievement rules (interviews_gte / problems_gte).
- * TODO: not in architecture ß1 ó required by on-achievement-check / complete-interview.
+ * TODO: not in architecture ù1 ù required by on-achievement-check / complete-interview.
  */
 export interface UserStats {
   totalInterviews: number;
   problemsSolved: number;
-  /** Interviews with overallScore >= 70 ó used by successful_interviews achievements */
+  /** Interviews with overallScore >= 70 ù used by successful_interviews achievements */
   successfulInterviews?: number;
 }
 
 /**
  * Per-skill doc under users/{uid}/skills/{skillId}.
- * TODO: skills subcollection shape not fully specified in architecture ó inferred from Phase 2.
+ * TODO: skills subcollection shape not fully specified in architecture ù inferred from Phase 2.
  */
 export interface SkillDoc {
   score: number;
@@ -104,7 +104,7 @@ export type SkillId =
 
 /**
  * Daily goal under users/{uid}/goals/{goalId}.
- * TODO: goals collection is not in architecture.md ó required by complete-interview step 8.
+ * TODO: goals collection is not in architecture.md ù required by complete-interview step 8.
  */
 export interface GoalDoc {
   date: string;
@@ -129,7 +129,7 @@ export interface UserDoc {
   readiness: UserReadiness;
   preferences: UserPreferences;
   subscription: UserSubscription;
-  // TODO: stats not in architecture ß1 ó denormalized counters for achievement rules
+  // TODO: stats not in architecture ù1 ù denormalized counters for achievement rules
   stats?: UserStats;
   /** Populated from resume analysis when onboarding=true (merge-only). */
   onboarding?: UserOnboardingSnapshot;
@@ -138,5 +138,11 @@ export interface UserDoc {
    * during onboarding (users/{uid}.resumeAnalysisCompleted).
    */
   resumeAnalysisCompleted?: boolean;
+  /**
+   * Average of each skill across the candidate's last 5 completed interviews,
+   * plus totalScore (average of all 6 skills). Recomputed after every
+   * interview completes + its report generates.
+   */
+  skillSignals?: Record<SkillId, number> & { totalScore: number };
   updatedAt?: Timestamp;
 }
