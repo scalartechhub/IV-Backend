@@ -17,6 +17,7 @@ const interviewModeSchema = z.enum([
   'coding',
   'behavioral',
   'system_design',
+  'hr',
 ]);
 
 const difficultySchema = z.enum(['easy', 'medium', 'hard']);

@@ -1,6 +1,11 @@
 import type { Timestamp } from 'firebase/firestore';
 
-export type InterviewMode = 'conversational' | 'coding' | 'behavioral' | 'system_design';
+export type InterviewMode =
+  | 'conversational'
+  | 'coding'
+  | 'behavioral'
+  | 'system_design'
+  | 'hr';
 export type InterviewStatus =
   | 'created'
   | 'device_check'

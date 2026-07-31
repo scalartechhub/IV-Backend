@@ -99,10 +99,11 @@ export interface CompleteInterviewResult {
 }
 
 const MODE_GOAL_MATCH: Record<string, string[]> = {
-  conversational: ['mock_interview', 'conversational', 'interview'],
+  conversational: ['mock_interview', 'conversational', 'interview', 'technical'],
   coding: ['coding', 'coding_interview'],
   behavioral: ['behavioral'],
   system_design: ['system_design'],
+  hr: ['hr', 'screening', 'soft_skills'],
 };
 
 const STATUS_FLOW: InterviewStatus[] = [

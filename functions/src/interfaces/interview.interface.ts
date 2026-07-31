@@ -1,7 +1,12 @@
 // Mirrors src/app/interfaces/interview.interface.ts � keep in sync
 import type { Timestamp } from 'firebase-admin/firestore';
 
-export type InterviewMode = 'conversational' | 'coding' | 'behavioral' | 'system_design';
+export type InterviewMode =
+  | 'conversational'
+  | 'coding'
+  | 'behavioral'
+  | 'system_design'
+  | 'hr';
 export type InterviewStatus =
   | 'created'
   | 'device_check'

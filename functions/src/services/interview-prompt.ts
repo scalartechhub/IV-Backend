@@ -12,6 +12,20 @@ const MODE_LABELS: Record<InterviewMode, string> = {
   coding: 'Coding Interview',
   behavioral: 'Behavioral Interview',
   system_design: 'System Design Interview',
+  hr: 'HR Interview',
+};
+
+const MODE_FOCUS: Record<InterviewMode, string> = {
+  conversational:
+    'Focus on technical depth, concepts, and applied problem-solving for the chosen technology or domain.',
+  coding:
+    'Focus on coding problems, algorithms, data structures, and clear verbal walkthroughs of solutions.',
+  behavioral:
+    'Focus on STAR-style behavioral questions: teamwork, conflict, ownership, leadership, and past impact.',
+  system_design:
+    'Focus on architecture, scalability, reliability, trade-offs, and verbally describing system designs.',
+  hr:
+    'Focus on HR screening: motivation, culture fit, communication, career goals, availability, and professional soft skills. Avoid deep coding or system design.',
 };
 
 export function interviewModeLabel(mode: InterviewMode): string {
@@ -146,9 +160,11 @@ export function buildInterviewSystemInstructions(
   const difficulty =
     config.difficulty.charAt(0).toUpperCase() + config.difficulty.slice(1);
 
+  const companyName = config.company?.trim();
   const coreConfig = [
     `You are an expert interviewer conducting a ${interviewType}.`,
     `Interview type: ${interviewType}.`,
+    MODE_FOCUS[mode],
     `Primary technology / focus: ${technology}.`,
     `Difficulty level: ${difficulty}.`,
     `Session duration: ${config.durationMinutes} minutes — pace questions accordingly.`,
@@ -159,7 +175,14 @@ export function buildInterviewSystemInstructions(
       ? `Technologies to emphasize: ${config.technologies.join(', ')}.`
       : '',
     config.topic ? `Topic: ${config.topic}.` : '',
-    config.company ? `Company style: ${config.company}.` : '',
+    companyName
+      ? [
+          `Target company: ${companyName}.`,
+          `This is a ${companyName}-style interview. Ask questions that ${companyName} is known to ask for this role/type when possible.`,
+          `Reflect ${companyName}'s interview culture, common rounds, and expectations (without inventing confidential/internal processes).`,
+          `Prefer scenarios, follow-ups, and evaluation criteria that would realistically appear in a ${companyName} hiring process.`,
+        ].join(' ')
+      : '',
   ];
 
   const questioningStrategy = opts.resumeContext
