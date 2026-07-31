@@ -18,6 +18,8 @@ import { buildGeminiSessionConfig } from '../library/gemini-client';
 import { applyLevelUpdate, resolveLevel } from '../library/level';
 import { writeReadiness } from '../library/readiness';
 import { scoreInterview } from '../library/scoring';
+import { updateUserSkillSignals } from '../library/skill-signals';
+import { loadTopicProfile, updateTopicProfile } from '../library/topic-profile';
 import {
   DEFAULT_SKILL_SCORE,
   SKILL_IDS,
@@ -285,9 +287,12 @@ export async function startInterview(
     }
   }
 
+  const topicProfile = await loadTopicProfile(db, uid);
+
   const systemInstructions = buildInterviewSystemInstructions(mode, config, {
     resumeContext: resumeContext || undefined,
     previousWeaknesses,
+    topicProfile,
   });
 
   const interviewDocRef = interviewRef(db, db.collection('interviews').doc().id);
@@ -640,6 +645,14 @@ export async function completeInterview(
   });
   await generateReport(uid, interviewId, results).catch((err: unknown) => {
     console.error('[completeInterview] generateReport failed', err);
+  });
+  await updateTopicProfile(db, uid, results.topicOutcomes ?? []).catch(
+    (err: unknown) => {
+      console.error('[completeInterview] updateTopicProfile failed', err);
+    },
+  );
+  await updateUserSkillSignals(db, uid).catch((err: unknown) => {
+    console.error('[completeInterview] updateUserSkillSignals failed', err);
   });
 
   return txResult;

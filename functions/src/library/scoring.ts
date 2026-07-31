@@ -25,6 +25,14 @@ const scoreInterviewSchema = z.object({
   weaknesses: z.array(z.string()),
   recommendations: z.array(z.string()),
   nextLearningPathId: z.string().optional(),
+  topicOutcomes: z
+    .array(
+      z.object({
+        topic: z.string(),
+        status: z.enum(['strong', 'weak']),
+      }),
+    )
+    .default([]),
 });
 
 export type ScoreInterviewResult = z.infer<typeof scoreInterviewSchema>;
@@ -42,7 +50,8 @@ Respond ONLY with valid JSON matching this shape:
   "skillDeltas": { "technical": number, "communication": number, "confidence": number, "problemSolving": number, "coding": number, "behavior": number },
   "strengths": string[],
   "weaknesses": string[],
-  "recommendations": string[]
+  "recommendations": string[],
+  "topicOutcomes": [ { "topic": string, "status": "strong"|"weak" } ]
 }
 skillDeltas should be small integers typically in [-8, +8]. No markdown.
 
@@ -51,7 +60,14 @@ Coverage rules (mandatory):
 - Few strong answers in a short time must NOT produce a high overallScore.
 - Early user exit with substantial time remaining must lower overallScore and list incomplete coverage as a weakness.
 - Unasked / unanswered topics count as incomplete coverage.
-- High scores require both answer quality AND breadth across the planned interview.`;
+- High scores require both answer quality AND breadth across the planned interview.
+
+topicOutcomes rules (mandatory):
+- List 3-8 concise, specific concept/topic names actually discussed in the transcript
+  (e.g. "useEffect cleanup", "closures", "REST API design", "SQL joins" — not vague labels like "JavaScript" alone).
+- Classify each as "strong" (candidate answered confidently and correctly) or "weak"
+  (struggled, vague, incorrect, or avoided the question).
+- Only include topics that were actually asked about — do not invent topics.`;
 
 /** ~1 question per 3 minutes; clamp to a sensible interview range. */
 export function expectedQuestionCount(durationMinutes: number): number {

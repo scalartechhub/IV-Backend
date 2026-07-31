@@ -72,6 +72,25 @@ export interface InterviewResults {
   weaknesses: string[];
   recommendations: string[];
   nextLearningPathId?: string;
+  /** Per-topic strong/weak classification extracted from this interview's transcript. */
+  topicOutcomes?: TopicOutcome[];
+}
+
+export type TopicStatus = 'strong' | 'weak';
+
+/** Per-topic classification returned by scoring for a single interview. */
+export interface TopicOutcome {
+  topic: string;
+  status: TopicStatus;
+}
+
+/**
+ * Path: users/{uid}/interviewTopics/profile — cross-interview topic mastery tracking.
+ * strong/weak are plain normalized topic-name arrays (no per-topic metadata).
+ */
+export interface TopicProfileDoc {
+  strong: string[];
+  weak: string[];
 }
 
 export interface InterviewCodingData {
