@@ -19,6 +19,7 @@ import { applyLevelUpdate, resolveLevel } from '../library/level';
 import { writeReadiness } from '../library/readiness';
 import { scoreInterview } from '../library/scoring';
 import { updateUserSkillSignals } from '../library/skill-signals';
+import { refreshCareerProgressForUser } from './career-progress.service';
 import { loadTopicProfile, updateTopicProfile } from '../library/topic-profile';
 import {
   DEFAULT_SKILL_SCORE,
@@ -654,6 +655,9 @@ export async function completeInterview(
   );
   await updateUserSkillSignals(db, uid).catch((err: unknown) => {
     console.error('[completeInterview] updateUserSkillSignals failed', err);
+  });
+  await refreshCareerProgressForUser(uid).catch((err: unknown) => {
+    console.error('[completeInterview] refreshCareerProgressForUser failed', err);
   });
 
   return txResult;

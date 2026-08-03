@@ -1,4 +1,4 @@
-// Mirrors src/app/interfaces/career-progress.interface.ts — keep in sync
+// Mirrors IV-frontend src/app/shared/interfaces/career-progress.interface.ts — keep in sync
 import type { Timestamp } from 'firebase-admin/firestore';
 
 /** Nested salary insights on users/{uid}/careerProgress/current */
@@ -9,6 +9,8 @@ export interface SalaryInsights {
   positionInRange: number;
   mostRequestedSkill: string;
   fastestImprovingSkill: { name: string; deltaPercent: number };
+  regionLabel?: string;
+  regionFlag?: string;
 }
 
 /** Nested peer benchmark on users/{uid}/careerProgress/current */
@@ -32,5 +34,9 @@ export interface CareerProgressDoc {
   salaryInsights: SalaryInsights;
   peerBenchmark: PeerBenchmark;
   milestones: Milestone[];
+  jobReadiness?: number;
+  readinessLabel?: string;
+  peerComparisonPercent?: number;
+  improvingLabel?: string;
   lastComputedAt: Timestamp;
 }
