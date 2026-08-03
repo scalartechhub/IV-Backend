@@ -11,8 +11,15 @@ const MAX_POLL_ATTEMPTS = 120; // ~60s — allows cold compile + queue
 
 const judge0Fetch = async (path: string, init?: RequestInit): Promise<Response> => {
   const url = `${getJudge0BaseUrl()}${path}`;
-  const response = await fetch(url, init);
-  return response;
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Cannot reach Judge0 at ${getJudge0BaseUrl()}: ${detail}. ` +
+        "Start it with: cd judge0 && docker compose up -d"
+    );
+  }
 };
 
 const clampMemoryKb = (memoryLimitKb?: number): number | undefined => {
