@@ -7,11 +7,13 @@
 #   curl -s -X POST 'http://localhost:2358/submissions?base64_encoded=false&wait=true' \
 #     -H 'Content-Type: application/json' \
 #     -d '{"source_code":"print(42)","language_id":71}'
-
+#
+# On cgroup v2 hosts, server/workers need privileged + cgroup: host + rw cgroup mount.
 x-judge0-common: &judge0-common
   # Community build with isolate cgroup v2 support (see judge0/judge0#543)
   image: mrkushalsm/judge0:latest
   privileged: true
+  # Share host cgroup namespace so isolate can create sandbox cgroups (cgroup v2)
   cgroup: host
   volumes:
     - /sys/fs/cgroup:/sys/fs/cgroup:rw
