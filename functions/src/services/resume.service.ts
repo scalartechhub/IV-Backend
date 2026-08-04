@@ -26,7 +26,6 @@ import { extractPdfText } from '../shared/utils/pdf';
 import { ensureAdmin } from '../utils/callable-auth';
 import {
   onboardingAnalysisRef,
-  resumeAnalysisRef,
   userRef,
 } from '../utils/firestore-refs';
 import {
@@ -751,31 +750,18 @@ function toAtsAnalysisFieldUpdates(
 }
 
 /**
- * Loads the canonical onboarding analysis doc, falling back to the legacy
- * users/{uid}/resume/analysis path for older users.
+ * Loads the canonical onboarding analysis doc at users/{uid}/onboarding/analysis.
  */
 export async function loadOnboardingAnalysisDoc(uid: string) {
   const db = ensureAdmin();
-  const primary = onboardingAnalysisRef(db, uid);
-  const primarySnap = await primary.get();
-  if (primarySnap.exists) {
-    return { ref: primary, snap: primarySnap, legacy: false as const };
-  }
-
-  const legacy = resumeAnalysisRef(db, uid);
-  const legacySnap = await legacy.get();
-  if (legacySnap.exists) {
-    return { ref: legacy, snap: legacySnap, legacy: true as const };
-  }
-
-  return { ref: primary, snap: primarySnap, legacy: false as const };
+  const ref = onboardingAnalysisRef(db, uid);
+  const snap = await ref.get();
+  return { ref, snap };
 }
 
 /**
  * Multipart PDF resume analysis: ATS scorecard only (PDF is not stored).
  * Upserts users/{uid}/onboarding/analysis — re-analyze updates ATS scores only.
- * Legacy docs at users/{uid}/resume/analysis are still read; new writes go to
- * the canonical onboarding path.
  *
  * Onboarding is write-once:
  * - First analyze with onboarding=true → save analysis.onboarding
@@ -788,9 +774,7 @@ export async function analyzeResume(uid: string, input: AnalyzeResumeInput) {
   }
 
   const db = ensureAdmin();
-  const { snap: existing, legacy } = await loadOnboardingAnalysisDoc(uid);
-  // Always write to the canonical path going forward.
-  const ref = onboardingAnalysisRef(db, uid);
+  const { snap: existing, ref } = await loadOnboardingAnalysisDoc(uid);
 
   const { text: extractedText } = await extractPdfText(input.fileBuffer);
 
@@ -852,27 +836,7 @@ export async function analyzeResume(uid: string, input: AnalyzeResumeInput) {
 
   const sourceMeta = { source: 'resume' as const };
 
-  if (existing.exists && legacy) {
-    // Migrate legacy resume/analysis → onboarding/analysis on first new write.
-    const prior = existing.data()!;
-    const analysis: ResumeAnalysis = {
-      ...atsAnalysis,
-      ...(existingOnboarding
-        ? { onboarding: existingOnboarding }
-        : onboardingPlan
-          ? { onboarding: onboardingPlan }
-          : {}),
-    };
-    await ref.set(
-      {
-        ...prior,
-        ...meta,
-        ...sourceMeta,
-        analysis,
-      } satisfies ResumeDoc,
-      { merge: true },
-    );
-  } else if (existing.exists) {
+  if (existing.exists) {
     // Dotted ATS updates leave analysis.onboarding untouched in Firestore
     const updates: Record<string, unknown> = {
       ...meta,

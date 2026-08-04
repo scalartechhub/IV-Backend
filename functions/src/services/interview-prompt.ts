@@ -52,7 +52,7 @@ function takeStrings(items: string[] | undefined, max = LIST_LIMIT): string {
 }
 
 /**
- * Builds AI-facing resume context from users/{uid}/resume/analysis when the
+ * Builds AI-facing resume context from users/{uid}/onboarding/analysis when the
  * candidate opted in on Setup.
  */
 export function buildResumeContextFromAnalysis(resume: ResumeDoc): string {

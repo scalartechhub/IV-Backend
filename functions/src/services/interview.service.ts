@@ -39,7 +39,7 @@ import { dayAbbrev, formatDate, getWeekStart } from '../utils/date-helpers';
 import {
   goalsCol,
   interviewRef,
-  resumeAnalysisRef,
+  onboardingAnalysisRef,
   skillRef,
   userRef,
   weeklyStatsRef,
@@ -257,7 +257,7 @@ export async function startInterview(
 
   // resumeVersionUsed is only set when Setup explicitly opts in ("Using resume").
   const useResume = Boolean(config.resumeVersionUsed);
-  const resumeSnap = useResume ? await resumeAnalysisRef(db, uid).get() : null;
+  const resumeSnap = useResume ? await onboardingAnalysisRef(db, uid).get() : null;
   if (useResume && !resumeSnap?.exists) {
     throw new AppError(404, 'No resume analysis found for this account.');
   }

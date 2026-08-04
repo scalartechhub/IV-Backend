@@ -161,7 +161,6 @@ export type OnboardingAnalysisSource = 'resume' | 'questions';
 
 /**
  * Canonical path: users/{uid}/onboarding/analysis
- * Legacy path: users/{uid}/resume/analysis (read fallback only)
  */
 export interface ResumeDoc {
   fileName: string;
