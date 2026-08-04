@@ -48,12 +48,22 @@ export function resumesCol(db: Firestore, uid: string) {
     .withConverter(resumeConverter);
 }
 
-/** Fixed upsert path: users/{uid}/resume/analysis */
+/** Legacy path: users/{uid}/resume/analysis (read fallback / migration). */
 export function resumeAnalysisRef(db: Firestore, uid: string) {
   return db
     .collection('users')
     .doc(uid)
     .collection('resume')
+    .doc('analysis')
+    .withConverter(resumeConverter);
+}
+
+/** Canonical path: users/{uid}/onboarding/analysis */
+export function onboardingAnalysisRef(db: Firestore, uid: string) {
+  return db
+    .collection('users')
+    .doc(uid)
+    .collection('onboarding')
     .doc('analysis')
     .withConverter(resumeConverter);
 }

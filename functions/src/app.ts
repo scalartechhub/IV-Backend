@@ -77,6 +77,7 @@ app.use(apiPath("/interviews/:id/finish"), aiLimiter);
 app.use(apiPath("/v2/interviews/start"), aiLimiter);
 app.use(apiPath("/v2/interviews/:id/complete"), aiLimiter);
 app.use(apiPath("/v2/resumes/analyze"), aiLimiter);
+app.use(apiPath("/v2/onboarding/analyze-from-answers"), aiLimiter);
 app.use(apiPath("/v2/roadmap/regenerate"), aiLimiter);
 app.use(apiPath("/v2/coding/run"), aiLimiter);
 app.use(apiPath("/v2/coding/submit"), aiLimiter);

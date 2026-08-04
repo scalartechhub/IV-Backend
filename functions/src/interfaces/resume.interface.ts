@@ -1,4 +1,4 @@
-// Mirrors src/app/interfaces/resume.interface.ts ù keep in sync
+// Mirrors src/app/interfaces/resume.interface.ts ? keep in sync
 import type { Timestamp } from 'firebase-admin/firestore';
 
 export type AnalysisStatus = 'pending' | 'processing' | 'completed' | 'failed';
@@ -23,7 +23,7 @@ export interface ResumeWorkingWellItem {
   text: string;
 }
 
-/** Nested analysis block on users/{uid}/resume/analysis */
+/** Nested analysis block on users/{uid}/onboarding/analysis */
 export interface ResumeAnalysis {
   overallScore: number;
   atsScore: number;
@@ -40,7 +40,7 @@ export interface ResumeAnalysis {
   missingKeywords: string[];
   recommendedSkills: string[];
   recommendedInterviewIds: string[];
-  // TODO: architecture ùReview recommends extractedText for re-analysis without re-parsing
+  // TODO: architecture ?Review recommends extractedText for re-analysis without re-parsing
   extractedText?: string;
   /** Interview-prep plan nested under analysis when onboarding=true */
   onboarding?: ResumeOnboardingPlan;
@@ -128,8 +128,8 @@ export interface NextAction {
 }
 
 /**
- * Onboarding plan generated alongside resume ATS analysis.
- * Appended to users/{uid}/resume/analysis when onboarding=true.
+ * Interview-prep plan generated during onboarding (resume upload or Q&A).
+ * Stored at users/{uid}/onboarding/analysis under analysis.onboarding.
  */
 export interface ResumeOnboardingPlan {
   careerPath: CareerPathTopic[];
@@ -154,7 +154,15 @@ export interface ResumeOnboardingPlan {
   generatedAt: string;
 }
 
-/** Path: users/{uid}/resumes/{resumeId} or users/{uid}/resume/analysis */
+/** Alias ? plan is shared by resume and questions onboarding. */
+export type OnboardingPlan = ResumeOnboardingPlan;
+
+export type OnboardingAnalysisSource = 'resume' | 'questions';
+
+/**
+ * Canonical path: users/{uid}/onboarding/analysis
+ * Legacy path: users/{uid}/resume/analysis (read fallback only)
+ */
 export interface ResumeDoc {
   fileName: string;
   /** Omitted when PDF is analyzed in-memory and not uploaded to Storage. */
@@ -167,4 +175,9 @@ export interface ResumeDoc {
   analysis: ResumeAnalysis;
   aiReviewedAt: Timestamp;
   analysisStatus: AnalysisStatus;
+  /** How this analysis was produced ? resume PDF vs Q&A answers. */
+  source?: OnboardingAnalysisSource;
 }
+
+/** Preferred name for the unified onboarding analysis doc. */
+export type OnboardingAnalysisDoc = ResumeDoc;

@@ -24,7 +24,11 @@ import { AppError } from '../shared/utils';
 import { logger } from '../shared/logger';
 import { extractPdfText } from '../shared/utils/pdf';
 import { ensureAdmin } from '../utils/callable-auth';
-import { resumeAnalysisRef, userRef } from '../utils/firestore-refs';
+import {
+  onboardingAnalysisRef,
+  resumeAnalysisRef,
+  userRef,
+} from '../utils/firestore-refs';
 import {
   resumeOnboardingPlanSchema,
   type ResumeOnboardingPlanParsed,
@@ -190,7 +194,7 @@ function clampScore(n: unknown, fallback = 0): number {
 }
 
 /** Soft-normalize Gemini onboarding drift before strict zod validation. */
-function normalizeRawOnboarding(raw: unknown): unknown {
+export function normalizeRawOnboarding(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw;
   const data = raw as Record<string, unknown>;
 
@@ -579,7 +583,7 @@ function parseYearsExperience(raw: string | undefined): number | undefined {
  * Merge onboarding plan into users/{uid}.onboarding and profile fields
  * without overwriting values the user already set.
  */
-async function mergeUserOnboardingFromPlan(
+export async function mergeUserOnboardingFromPlan(
   uid: string,
   plan: ResumeOnboardingPlanParsed & { generatedAt: string },
   targetRole?: string,
@@ -703,6 +707,7 @@ async function mergeUserOnboardingFromPlan(
     {
       onboarding: nextOnboarding,
       resumeAnalysisCompleted: true,
+      onboardingAnalysisCompleted: true,
       updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true },
@@ -746,8 +751,31 @@ function toAtsAnalysisFieldUpdates(
 }
 
 /**
+ * Loads the canonical onboarding analysis doc, falling back to the legacy
+ * users/{uid}/resume/analysis path for older users.
+ */
+export async function loadOnboardingAnalysisDoc(uid: string) {
+  const db = ensureAdmin();
+  const primary = onboardingAnalysisRef(db, uid);
+  const primarySnap = await primary.get();
+  if (primarySnap.exists) {
+    return { ref: primary, snap: primarySnap, legacy: false as const };
+  }
+
+  const legacy = resumeAnalysisRef(db, uid);
+  const legacySnap = await legacy.get();
+  if (legacySnap.exists) {
+    return { ref: legacy, snap: legacySnap, legacy: true as const };
+  }
+
+  return { ref: primary, snap: primarySnap, legacy: false as const };
+}
+
+/**
  * Multipart PDF resume analysis: ATS scorecard only (PDF is not stored).
- * Upserts users/{uid}/resume/analysis — re-analyze updates ATS scores only.
+ * Upserts users/{uid}/onboarding/analysis — re-analyze updates ATS scores only.
+ * Legacy docs at users/{uid}/resume/analysis are still read; new writes go to
+ * the canonical onboarding path.
  *
  * Onboarding is write-once:
  * - First analyze with onboarding=true → save analysis.onboarding
@@ -760,12 +788,11 @@ export async function analyzeResume(uid: string, input: AnalyzeResumeInput) {
   }
 
   const db = ensureAdmin();
-  const ref = resumeAnalysisRef(db, uid);
+  const { snap: existing, legacy } = await loadOnboardingAnalysisDoc(uid);
+  // Always write to the canonical path going forward.
+  const ref = onboardingAnalysisRef(db, uid);
 
-  const [{ text: extractedText }, existing] = await Promise.all([
-    extractPdfText(input.fileBuffer),
-    ref.get(),
-  ]);
+  const { text: extractedText } = await extractPdfText(input.fileBuffer);
 
   const existingOnboarding = existing.exists
     ? existing.data()?.analysis?.onboarding
@@ -823,10 +850,33 @@ export async function analyzeResume(uid: string, input: AnalyzeResumeInput) {
     analysisStatus: 'completed' as const,
   };
 
-  if (existing.exists) {
+  const sourceMeta = { source: 'resume' as const };
+
+  if (existing.exists && legacy) {
+    // Migrate legacy resume/analysis → onboarding/analysis on first new write.
+    const prior = existing.data()!;
+    const analysis: ResumeAnalysis = {
+      ...atsAnalysis,
+      ...(existingOnboarding
+        ? { onboarding: existingOnboarding }
+        : onboardingPlan
+          ? { onboarding: onboardingPlan }
+          : {}),
+    };
+    await ref.set(
+      {
+        ...prior,
+        ...meta,
+        ...sourceMeta,
+        analysis,
+      } satisfies ResumeDoc,
+      { merge: true },
+    );
+  } else if (existing.exists) {
     // Dotted ATS updates leave analysis.onboarding untouched in Firestore
     const updates: Record<string, unknown> = {
       ...meta,
+      ...sourceMeta,
       ...toAtsAnalysisFieldUpdates(atsAnalysis),
     };
 
@@ -841,15 +891,19 @@ export async function analyzeResume(uid: string, input: AnalyzeResumeInput) {
       ...atsAnalysis,
       ...(onboardingPlan ? { onboarding: onboardingPlan } : {}),
     };
-    await ref.set({ ...meta, analysis } satisfies ResumeDoc, { merge: true });
+    await ref.set(
+      { ...meta, ...sourceMeta, analysis } satisfies ResumeDoc,
+      { merge: true },
+    );
   }
 
-  // Seed users/{uid}.onboarding in background — resume doc is source of truth for API response.
+  // Seed users/{uid}.onboarding in background — analysis doc is source of truth for API response.
   const userPersist = onboardingPlan
     ? mergeUserOnboardingFromPlan(uid, onboardingPlan, storedTargetRole)
     : userRef(db, uid).set(
         {
           resumeAnalysisCompleted: true,
+          onboardingAnalysisCompleted: true,
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true },

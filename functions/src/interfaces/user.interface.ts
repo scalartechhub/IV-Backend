@@ -131,13 +131,19 @@ export interface UserDoc {
   subscription: UserSubscription;
   // TODO: stats not in architecture 1  denormalized counters for achievement rules
   stats?: UserStats;
-  /** Populated from resume analysis when onboarding=true (merge-only). */
+  /** Populated from onboarding analysis (resume or Q&A) — merge-only. */
   onboarding?: UserOnboardingSnapshot;
   /**
    * Set after a successful resume analyze so clients can skip re-analysis
    * during onboarding (users/{uid}.resumeAnalysisCompleted).
+   * Prefer `onboardingAnalysisCompleted` for new code.
    */
   resumeAnalysisCompleted?: boolean;
+  /**
+   * Set after onboarding analysis is generated (resume upload or Q&A).
+   * Path: users/{uid}/onboarding/analysis
+   */
+  onboardingAnalysisCompleted?: boolean;
   /**
    * Average of each skill across the candidate's last 5 completed interviews,
    * plus totalScore (average of all 6 skills). Recomputed after every
