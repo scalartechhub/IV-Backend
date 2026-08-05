@@ -50,6 +50,10 @@ import {
   formatConversationTranscript,
 } from '../modules/v2/v2-live-interview.persistence';
 import { checkAchievements } from './achievement.service';
+import {
+  evaluateDayInterview,
+  parseLearningRoadmapActivityId,
+} from './learning-roadmap.service';
 import { getCompany, getPracticeTemplate } from './practice.service';
 import { generateReport } from './report.service';
 import { ensureUserDefaults } from './schema-defaults';
@@ -659,6 +663,21 @@ export async function completeInterview(
   await refreshCareerProgressForUser(uid).catch((err: unknown) => {
     console.error('[completeInterview] refreshCareerProgressForUser failed', err);
   });
+
+  const roadmapActivity = parseLearningRoadmapActivityId(
+    interview.config.sourceRoadmapActivityId,
+  );
+  if (roadmapActivity) {
+    await evaluateDayInterview(
+      uid,
+      roadmapActivity.week,
+      roadmapActivity.day,
+      results.overallScore,
+      interviewId,
+    ).catch((err: unknown) => {
+      console.error('[completeInterview] evaluateDayInterview failed', err);
+    });
+  }
 
   return txResult;
 }

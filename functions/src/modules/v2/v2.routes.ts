@@ -15,6 +15,7 @@ import resumeRoutes from './resume.routes';
 import onboardingRoutes from './onboarding.routes';
 import codingRoutes from './coding.routes';
 import roadmapRoutes from './roadmap.routes';
+import learningRoadmapRoutes from './learning-roadmap.routes';
 import profileRoutes from './profile.routes';
 import achievementsRoutes from './achievements.routes';
 import practiceRoutes from './practice.routes';
@@ -31,6 +32,7 @@ router.use('/resumes', resumeRoutes);
 router.use('/onboarding', onboardingRoutes);
 router.use('/coding', codingRoutes);
 router.use('/roadmap', roadmapRoutes);
+router.use('/learning-roadmap', learningRoadmapRoutes);
 router.use('/profile', profileRoutes);
 router.use('/achievements', achievementsRoutes);
 
