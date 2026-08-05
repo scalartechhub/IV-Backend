@@ -225,6 +225,24 @@ export function topicProfileRef(db: Firestore, uid: string) {
     .doc('profile');
 }
 
+/** Fixed singleton path: users/{uid}/learningRoadmap/current — active Week-1 day-wise roadmap. */
+export function learningRoadmapRef(db: Firestore, uid: string) {
+  return db
+    .collection('users')
+    .doc(uid)
+    .collection('learningRoadmap')
+    .doc('current');
+}
+
+/** Cached AI-generated notes for a single topic, keyed by topicId. */
+export function learningRoadmapTopicNotesRef(
+  db: Firestore,
+  uid: string,
+  topicId: string,
+) {
+  return learningRoadmapRef(db, uid).collection('topicNotes').doc(topicId);
+}
+
 export function companiesCol(db: Firestore) {
   return db.collection('companies').withConverter(companyConverter);
 }
