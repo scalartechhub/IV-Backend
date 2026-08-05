@@ -63,6 +63,7 @@ Required JSON shape (exact keys):
     }
   ],
   "recommendedInterviewTracks": ["string"],
+  "recommendedLearningTechnologies": ["React", "Node.js", "TypeScript"],
   "resumeStrengthSummary": "string",
   "priorityPreparationAreas": ["string"],
   "estimatedPreparationWeeks": 6,
@@ -126,6 +127,9 @@ HARD CONSTRAINTS:
 - confidencePrediction and resumeCompleteness and marketReadinessScore.overallScore: integers 0-100
 - estimatedPreparationWeeks: integer 4-16
 - recommendedInterviewTracks: 3 to 6 track names
+- recommendedLearningTechnologies: 4 to 10 concrete, learnable technology/skill names (e.g. "React", "Node.js",
+  "System Design", "AWS") ordered from most to least relevant to the candidate's resume and target role —
+  these become the technology choices the candidate picks from to generate their Week 1 study roadmap
 - priorityPreparationAreas: 3 to 8 areas
 - resource type MUST be one of: Official Docs | Course | Book | YouTube | Practice Platform | GitHub
 - skill levels MUST be one of: Beginner | Intermediate | Advanced | Expert

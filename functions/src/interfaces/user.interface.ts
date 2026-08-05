@@ -33,6 +33,8 @@ export interface UserOnboardingSnapshot {
   roadmapProgress?: number;
   suggestedFirstMockInterview?: string;
   learningPriorities?: string[];
+  /** Technologies to learn, inferred from the resume — powers the onboarding "Learning Roadmap" step. */
+  recommendedLearningTechnologies?: string[];
   updatedAt?: Timestamp | string;
 }
 

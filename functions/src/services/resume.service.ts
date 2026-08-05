@@ -192,6 +192,48 @@ function clampScore(n: unknown, fallback = 0): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+function deriveLearningTechnologies(
+  raw: unknown,
+  fallbackSources: {
+    skillGapAnalysis: Array<{ name: string }>;
+    recommendedProjectSkills: string[];
+    careerPath: Array<{ title: string }>;
+    recommendedInterviewTracks: string[];
+    priorityPreparationAreas: string[];
+  },
+): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  const add = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(trimmed);
+  };
+
+  asStringArray(raw).forEach(add);
+
+  if (result.length < 4) {
+    fallbackSources.skillGapAnalysis.forEach((item) => add(item.name));
+  }
+  if (result.length < 4) {
+    fallbackSources.recommendedProjectSkills.forEach(add);
+  }
+  if (result.length < 4) {
+    fallbackSources.careerPath.forEach((item) => add(item.title));
+  }
+  if (result.length < 4) {
+    fallbackSources.recommendedInterviewTracks.forEach(add);
+  }
+  if (result.length < 4) {
+    fallbackSources.priorityPreparationAreas.forEach(add);
+  }
+
+  return result.slice(0, 12);
+}
+
 /** Soft-normalize Gemini onboarding drift before strict zod validation. */
 export function normalizeRawOnboarding(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw;
@@ -342,6 +384,11 @@ export function normalizeRawOnboarding(raw: unknown): unknown {
       ? marketRaw.expectedSalaryBand.trim()
       : undefined;
 
+  const recommendedLearningTechnologies = deriveLearningTechnologies(
+    data.recommendedLearningTechnologies,
+    { careerPath, skillGapAnalysis, recommendedInterviewTracks: asStringArray(data.recommendedInterviewTracks) },
+  );
+
   return {
     careerPath: careerPath.slice(0, 30),
     recommendedCompanies: recommendedCompanies.slice(0, 10),
@@ -349,6 +396,7 @@ export function normalizeRawOnboarding(raw: unknown): unknown {
     learningRoadmap: learningRoadmap.slice(0, 8),
     interviewPreparation,
     recommendedInterviewTracks: asStringArray(data.recommendedInterviewTracks),
+    recommendedLearningTechnologies,
     resumeStrengthSummary: String(
       data.resumeStrengthSummary ?? 'Resume shows solid foundational experience.',
     ).trim(),
@@ -662,6 +710,11 @@ export async function mergeUserOnboardingFromPlan(
       plan.priorityPreparationAreas,
       10,
     ),
+    recommendedLearningTechnologies:
+      existingOnboarding?.recommendedLearningTechnologies &&
+      existingOnboarding.recommendedLearningTechnologies.length > 0
+        ? existingOnboarding.recommendedLearningTechnologies
+        : plan.recommendedLearningTechnologies,
     updatedAt: new Date().toISOString(),
   };
 
