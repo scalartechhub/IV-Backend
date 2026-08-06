@@ -384,9 +384,17 @@ export function normalizeRawOnboarding(raw: unknown): unknown {
       ? marketRaw.expectedSalaryBand.trim()
       : undefined;
 
+  const recommendedProjectSkills = recommendedProjects.flatMap((project) => project.skills);
+
   const recommendedLearningTechnologies = deriveLearningTechnologies(
     data.recommendedLearningTechnologies,
-    { careerPath, skillGapAnalysis, recommendedInterviewTracks: asStringArray(data.recommendedInterviewTracks) },
+    {
+      careerPath,
+      skillGapAnalysis,
+      recommendedProjectSkills,
+      recommendedInterviewTracks: asStringArray(data.recommendedInterviewTracks),
+      priorityPreparationAreas: asStringArray(data.priorityPreparationAreas),
+    },
   );
 
   return {
