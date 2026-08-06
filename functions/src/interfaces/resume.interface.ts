@@ -138,8 +138,6 @@ export interface ResumeOnboardingPlan {
   learningRoadmap: LearningRoadmapWeek[];
   interviewPreparation: InterviewPrepCategory[];
   recommendedInterviewTracks: string[];
-  /** Technologies to learn, inferred from the resume ? powers the onboarding "Learning Roadmap" step. */
-  recommendedLearningTechnologies: string[];
   resumeStrengthSummary: string;
   priorityPreparationAreas: string[];
   estimatedPreparationWeeks: number;

@@ -103,7 +103,6 @@ export const resumeOnboardingPlanSchema = z.object({
   learningRoadmap: z.array(learningRoadmapWeekSchema).min(4).max(8),
   interviewPreparation: z.array(interviewPrepCategorySchema).min(5),
   recommendedInterviewTracks: z.array(z.string()).min(1),
-  recommendedLearningTechnologies: z.array(z.string().min(1)).min(3).max(12),
   resumeStrengthSummary: z.string().min(1),
   priorityPreparationAreas: z.array(z.string()).min(1),
   estimatedPreparationWeeks: z.number().min(1).max(52),
