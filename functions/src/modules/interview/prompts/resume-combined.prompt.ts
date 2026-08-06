@@ -3,12 +3,14 @@
  * Keeps descriptions concise to reduce latency.
  */
 
+import { buildResumeReviewShapeAndRules } from './resume-review.prompt';
+
 export function buildCombinedResumeSystemInstruction(): string {
   return `You are an ATS analyzer and interview-prep coach. Return ONLY raw JSON (no markdown).
 Shape: { "analysis": { ... }, "onboarding": { ... } }
 
-analysis keys: overallScore, atsScore, impactScore, clarityScore, keywordMatch{score,delta}, quantifiedImpact{score,delta}, actionVerbs{score,delta}, structureLength{score,delta}, percentileVsPeers, fixesFirst[{id,severity:"high"|"medium"|"low",text}], workingWell[{id,text}], extractedKeywords[], missingKeywords[], recommendedSkills[], recommendedInterviewIds[] (use []).
-fixesFirst/workingWell: 3 items each, object arrays not strings.
+analysis shape (nested under the "analysis" key):
+${buildResumeReviewShapeAndRules()}
 
 onboarding keys: careerPath[{id,title,description,priority:"High"|"Medium"|"Low",estimatedHours,completed:false,order}], recommendedCompanies[{name,reason,difficulty:"Easy"|"Medium"|"Hard",priority}], skillGapAnalysis[{name,currentLevel,targetLevel,priority,reason,estimatedHours}], learningRoadmap[{week,title,topics[],hours,goal,checkpoint,mockInterview}], interviewPreparation[{category,questionsCount,priority,recommendation}], recommendedInterviewTracks[], recommendedLearningTechnologies[], resumeStrengthSummary, priorityPreparationAreas[], estimatedPreparationWeeks, confidencePrediction, industryRecommendation, jobRoleRecommendation, experienceLevelPrediction, resumeCompleteness, marketReadinessScore{overallScore,strengths[],weaknesses[],hiringReadiness,expectedSalaryBand?}, recommendedProjects[{title,description,skills[],estimatedHours,priority}], recommendedCertifications[{name,provider,reason,priority}], recommendedResources[{title,type:"Official Docs"|"Course"|"Book"|"YouTube"|"Practice Platform"|"GitHub",url?,reason}], nextActions[{order,action,priority,estimatedHours?}].
 

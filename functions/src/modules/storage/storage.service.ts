@@ -1,13 +1,20 @@
 import { randomUUID } from "crypto";
-import { getStorage, getDownloadURL } from "firebase-admin/storage";
+import { getStorage } from "firebase-admin/storage";
 import { isStorageConfigured } from "../../config/firebase";
 import { STORAGE_PATHS } from "../../shared/constants";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
 
+/**
+ * Uploads a user's resume PDF to Storage and returns the bucket-relative
+ * `storagePath` (not a signed/download URL) — matches the resume analysis
+ * API contract, which expects a Storage path clients resolve via the
+ * Firebase Storage SDK for download/preview.
+ */
 export const uploadUserResumeFile = async (
   uid: string,
   buffer: Buffer,
+  fileKey = `resume-${Date.now()}-${randomUUID()}`,
   contentType = "application/pdf"
 ): Promise<string | undefined> => {
   if (!isStorageConfigured()) {
@@ -16,7 +23,7 @@ export const uploadUserResumeFile = async (
   }
 
   const bucket = getStorage().bucket();
-  const filePath = STORAGE_PATHS.USER_RESUME(uid, `resume-${Date.now()}-${randomUUID()}`);
+  const filePath = STORAGE_PATHS.USER_RESUME(uid, fileKey);
   const file = bucket.file(filePath);
   const downloadToken = randomUUID();
 
@@ -36,9 +43,8 @@ export const uploadUserResumeFile = async (
       },
     });
 
-    const publicUrl = await getDownloadURL(file);
-    logger.info(`[storage] user resume upload success: ${publicUrl}`);
-    return publicUrl;
+    logger.info(`[storage] user resume upload success: ${filePath}`);
+    return filePath;
   } catch (error) {
     logger.error("[storage] user resume upload failed", error);
     throw new AppError(500, "Failed to upload resume file to storage. Please try again.");
