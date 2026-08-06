@@ -29,6 +29,7 @@ import {
 
 export type AnalyzeFromAnswersInput = QaOnboardingAnswers;
 
+/** Q&A onboarding never runs the resume ATS reviewer — everything is zeroed/empty. */
 const EMPTY_ATS: Omit<ResumeAnalysis, 'onboarding' | 'extractedText'> = {
   overallScore: 0,
   atsScore: 0,
@@ -45,6 +46,40 @@ const EMPTY_ATS: Omit<ResumeAnalysis, 'onboarding' | 'extractedText'> = {
   missingKeywords: [],
   recommendedSkills: [],
   recommendedInterviewIds: [],
+
+  experienceLevel: '',
+  scores: { overall: 0, impact: 0, content: 0, structure: 0, ats: 0, relevance: 0 },
+  atsFriendly: false,
+  strengths: [],
+  areasToImprove: [],
+  suggestions: [],
+  aiFeedback: { overallFeedback: '', recruiterComment: '' },
+  sections: [],
+  keywords: {
+    matchScore: 0,
+    totalKeywords: 0,
+    matchedCount: 0,
+    matchedPercent: 0,
+    missingCount: 0,
+    missingPercent: 0,
+    matched: [],
+    missing: [],
+    density: [],
+  },
+  ats: {
+    compatibilityScore: 0,
+    checkResults: [],
+    previewSnippet: '',
+    parseScore: 0,
+    recommendations: [],
+  },
+  roleMatches: [],
+  detailedMetrics: {
+    keywordMatch: { score: 0, delta: 0 },
+    quantifiedImpact: { score: 0, delta: 0 },
+    actionVerbs: { score: 0, delta: 0 },
+    structureLength: { score: 0, delta: 0 },
+  },
 };
 
 async function runQaOnboardingPlanGeneration(

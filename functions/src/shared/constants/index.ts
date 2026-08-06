@@ -23,6 +23,10 @@ export const CHAT_COLLECTIONS = {
   MESSAGES: "messages",
 } as const;
 
+export const STORAGE_PATHS = {
+  USER_RESUME: (uid: string, fileKey: string) => `users/${uid}/resumes/${fileKey}.pdf`,
+} as const;
+
 export const FILE_LIMITS = {
   MAX_SIZE_BYTES: 10 * 1024 * 1024, // 10 MB
   ALLOWED_MIME_TYPES: ["application/pdf"],

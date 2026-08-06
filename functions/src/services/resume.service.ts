@@ -3,9 +3,10 @@
  * When onboarding=true, also generates a full interview-prep onboarding plan.
  */
 
-import { FieldValue } from 'firebase-admin/firestore';
-import { z } from 'zod';
+import { randomUUID } from 'crypto';
+import { FieldValue, type Timestamp } from 'firebase-admin/firestore';
 import type {
+  AnalyzeResumeApiResult,
   ResumeAnalysis,
   ResumeDoc,
   ResumeOnboardingPlan,
@@ -20,6 +21,11 @@ import {
   buildResumeOnboardingSystemInstruction,
   buildResumeOnboardingUserPrompt,
 } from '../modules/interview/prompts/resume-onboarding.prompt';
+import {
+  buildResumeReviewSystemInstruction,
+  buildResumeReviewUserPrompt,
+} from '../modules/interview/prompts/resume-review.prompt';
+import { uploadUserResumeFile } from '../modules/storage/storage.service';
 import { AppError } from '../shared/utils';
 import { logger } from '../shared/logger';
 import { extractPdfText } from '../shared/utils/pdf';
@@ -28,6 +34,11 @@ import {
   onboardingAnalysisRef,
   userRef,
 } from '../utils/firestore-refs';
+import {
+  normalizeRawResumeReview,
+  resumeReviewSchema,
+  type ResumeReviewParsed,
+} from './resume-analysis.schema';
 import {
   resumeOnboardingPlanSchema,
   type ResumeOnboardingPlanParsed,
@@ -38,29 +49,59 @@ const RESUME_PROMPT_CHARS = 12_000;
 /** Stored extracted text cap (smaller writes on re-analyze). */
 const STORED_EXTRACTED_TEXT_CHARS = 20_000;
 
-const analysisSchema = z.object({
-  overallScore: z.number(),
-  atsScore: z.number(),
-  impactScore: z.number(),
-  clarityScore: z.number(),
-  keywordMatch: z.object({ score: z.number(), delta: z.number() }),
-  quantifiedImpact: z.object({ score: z.number(), delta: z.number() }),
-  actionVerbs: z.object({ score: z.number(), delta: z.number() }),
-  structureLength: z.object({ score: z.number(), delta: z.number() }),
-  percentileVsPeers: z.number(),
-  fixesFirst: z.array(
-    z.object({
-      id: z.string(),
-      severity: z.enum(['high', 'medium', 'low']),
-      text: z.string(),
-    }),
-  ),
-  workingWell: z.array(z.object({ id: z.string(), text: z.string() })),
-  extractedKeywords: z.array(z.string()),
-  missingKeywords: z.array(z.string()),
-  recommendedSkills: z.array(z.string()),
-  recommendedInterviewIds: z.array(z.string()).default([]),
-});
+/**
+ * Builds the full superset `ResumeAnalysis` (legacy flat fields + rich results-page
+ * fields) from Gemini's rich output. Legacy fields are pure derivations — Gemini never
+ * generates them directly — so the current Angular page keeps rendering unchanged.
+ */
+function buildResumeAnalysisFromReview(
+  parsed: ResumeReviewParsed,
+  extractedText: string,
+): ResumeAnalysis {
+  const fixesFirst = [...parsed.suggestions]
+    .sort((a, b) => a.priority - b.priority)
+    .slice(0, 5)
+    .map((s) => ({ id: s.id, severity: s.severity, text: s.text }));
+
+  const workingWell = parsed.strengths
+    .slice(0, 5)
+    .map((s) => ({ id: s.id, text: s.text }));
+
+  return {
+    // Legacy (derived)
+    overallScore: parsed.scores.overall,
+    atsScore: parsed.scores.ats,
+    impactScore: parsed.scores.impact,
+    clarityScore: parsed.scores.content,
+    keywordMatch: parsed.detailedMetrics.keywordMatch,
+    quantifiedImpact: parsed.detailedMetrics.quantifiedImpact,
+    actionVerbs: parsed.detailedMetrics.actionVerbs,
+    structureLength: parsed.detailedMetrics.structureLength,
+    percentileVsPeers: parsed.scores.peerPercentile ?? Math.max(0, parsed.scores.overall - 5),
+    fixesFirst,
+    workingWell,
+    extractedKeywords: parsed.keywords.matched.map((k) => k.keyword),
+    missingKeywords: parsed.keywords.missing.map((k) => k.keyword),
+    recommendedSkills: parsed.recommendedSkills,
+    recommendedInterviewIds: parsed.recommendedInterviewIds,
+    extractedText: extractedText.slice(0, STORED_EXTRACTED_TEXT_CHARS),
+
+    // Rich results-page contract
+    experienceLevel: parsed.experienceLevel,
+    scores: parsed.scores,
+    atsFriendly: parsed.scores.ats >= 70,
+    scoreLabels: parsed.scoreLabels,
+    strengths: parsed.strengths,
+    areasToImprove: parsed.areasToImprove,
+    suggestions: parsed.suggestions,
+    aiFeedback: parsed.aiFeedback,
+    sections: parsed.sections,
+    keywords: parsed.keywords,
+    ats: parsed.ats,
+    roleMatches: parsed.roleMatches,
+    detailedMetrics: parsed.detailedMetrics,
+  };
+}
 
 function asStringArray(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
@@ -73,80 +114,6 @@ function asStringArray(raw: unknown): string[] {
       return '';
     })
     .filter(Boolean);
-}
-
-function normalizeFixesFirst(raw: unknown): Array<{
-  id: string;
-  severity: 'high' | 'medium' | 'low';
-  text: string;
-}> {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((item, index) => {
-    if (typeof item === 'string') {
-      return { id: `fix-${index + 1}`, severity: 'medium' as const, text: item.trim() };
-    }
-    const obj = (item ?? {}) as {
-      id?: unknown;
-      severity?: unknown;
-      text?: unknown;
-    };
-    const severity =
-      obj.severity === 'high' || obj.severity === 'medium' || obj.severity === 'low'
-        ? obj.severity
-        : 'medium';
-    return {
-      id: typeof obj.id === 'string' && obj.id.trim() ? obj.id : `fix-${index + 1}`,
-      severity,
-      text: String(obj.text ?? '').trim() || 'Improve this section',
-    };
-  });
-}
-
-function normalizeWorkingWell(
-  raw: unknown,
-): Array<{ id: string; text: string }> {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((item, index) => {
-    if (typeof item === 'string') {
-      return { id: `well-${index + 1}`, text: item.trim() };
-    }
-    const obj = (item ?? {}) as { id?: unknown; text?: unknown };
-    return {
-      id: typeof obj.id === 'string' && obj.id.trim() ? obj.id : `well-${index + 1}`,
-      text: String(obj.text ?? '').trim() || 'Strong point',
-    };
-  });
-}
-
-function normalizeScoreWithDelta(raw: unknown): { score: number; delta: number } {
-  if (typeof raw === 'number') return { score: raw, delta: 0 };
-  if (raw && typeof raw === 'object') {
-    const obj = raw as { score?: unknown; delta?: unknown };
-    return {
-      score: typeof obj.score === 'number' ? obj.score : 0,
-      delta: typeof obj.delta === 'number' ? obj.delta : 0,
-    };
-  }
-  return { score: 0, delta: 0 };
-}
-
-/** Coerce common Gemini shape drift before zod validation. */
-function normalizeRawAnalysis(raw: unknown): unknown {
-  if (!raw || typeof raw !== 'object') return raw;
-  const data = raw as Record<string, unknown>;
-  return {
-    ...data,
-    keywordMatch: normalizeScoreWithDelta(data.keywordMatch),
-    quantifiedImpact: normalizeScoreWithDelta(data.quantifiedImpact),
-    actionVerbs: normalizeScoreWithDelta(data.actionVerbs),
-    structureLength: normalizeScoreWithDelta(data.structureLength),
-    fixesFirst: normalizeFixesFirst(data.fixesFirst ?? data.fixSuggestions),
-    workingWell: normalizeWorkingWell(data.workingWell),
-    extractedKeywords: asStringArray(data.extractedKeywords),
-    missingKeywords: asStringArray(data.missingKeywords),
-    recommendedSkills: asStringArray(data.recommendedSkills),
-    recommendedInterviewIds: asStringArray(data.recommendedInterviewIds),
-  };
 }
 
 const PRIORITIES = new Set(['High', 'Medium', 'Low']);
@@ -465,38 +432,21 @@ async function runAtsAnalysis(
   targetRole?: string,
 ): Promise<ResumeAnalysis> {
   const resumeText = extractedText.slice(0, RESUME_PROMPT_CHARS);
+  const resolvedTargetRole = resolvePromptTargetRole(targetRole);
   const rawAnalysis = await generateJson<unknown>({
     model: RESUME_GEMINI_MODEL,
-    maxOutputTokens: 2048,
+    maxOutputTokens: 4096,
     temperature: 0.15,
-    systemInstruction: `You are an ATS resume analyzer. Respond ONLY with valid JSON.
-Required shape:
-{
-  "overallScore": number,
-  "atsScore": number,
-  "impactScore": number,
-  "clarityScore": number,
-  "keywordMatch": { "score": number, "delta": number },
-  "quantifiedImpact": { "score": number, "delta": number },
-  "actionVerbs": { "score": number, "delta": number },
-  "structureLength": { "score": number, "delta": number },
-  "percentileVsPeers": number,
-  "fixesFirst": [ { "id": "fix-1", "severity": "high"|"medium"|"low", "text": string } ],
-  "workingWell": [ { "id": "well-1", "text": string } ],
-  "extractedKeywords": string[],
-  "missingKeywords": string[],
-  "recommendedSkills": string[],
-  "recommendedInterviewIds": string[]
-}
-IMPORTANT: fixesFirst and workingWell MUST be arrays of exactly 3 objects, never plain strings.
-When targetRole asks to infer from the resume, score against the primary role reflected in the resume.`,
-    userPrompt: JSON.stringify({
-      targetRole: resolvePromptTargetRole(targetRole),
+    systemInstruction: buildResumeReviewSystemInstruction(),
+    userPrompt: buildResumeReviewUserPrompt({
+      targetRole: resolvedTargetRole,
       resumeText,
     }),
   });
 
-  const validated = analysisSchema.safeParse(normalizeRawAnalysis(rawAnalysis));
+  const validated = resumeReviewSchema.safeParse(
+    normalizeRawResumeReview(rawAnalysis, targetRole),
+  );
   if (!validated.success) {
     throw new AppError(
       502,
@@ -504,10 +454,7 @@ When targetRole asks to infer from the resume, score against the primary role re
     );
   }
 
-  return {
-    ...validated.data,
-    extractedText: extractedText.slice(0, STORED_EXTRACTED_TEXT_CHARS),
-  };
+  return buildResumeAnalysisFromReview(validated.data, extractedText);
 }
 
 /** One Gemini round-trip for ATS + onboarding (first-time onboarding). */
@@ -532,8 +479,8 @@ async function runCombinedResumeAnalysis(
       ? (raw as { analysis?: unknown; onboarding?: unknown })
       : {};
 
-  const atsValidated = analysisSchema.safeParse(
-    normalizeRawAnalysis(payload.analysis),
+  const atsValidated = resumeReviewSchema.safeParse(
+    normalizeRawResumeReview(payload.analysis, targetRole),
   );
   if (!atsValidated.success) {
     throw new AppError(
@@ -553,10 +500,7 @@ async function runCombinedResumeAnalysis(
   }
 
   return {
-    ats: {
-      ...atsValidated.data,
-      extractedText: extractedText.slice(0, STORED_EXTRACTED_TEXT_CHARS),
-    },
+    ats: buildResumeAnalysisFromReview(atsValidated.data, extractedText),
     onboarding: {
       ...onboardingValidated.data,
       generatedAt: new Date().toISOString(),
@@ -789,6 +733,7 @@ function toAtsAnalysisFieldUpdates(
   ats: ResumeAnalysis,
 ): Record<string, unknown> {
   return {
+    // Legacy (derived) fields
     'analysis.overallScore': ats.overallScore,
     'analysis.atsScore': ats.atsScore,
     'analysis.impactScore': ats.impactScore,
@@ -807,7 +752,37 @@ function toAtsAnalysisFieldUpdates(
     ...(ats.extractedText !== undefined
       ? { 'analysis.extractedText': ats.extractedText }
       : {}),
+
+    // Rich results-page fields
+    'analysis.scores': ats.scores,
+    'analysis.atsFriendly': ats.atsFriendly,
+    ...(ats.scoreLabels !== undefined ? { 'analysis.scoreLabels': ats.scoreLabels } : {}),
+    'analysis.strengths': ats.strengths,
+    'analysis.areasToImprove': ats.areasToImprove,
+    'analysis.suggestions': ats.suggestions,
+    'analysis.aiFeedback': ats.aiFeedback,
+    'analysis.sections': ats.sections,
+    'analysis.keywords': ats.keywords,
+    'analysis.ats': ats.ats,
+    'analysis.roleMatches': ats.roleMatches,
+    'analysis.detailedMetrics': ats.detailedMetrics,
   };
+}
+
+/** "PDF" | "DOCX" from the uploaded file name — only PDF is accepted today. */
+function deriveFileType(fileName: string): string {
+  const ext = fileName.split('.').pop()?.toUpperCase();
+  return ext === 'DOCX' || ext === 'DOC' ? 'DOCX' : 'PDF';
+}
+
+function timestampToIso(value: unknown, fallback: string): string {
+  if (!value) return fallback;
+  if (typeof value === 'string') return value;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object' && value !== null && 'toDate' in value) {
+    return (value as Timestamp).toDate().toISOString();
+  }
+  return fallback;
 }
 
 /**
@@ -829,7 +804,10 @@ export async function loadOnboardingAnalysisDoc(uid: string) {
  * - Any later resume analyze → ATS updates via dotted paths; analysis.onboarding
  *   is never overwritten, regenerated, or removed
  */
-export async function analyzeResume(uid: string, input: AnalyzeResumeInput) {
+export async function analyzeResume(
+  uid: string,
+  input: AnalyzeResumeInput,
+): Promise<AnalyzeResumeApiResult> {
   if (!input.fileBuffer?.length) {
     throw new AppError(400, 'Resume PDF file is required.');
   }
@@ -837,7 +815,17 @@ export async function analyzeResume(uid: string, input: AnalyzeResumeInput) {
   const db = ensureAdmin();
   const { snap: existing, ref } = await loadOnboardingAnalysisDoc(uid);
 
-  const { text: extractedText } = await extractPdfText(input.fileBuffer);
+  const [{ text: extractedText }, storagePath] = await Promise.all([
+    extractPdfText(input.fileBuffer),
+    // Single stable path per user — each re-analyze overwrites the previous file.
+    uploadUserResumeFile(uid, input.fileBuffer, 'resume').catch((err: unknown) => {
+      logger.warn('[resume.service] resume storage upload failed — continuing without storagePath', {
+        uid,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return undefined;
+    }),
+  ]);
 
   const existingOnboarding = existing.exists
     ? existing.data()?.analysis?.onboarding
@@ -873,26 +861,39 @@ export async function analyzeResume(uid: string, input: AnalyzeResumeInput) {
     atsAnalysis = await runAtsAnalysis(extractedText, input.targetRole);
   }
 
-  const version = existing.exists
-    ? ((existing.data()?.version ?? 0) as number) + 1
-    : 1;
+  const existingData = existing.exists ? existing.data() : undefined;
+  const version = existing.exists ? ((existingData?.version ?? 0) as number) + 1 : 1;
 
   // Prefer explicit client role; otherwise use onboarding inference / existing doc.
   const storedTargetRole =
     input.targetRole?.trim() ||
     onboardingPlan?.jobRoleRecommendation?.trim() ||
     existingOnboarding?.jobRoleRecommendation?.trim() ||
-    (existing.exists ? String(existing.data()?.targetRole ?? '').trim() : '') ||
+    (existing.exists ? String(existingData?.targetRole ?? '').trim() : '') ||
     'Software Engineer';
 
+  const fileType = deriveFileType(input.fileName);
+
+  // Stable per-user id, generated once and preserved across re-analyze.
+  const resumeId = existingData?.resumeId?.trim() || `res_${randomUUID()}`;
+  // Regenerated on every analyze call — identifies this specific run.
+  const analysisId = `an_${randomUUID()}`;
+  const nowIso = new Date().toISOString();
+
   const meta = {
+    resumeId,
+    analysisId,
     fileName: input.fileName,
+    fileType,
     version,
     isActive: true as const,
     uploadedAt: FieldValue.serverTimestamp() as never,
+    lastAnalyzedAt: FieldValue.serverTimestamp() as never,
     targetRole: storedTargetRole,
+    experienceLevel: atsAnalysis.experienceLevel,
     aiReviewedAt: FieldValue.serverTimestamp() as never,
     analysisStatus: 'completed' as const,
+    ...(storagePath ? { storagePath } : {}),
   };
 
   const sourceMeta = { source: 'resume' as const };
@@ -950,11 +951,38 @@ export async function analyzeResume(uid: string, input: AnalyzeResumeInput) {
         : {}),
   };
 
+  const uploadedAtIso = existing.exists
+    ? timestampToIso(existingData?.uploadedAt, nowIso)
+    : nowIso;
+
   return {
-    resumeId: 'analysis',
-    analysisStatus: 'completed' as const,
-    analysis,
+    // New results-page contract
+    resumeId,
+    analysisId,
+    fileName: input.fileName,
+    fileType,
+    storagePath: storagePath ?? existingData?.storagePath ?? '',
+    analysisStatus: 'completed',
+    uploadedAt: uploadedAtIso,
+    lastAnalyzedAt: nowIso,
     targetRole: storedTargetRole,
+    experienceLevel: meta.experienceLevel,
+    scores: atsAnalysis.scores,
+    atsFriendly: atsAnalysis.atsFriendly,
+    scoreLabels: atsAnalysis.scoreLabels,
+    strengths: atsAnalysis.strengths,
+    areasToImprove: atsAnalysis.areasToImprove,
+    suggestions: atsAnalysis.suggestions,
+    aiFeedback: atsAnalysis.aiFeedback,
+    sections: atsAnalysis.sections,
+    keywords: atsAnalysis.keywords,
+    ats: atsAnalysis.ats,
+    roleMatches: atsAnalysis.roleMatches,
+    detailedMetrics: atsAnalysis.detailedMetrics,
+    extractedText: atsAnalysis.extractedText,
+
+    // Back-compat extras (onboarding wizard + current Angular results page)
+    analysis,
     onboardingGenerated: Boolean(onboardingPlan),
     onboardingPreserved: Boolean(existingOnboarding),
   };

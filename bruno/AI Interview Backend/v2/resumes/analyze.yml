@@ -12,7 +12,8 @@ http:
       - name: file
         type: file
         value:
-          - C:\Users\shubh\Downloads\Shubham_Chaudhari_Angular_Developer_Resume.pdf
+          - C:\Users\Scala\Downloads\angular_resume_demo.pdf
+        contentType: application/pdf
       - name: targetRole
         type: text
         value: Senior Angular Engineer
@@ -21,6 +22,9 @@ http:
     token: "{{token}}"
 
 runtime:
+  variables:
+    - name: baseUrl
+      value: http://localhost:5000/api
   scripts:
     - type: after-response
       code: |-
@@ -43,11 +47,18 @@ docs: |-
   - `onboarding` — `true` to generate the interview-prep onboarding plan (write-once)
 
   Flow:
-  1. Extracts text from the PDF in memory (PDF is not stored in Storage)
-  2. Runs Gemini ATS scorecard
-  3. Upserts `users/{uid}/resume/analysis` (re-analyze overwrites the same doc)
+  1. Extracts text from the PDF and uploads it to Storage (`users/{uid}/resumes/resume.pdf`)
+  2. Runs Gemini resume review (scores, strengths, suggestions, sections, keywords, ATS checks, role matches)
+  3. Upserts `users/{uid}/onboarding/analysis` (re-analyze overwrites the same doc)
 
-  Response `data`: `resumeId` (`"analysis"`), `analysisStatus`, `analysis`
+  Response `data` matches the results-page contract: `resumeId`, `analysisId`, `fileName`, `fileType`,
+  `storagePath`, `analysisStatus`, `uploadedAt`, `lastAnalyzedAt`, `targetRole`, `experienceLevel`,
+  `scores`, `atsFriendly`, `scoreLabels`, `strengths`, `areasToImprove`, `suggestions`, `aiFeedback`,
+  `sections`, `keywords`, `ats`, `roleMatches`, `detailedMetrics`, `extractedText` — plus back-compat
+  `analysis` (legacy nested shape), `onboardingGenerated`, `onboardingPreserved`.
+
+  No GET endpoint — the frontend reads the saved doc directly via the Firebase Storage/Firestore SDK
+  from `users/{uid}/onboarding/analysis`.
 
   Auto-saves `v2ResumeId`.
   Requires Bearer token — run **Auth > Login** first.
