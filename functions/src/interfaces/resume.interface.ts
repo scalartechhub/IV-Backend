@@ -207,8 +207,15 @@ export interface CareerPathTopic {
 export interface RecommendedCompany {
   name: string;
   reason: string;
-  difficulty: CompanyDifficulty;
+  /** 2–5 interview-relevant skills for this employer (practice company cards). */
+  skills: string[];
   priority: number;
+}
+
+/** Practice “Recommended sessions” — skill name + subskills only. */
+export interface RecommendedSessionSkill {
+  name: string;
+  subskills: string[];
 }
 
 export interface SkillGapItem {
@@ -281,6 +288,8 @@ export interface NextAction {
 export interface ResumeOnboardingPlan {
   careerPath: CareerPathTopic[];
   recommendedCompanies: RecommendedCompany[];
+  /** Exactly 10 practice skills; each has 2–5 subskills (no duration/difficulty/XP). */
+  recommendedSessions: RecommendedSessionSkill[];
   skillGapAnalysis: SkillGapItem[];
   learningRoadmap: LearningRoadmapWeek[];
   interviewPreparation: InterviewPrepCategory[];

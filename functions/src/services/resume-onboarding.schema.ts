@@ -6,7 +6,6 @@ import { z } from 'zod';
 
 const prioritySchema = z.enum(['High', 'Medium', 'Low']);
 const skillLevelSchema = z.enum(['Beginner', 'Intermediate', 'Advanced', 'Expert']);
-const companyDifficultySchema = z.enum(['Easy', 'Medium', 'Hard']);
 const resourceTypeSchema = z.enum([
   'Official Docs',
   'Course',
@@ -29,8 +28,13 @@ export const careerPathTopicSchema = z.object({
 export const recommendedCompanySchema = z.object({
   name: z.string().min(1),
   reason: z.string().min(1),
-  difficulty: companyDifficultySchema,
+  skills: z.array(z.string().min(1)).min(2).max(5),
   priority: z.number(),
+});
+
+export const recommendedSessionSkillSchema = z.object({
+  name: z.string().min(1),
+  subskills: z.array(z.string().min(1)).min(2).max(5),
 });
 
 export const skillGapItemSchema = z.object({
@@ -99,6 +103,7 @@ export const nextActionSchema = z.object({
 export const resumeOnboardingPlanSchema = z.object({
   careerPath: z.array(careerPathTopicSchema).min(10).max(30),
   recommendedCompanies: z.array(recommendedCompanySchema).min(1).max(10),
+  recommendedSessions: z.array(recommendedSessionSkillSchema).min(1).max(10),
   skillGapAnalysis: z.array(skillGapItemSchema).min(5),
   learningRoadmap: z.array(learningRoadmapWeekSchema).min(4).max(8),
   interviewPreparation: z.array(interviewPrepCategorySchema).min(5),

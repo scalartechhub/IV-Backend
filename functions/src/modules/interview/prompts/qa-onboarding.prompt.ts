@@ -46,8 +46,14 @@ Required JSON shape (exact keys):
     {
       "name": "Google",
       "reason": "Strong fit for the stated target role",
-      "difficulty": "Hard",
+      "skills": ["Algorithms", "System Design", "Java"],
       "priority": 1
+    }
+  ],
+  "recommendedSessions": [
+    {
+      "name": "React",
+      "subskills": ["Hooks", "Redux", "SSR"]
     }
   ],
   "skillGapAnalysis": [
@@ -133,7 +139,8 @@ Required JSON shape (exact keys):
 
 HARD CONSTRAINTS:
 - careerPath: 20 to 30 topics, priority High|Medium|Low, completed always false, order 1..N
-- recommendedCompanies: exactly 10; include well-known tech employers when relevant
+- recommendedCompanies: exactly 10 well-known reputable employers matched to the stated role/domain; each MUST include skills array of 2-5 concrete skills (no difficulty field)
+- recommendedSessions: exactly 10 items for Practice page; each is { name: skill name only, subskills: 2-5 short subskill names }; no duration, difficulty, XP, or question counts
 - skillGapAnalysis: at least 10 skills based on experience level vs target role
 - learningRoadmap: 6 to 8 weeks with title, topics, hours, goal, checkpoint, mockInterview
 - interviewPreparation: MUST include categories: Behavioral, Technical, Coding, System Design, HR, Communication, Resume Discussion, Project Discussion
@@ -143,7 +150,7 @@ HARD CONSTRAINTS:
 - nextActions: exactly 10, ordered by priority (order 1 = highest)
 - confidencePrediction and resumeCompleteness and marketReadinessScore.overallScore: integers 0-100
 - estimatedPreparationWeeks: integer 4-16
-- recommendedInterviewTracks: 3 to 6 track names
+- recommendedInterviewTracks: 3 to 6 track names (may mirror recommendedSessions names)
 - recommendedLearningTechnologies: 4 to 10 concrete, learnable technology/skill names relevant to the stated
   role, domain, and interests — these become the technology choices the candidate picks from to generate
   their Week 1 study roadmap
@@ -151,8 +158,7 @@ HARD CONSTRAINTS:
 - jobRoleRecommendation MUST align with the candidate's stated role / target roles
 - experienceLevelPrediction MUST align with the stated experience bucket
 - resource type MUST be one of: Official Docs | Course | Book | YouTube | Practice Platform | GitHub
-- skill levels MUST be one of: Beginner | Intermediate | Advanced | Expert
-- company difficulty MUST be one of: Easy | Medium | Hard`.trim();
+- skill levels MUST be one of: Beginner | Intermediate | Advanced | Expert`.trim();
 }
 
 export function buildQaOnboardingUserPrompt(answers: QaOnboardingAnswers): string {
