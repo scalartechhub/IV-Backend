@@ -6,7 +6,7 @@
 
 const RESUME_REVIEW_SHAPE = `{
   "experienceLevel": string (e.g. "Mid-Senior Level"),
-  "scores": { "overall": 0-100, "overallMessage": string, "impact": 0-100, "content": 0-100, "structure": 0-100, "ats": 0-100, "relevance": 0-100, "peerPercentile": 0-100 },
+  "scores": { "overall": 0-100, "overallMessage": string (max 4 words), "impact": 0-100, "content": 0-100, "structure": 0-100, "ats": 0-100, "relevance": 0-100, "peerPercentile": 0-100 },
   "scoreLabels": { "impact": string, "content": string, "structure": string, "ats": string, "relevance": string },
   "strengths": [ { "id": "s1", "text": string } ] (4-5 items),
   "areasToImprove": [ { "id": "i1", "text": string } ] (4-5 items),
@@ -14,11 +14,11 @@ const RESUME_REVIEW_SHAPE = `{
   "aiFeedback": { "overallFeedback": string (2-4 sentences), "recruiterComment": string (1-2 sentences) },
   "sections": [ { "id": "contact"|"summary"|"experience"|"skills"|"projects"|"education"|"certifications"|"achievements"|"additional", "label": string, "score": 0-100, "feedback": string, "looksGood": boolean } ] (ALWAYS all 9 ids, even if the section is missing from the resume — then score low and feedback should say so),
   "keywords": {
-    "matchScore": 0-100, "matchLabel": string, "matchHint": string,
+    "matchScore": 0-100, "matchLabel": string, "matchHint": string (max 2 words),
     "totalKeywords": number, "matchedCount": number, "matchedPercent": 0-100, "missingCount": number, "missingPercent": 0-100,
     "matched": [ { "keyword": string } ], "missing": [ { "keyword": string } ],
     "density": [ { "label": "Optimal", "percent": number, "tone": "success" }, { "label": "Too Low", "percent": number, "tone": "warning" }, { "label": "Too High", "percent": number, "tone": "danger" } ] (percents sum to ~100),
-    "recommendations": string[]
+    "recommendations": string[] (each item exactly 1 word — skill/keyword capsule, e.g. "Kubernetes")
   },
   "ats": {
     "compatibilityScore": 0-100, "compatibilityLabel": string, "compatibilityHint": string,
@@ -27,7 +27,7 @@ const RESUME_REVIEW_SHAPE = `{
     "parseScore": 0-100,
     "recommendations": [ { "text": string, "reason": string } ] (3-5 items)
   },
-  "roleMatches": [ { "role": string, "score": 0-100, "label": string, "feedback": string } ] (the target role first, then 1-2 closely related roles this resume also fits),
+  "roleMatches": [ { "role": string, "score": 0-100, "label": string, "feedback": string (max 5 words) } ] (the target role first, then 1-2 closely related roles this resume also fits),
   "detailedMetrics": {
     "keywordMatch": { "score": 0-100, "delta": number }, "quantifiedImpact": { "score": 0-100, "delta": number },
     "actionVerbs": { "score": 0-100, "delta": number }, "structureLength": { "score": 0-100, "delta": number }
@@ -45,6 +45,12 @@ Scoring rubric (0-100):
 - scores.relevance / keywords.matchScore: how well the resume's stack/experience matches targetRole.
 - scores.overall: holistic average of the 5 sub-scores, weighted toward impact and relevance.
 - atsFriendly badge on the frontend is derived as scores.ats >= 70 — score accordingly.
+
+UI brevity (hard limits — do not exceed):
+- scores.overallMessage: max 4 words (e.g. "Strong technical foundation").
+- keywords.matchHint: max 2 words (e.g. "Add metrics").
+- keywords.recommendations: each entry exactly one word (keyword/skill capsule only, no phrases).
+- roleMatches[].feedback: max 5 words (e.g. "Solid fit, deepen metrics").
 
 Ground every strength, suggestion, section feedback, and aiFeedback line in real content from the
 resume text — cite concrete phrases/sections when possible, never generic filler. suggestions must
