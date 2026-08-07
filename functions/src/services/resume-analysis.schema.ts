@@ -175,6 +175,17 @@ function clampScore(n: unknown, fallback = 0): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+function limitWords(text: string, maxWords: number): string {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) return words.join(' ');
+  return words.slice(0, maxWords).join(' ');
+}
+
+function toSingleWordCapsule(text: string): string {
+  const first = text.trim().split(/\s+/).find(Boolean) ?? '';
+  return first.replace(/^[^A-Za-z0-9+#./-]+|[^A-Za-z0-9+#./-]+$/g, '');
+}
+
 function normalizeScoreWithDelta(raw: unknown): { score: number; delta: number } {
   if (typeof raw === 'number') return { score: clampScore(raw), delta: 0 };
   if (raw && typeof raw === 'object') {
@@ -308,7 +319,7 @@ function normalizeKeywords(raw: unknown): Record<string, unknown> {
       ? { matchLabel: obj.matchLabel.trim() }
       : {}),
     ...(typeof obj.matchHint === 'string' && obj.matchHint.trim()
-      ? { matchHint: obj.matchHint.trim() }
+      ? { matchHint: limitWords(obj.matchHint.trim(), 2) }
       : {}),
     totalKeywords,
     matchedCount,
@@ -324,7 +335,9 @@ function normalizeKeywords(raw: unknown): Record<string, unknown> {
     matched,
     missing,
     density: normalizeDensity(obj.density),
-    recommendations: asStringArray(obj.recommendations ?? missing),
+    recommendations: asStringArray(obj.recommendations ?? missing)
+      .map(toSingleWordCapsule)
+      .filter(Boolean),
   };
 }
 
@@ -393,7 +406,7 @@ function normalizeRoleMatches(raw: unknown, targetRole: string): Array<{
         role: targetRole || 'Target Role',
         score: 60,
         label: 'Good Match',
-        feedback: 'Resume shows relevant experience with room to grow.',
+        feedback: 'Relevant fit with gaps',
       },
     ];
   }
@@ -403,7 +416,7 @@ function normalizeRoleMatches(raw: unknown, targetRole: string): Array<{
       role: String(obj.role ?? (index === 0 ? targetRole : `Related Role ${index + 1}`)).trim(),
       score: clampScore(obj.score, 60),
       label: String(obj.label ?? 'Good Match').trim(),
-      feedback: String(obj.feedback ?? 'Reasonable alignment with this role.').trim(),
+      feedback: limitWords(String(obj.feedback ?? 'Reasonable role alignment').trim(), 5),
     };
   });
 }
@@ -413,7 +426,7 @@ function normalizeScoreBlock(raw: unknown): Record<string, unknown> {
   return {
     overall: clampScore(obj.overall),
     ...(typeof obj.overallMessage === 'string' && obj.overallMessage.trim()
-      ? { overallMessage: obj.overallMessage.trim() }
+      ? { overallMessage: limitWords(obj.overallMessage.trim(), 4) }
       : {}),
     impact: clampScore(obj.impact),
     content: clampScore(obj.content),
