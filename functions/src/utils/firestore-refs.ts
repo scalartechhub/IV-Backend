@@ -17,7 +17,6 @@ import {
   problemProgressConverter,
   reportConverter,
   resumeConverter,
-  roadmapConverter,
   userAchievementConverter,
   userConverter,
   weeklyStatsConverter,
@@ -153,14 +152,6 @@ export function reportsCol(db: Firestore, uid: string) {
     .withConverter(reportConverter);
 }
 
-export function roadmapCol(db: Firestore, uid: string) {
-  return db
-    .collection('users')
-    .doc(uid)
-    .collection('roadmap')
-    .withConverter(roadmapConverter);
-}
-
 export function careerProgressRef(db: Firestore, uid: string) {
   return db
     .collection('users')
@@ -225,7 +216,7 @@ export function topicProfileRef(db: Firestore, uid: string) {
     .doc('profile');
 }
 
-/** Fixed singleton path: users/{uid}/learningRoadmap/current — active Week-1 day-wise roadmap. */
+/** Fixed singleton path: users/{uid}/learningRoadmap/current — active 4-week roadmap. */
 export function learningRoadmapRef(db: Firestore, uid: string) {
   return db
     .collection('users')
@@ -234,13 +225,22 @@ export function learningRoadmapRef(db: Firestore, uid: string) {
     .doc('current');
 }
 
-/** Cached AI-generated notes for a single topic, keyed by topicId. */
+/** Cached AI-generated notes for every subtopic under one main topic, keyed by topicId. */
 export function learningRoadmapTopicNotesRef(
   db: Firestore,
   uid: string,
   topicId: string,
 ) {
   return learningRoadmapRef(db, uid).collection('topicNotes').doc(topicId);
+}
+
+/** Cached AI-generated quiz questions for a single quiz, keyed by quizId. */
+export function learningRoadmapQuizRef(
+  db: Firestore,
+  uid: string,
+  quizId: string,
+) {
+  return learningRoadmapRef(db, uid).collection('quizzes').doc(quizId);
 }
 
 export function companiesCol(db: Firestore) {
