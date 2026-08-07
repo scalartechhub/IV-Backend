@@ -118,7 +118,6 @@ function asStringArray(raw: unknown): string[] {
 
 const PRIORITIES = new Set(['High', 'Medium', 'Low']);
 const SKILL_LEVELS = new Set(['Beginner', 'Intermediate', 'Advanced', 'Expert']);
-const DIFFICULTIES = new Set(['Easy', 'Medium', 'Hard']);
 const RESOURCE_TYPES = new Set([
   'Official Docs',
   'Course',
@@ -140,12 +139,6 @@ function asSkillLevel(raw: unknown, fallback: 'Beginner' | 'Intermediate' | 'Adv
     : fallback;
 }
 
-function asDifficulty(raw: unknown, fallback: 'Easy' | 'Medium' | 'Hard' = 'Medium') {
-  return typeof raw === 'string' && DIFFICULTIES.has(raw)
-    ? (raw as 'Easy' | 'Medium' | 'Hard')
-    : fallback;
-}
-
 function asResourceType(
   raw: unknown,
 ): 'Official Docs' | 'Course' | 'Book' | 'YouTube' | 'Practice Platform' | 'GitHub' {
@@ -157,6 +150,23 @@ function asResourceType(
 function clampScore(n: unknown, fallback = 0): number {
   const value = typeof n === 'number' && Number.isFinite(n) ? n : fallback;
   return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function clampStringList(raw: unknown, min: number, max: number, fallback: string[] = []): string[] {
+  const list = asStringArray(raw);
+  if (list.length >= min) return list.slice(0, max);
+  const merged = [...list];
+  for (const item of fallback) {
+    if (merged.length >= max) break;
+    const trimmed = item.trim();
+    if (!trimmed) continue;
+    if (merged.some((v) => v.toLowerCase() === trimmed.toLowerCase())) continue;
+    merged.push(trimmed);
+  }
+  while (merged.length < min && merged.length < max) {
+    merged.push(`Skill ${merged.length + 1}`);
+  }
+  return merged.slice(0, max);
 }
 
 function deriveLearningTechnologies(
@@ -236,8 +246,19 @@ export function normalizeRawOnboarding(raw: unknown): unknown {
         return {
           name: String(obj.name ?? `Company ${index + 1}`).trim(),
           reason: String(obj.reason ?? 'Relevant to your resume skills').trim(),
-          difficulty: asDifficulty(obj.difficulty),
+          skills: clampStringList(obj.skills, 2, 5),
           priority: typeof obj.priority === 'number' ? obj.priority : index + 1,
+        };
+      })
+    : [];
+
+  const recommendedSessionsRaw = Array.isArray(data.recommendedSessions)
+    ? data.recommendedSessions.map((item, index) => {
+        const obj = (item ?? {}) as Record<string, unknown>;
+        const name = String(obj.name ?? obj.skill ?? `Skill ${index + 1}`).trim();
+        return {
+          name,
+          subskills: clampStringList(obj.subskills ?? obj.skills, 2, 5),
         };
       })
     : [];
@@ -353,6 +374,25 @@ export function normalizeRawOnboarding(raw: unknown): unknown {
 
   const recommendedProjectSkills = recommendedProjects.flatMap((project) => project.skills);
 
+  let recommendedSessions = recommendedSessionsRaw.slice(0, 10);
+  if (recommendedSessions.length === 0) {
+    const trackFallback = asStringArray(data.recommendedInterviewTracks);
+    const gapFallback = skillGapAnalysis.map((item) => item.name);
+    const names = (trackFallback.length > 0 ? trackFallback : gapFallback).slice(0, 10);
+    recommendedSessions = names.map((name) => ({
+      name,
+      subskills: clampStringList([], 2, 5, [name, `${name} fundamentals`, `${name} advanced`]),
+    }));
+  }
+  if (recommendedSessions.length === 0) {
+    recommendedSessions = [
+      {
+        name: 'Technical',
+        subskills: clampStringList([], 2, 5, ['Coding', 'System Design', 'Problem Solving']),
+      },
+    ];
+  }
+
   const recommendedLearningTechnologies = deriveLearningTechnologies(
     data.recommendedLearningTechnologies,
     {
@@ -367,10 +407,13 @@ export function normalizeRawOnboarding(raw: unknown): unknown {
   return {
     careerPath: careerPath.slice(0, 30),
     recommendedCompanies: recommendedCompanies.slice(0, 10),
+    recommendedSessions: recommendedSessions.slice(0, 10),
     skillGapAnalysis,
     learningRoadmap: learningRoadmap.slice(0, 8),
     interviewPreparation,
-    recommendedInterviewTracks: asStringArray(data.recommendedInterviewTracks),
+    recommendedInterviewTracks: asStringArray(data.recommendedInterviewTracks).length
+      ? asStringArray(data.recommendedInterviewTracks)
+      : recommendedSessions.map((s) => s.name).slice(0, 6),
     recommendedLearningTechnologies,
     resumeStrengthSummary: String(
       data.resumeStrengthSummary ?? 'Resume shows solid foundational experience.',

@@ -29,8 +29,14 @@ Required JSON shape (exact keys):
     {
       "name": "Google",
       "reason": "Strong Angular and Firebase experience",
-      "difficulty": "Hard",
+      "skills": ["Angular", "TypeScript", "System Design"],
       "priority": 1
+    }
+  ],
+  "recommendedSessions": [
+    {
+      "name": "React",
+      "subskills": ["Hooks", "Redux", "SSR"]
     }
   ],
   "skillGapAnalysis": [
@@ -116,7 +122,8 @@ Required JSON shape (exact keys):
 
 HARD CONSTRAINTS:
 - careerPath: 20 to 30 topics, priority High|Medium|Low, completed always false, order 1..N
-- recommendedCompanies: exactly 10, prefer matches from resume; include well-known tech employers when relevant (Google, Microsoft, Amazon, Adobe, Atlassian, Salesforce, Oracle, TCS, Infosys, Accenture) or better fits
+- recommendedCompanies: exactly 10 well-known reputable employers matched to the resume (e.g. Google, Microsoft, Amazon, Adobe, Atlassian, Salesforce, Oracle, TCS, Infosys, Accenture, or better fits); each MUST include skills array of 2-5 concrete skills (no difficulty field)
+- recommendedSessions: exactly 10 items for Practice page; each is { name: skill name only, subskills: 2-5 short subskill names }; no duration, difficulty, XP, or question counts
 - skillGapAnalysis: at least 10 skills based on resume gaps vs target role
 - learningRoadmap: 6 to 8 weeks with title, topics, hours, goal, checkpoint, mockInterview
 - interviewPreparation: MUST include categories: Behavioral, Technical, Coding, System Design, HR, Communication, Resume Discussion, Project Discussion
@@ -126,14 +133,13 @@ HARD CONSTRAINTS:
 - nextActions: exactly 10, ordered by priority (order 1 = highest)
 - confidencePrediction and resumeCompleteness and marketReadinessScore.overallScore: integers 0-100
 - estimatedPreparationWeeks: integer 4-16
-- recommendedInterviewTracks: 3 to 6 track names
+- recommendedInterviewTracks: 3 to 6 track names (may mirror recommendedSessions names)
 - recommendedLearningTechnologies: 4 to 10 concrete, learnable technology/skill names (e.g. "React", "Node.js",
   "System Design", "AWS") ordered from most to least relevant to the candidate's resume and target role —
   these become the technology choices the candidate picks from to generate their Week 1 study roadmap
 - priorityPreparationAreas: 3 to 8 areas
 - resource type MUST be one of: Official Docs | Course | Book | YouTube | Practice Platform | GitHub
-- skill levels MUST be one of: Beginner | Intermediate | Advanced | Expert
-- company difficulty MUST be one of: Easy | Medium | Hard`.trim();
+- skill levels MUST be one of: Beginner | Intermediate | Advanced | Expert`.trim();
 }
 
 export function buildResumeOnboardingUserPrompt(input: {
