@@ -1,0 +1,38 @@
+info:
+  name: Get Topic Notes
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{baseUrl}}/v2/learning-roadmap/topics/{{learningRoadmapTopicId}}/notes"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  variables:
+    - name: learningRoadmapTopicId
+      value: w1-t1
+
+settings:
+  encodeUrl: true
+  timeout: 120000
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Opens a main topic and returns detailed notes for EVERY subtopic under it in one response.
+
+  First call: Gemini generates all subtopic notes together and caches them at
+  `users/{uid}/learningRoadmap/current/topicNotes/{topicId}`.
+  Later calls: returns the cached document (no Gemini call).
+
+  Response `data`:
+  - `topicId`, `topicName`, `technology`
+  - `subtopics[]` — each has `subtopicId`, `subtopicName`, `summary`, `sections[]`, `keyTakeaways[]`
+
+  Uses `{{learningRoadmapTopicId}}` auto-saved by Generate Roadmap (week 1, first topic).
+  To test another topic, set `learningRoadmapTopicId` to e.g. `w1-t2`.
+
+  Timeout is high because first-open generation can take 30–90s.

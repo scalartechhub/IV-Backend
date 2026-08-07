@@ -1,0 +1,56 @@
+info:
+  name: Generate Roadmap
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/learning-roadmap/generate"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "technology": "Angular"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const doc = res.getBody()?.data;
+        const week1 = doc?.weeks?.[0];
+        const topic1 = week1?.topics?.[0];
+        if (topic1?.id) {
+          bru.setEnvVar("learningRoadmapTopicId", topic1.id);
+        }
+        if (topic1?.subtopics?.[0]?.id) {
+          bru.setEnvVar("learningRoadmapSubtopicId", topic1.subtopics[0].id);
+        }
+        if (topic1?.quizzes?.[0]?.id) {
+          bru.setEnvVar("learningRoadmapQuizId", topic1.quizzes[0].id);
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 120000
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Write-once — creates the 4-week roadmap for `technology` and stores it at
+  `users/{uid}/learningRoadmap/current`. Calling again after one exists just returns the
+  existing roadmap unchanged.
+
+  Frontend does NOT need to read this response body for rendering — once this call
+  succeeds, listen to `users/{uid}/learningRoadmap/current` directly via the Firestore
+  client SDK (`onSnapshot`) for the live roadmap state (weeks/topics/subtopics/quizzes,
+  unlocked flags, completion %).
+
+  Auto-saves `learningRoadmapTopicId` / `learningRoadmapSubtopicId` / `learningRoadmapQuizId`
+  from week 1's first topic, for use by the other requests in this folder.

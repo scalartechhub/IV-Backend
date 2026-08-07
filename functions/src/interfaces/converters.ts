@@ -14,7 +14,6 @@ import type {
   AchievementCatalogDoc,
   UserAchievementDoc,
 } from './achievement.interface';
-import type { RoadmapDoc } from './roadmap.interface';
 import type { CareerProgressDoc } from './career-progress.interface';
 import type { NotificationDoc } from './notification.interface';
 import type {
@@ -57,7 +56,6 @@ export const weeklyStatsConverter = identityConverter<WeeklyStatsDoc>();
 export const achievementCatalogConverter =
   identityConverter<AchievementCatalogDoc>();
 export const userAchievementConverter = identityConverter<UserAchievementDoc>();
-export const roadmapConverter = identityConverter<RoadmapDoc>();
 export const careerProgressConverter = identityConverter<CareerProgressDoc>();
 export const notificationConverter = identityConverter<NotificationDoc>();
 export const jobListingConverter = identityConverter<JobListingDoc>();

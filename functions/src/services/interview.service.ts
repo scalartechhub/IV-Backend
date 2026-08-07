@@ -51,7 +51,7 @@ import {
 } from '../modules/v2/v2-live-interview.persistence';
 import { checkAchievements } from './achievement.service';
 import {
-  evaluateDayInterview,
+  evaluateWeekInterview,
   parseLearningRoadmapActivityId,
 } from './learning-roadmap.service';
 import { getCompany, getPracticeTemplate } from './practice.service';
@@ -668,14 +668,13 @@ export async function completeInterview(
     interview.config.sourceRoadmapActivityId,
   );
   if (roadmapActivity) {
-    await evaluateDayInterview(
+    await evaluateWeekInterview(
       uid,
       roadmapActivity.week,
-      roadmapActivity.day,
       results.overallScore,
       interviewId,
     ).catch((err: unknown) => {
-      console.error('[completeInterview] evaluateDayInterview failed', err);
+      console.error('[completeInterview] evaluateWeekInterview failed', err);
     });
   }
 
