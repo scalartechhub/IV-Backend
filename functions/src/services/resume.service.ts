@@ -35,6 +35,10 @@ import {
   userRef,
 } from '../utils/firestore-refs';
 import {
+  extractCandidateNameFromResumeText,
+  namesBelongToSamePerson,
+} from './resume-name-match';
+import {
   normalizeRawResumeReview,
   resumeReviewSchema,
   type ResumeReviewParsed,
@@ -492,6 +496,44 @@ function resolvePromptTargetRole(targetRole?: string): string {
     : "Infer the most likely target role from the resume itself";
 }
 
+/**
+ * Ensure the uploaded resume belongs to the signed-in user.
+ * Throws AppError(400) on mismatch — analysis must not be completed/persisted.
+ */
+async function assertResumeBelongsToUser(
+  uid: string,
+  extractedText: string,
+): Promise<void> {
+  const db = ensureAdmin();
+  const userSnap = await userRef(db, uid).get();
+  const registeredName = String(userSnap.data()?.displayName ?? '').trim();
+
+  if (!registeredName) {
+    logger.warn('[resume.service] skipping name match — user has no displayName', {
+      uid,
+    });
+    return;
+  }
+
+  const resumeName = extractCandidateNameFromResumeText(extractedText);
+  if (!resumeName) {
+    logger.warn('[resume.service] could not extract candidate name from resume text', {
+      uid,
+    });
+    throw new AppError(
+      400,
+      'We could not find a clear name on this resume. Please upload a resume that includes your full name at the top.',
+    );
+  }
+
+  if (!namesBelongToSamePerson(registeredName, resumeName)) {
+    throw new AppError(
+      400,
+      `The name on this resume ("${resumeName}") does not match your registered name ("${registeredName}"). Please upload your own resume.`,
+    );
+  }
+}
+
 async function runAtsAnalysis(
   extractedText: string,
   targetRole?: string,
@@ -880,17 +922,20 @@ export async function analyzeResume(
   const db = ensureAdmin();
   const { snap: existing, ref } = await loadOnboardingAnalysisDoc(uid);
 
-  const [{ text: extractedText }, storagePath] = await Promise.all([
-    extractPdfText(input.fileBuffer),
-    // Single stable path per user — each re-analyze overwrites the previous file.
-    uploadUserResumeFile(uid, input.fileBuffer, 'resume').catch((err: unknown) => {
+  const { text: extractedText } = await extractPdfText(input.fileBuffer);
+
+  // Block wrong-person resumes before storage upload / AI analysis / Firestore writes.
+  await assertResumeBelongsToUser(uid, extractedText);
+
+  const storagePath = await uploadUserResumeFile(uid, input.fileBuffer, 'resume').catch(
+    (err: unknown) => {
       logger.warn('[resume.service] resume storage upload failed — continuing without storagePath', {
         uid,
         error: err instanceof Error ? err.message : String(err),
       });
       return undefined;
-    }),
-  ]);
+    },
+  );
 
   const existingOnboarding = existing.exists
     ? existing.data()?.analysis?.onboarding
