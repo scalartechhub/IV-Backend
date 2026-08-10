@@ -138,6 +138,18 @@ function omitUndefinedDeep<T>(value: T): T {
   return value;
 }
 
+/** Rolling average for weeklyStats skill fields across interviews in the same week. */
+function rollingWeekAverage(previous: number, previousCount: number, next: number): number {
+  const safeNext = Number.isFinite(next) ? next : 0;
+  if (previousCount <= 0) {
+    return Math.round(Math.min(100, Math.max(0, safeNext)));
+  }
+  const safePrev = Number.isFinite(previous) ? previous : 0;
+  return Math.round(
+    Math.min(100, Math.max(0, (safePrev * previousCount + safeNext) / (previousCount + 1))),
+  );
+}
+
 async function resolveStartConfig(
   uid: string,
   input: StartInterviewInput,
@@ -531,20 +543,64 @@ export async function completeInterview(
     const streak = updateStreak(tx, db, uid, gamification, now);
 
     const minutes = Math.round(durationSec / 60);
-    const prevLongestSec: number = statsSnap.exists
-      ? ((statsSnap.data() as { longestSessionSec?: number }).longestSessionSec ?? 0)
-      : 0;
+    const prevStats = statsSnap.exists
+      ? (statsSnap.data() as {
+          longestSessionSec?: number;
+          interviewsCompleted?: number;
+          technical?: number;
+          communication?: number;
+          confidence?: number;
+          problemSolving?: number;
+          coding?: number;
+          behavior?: number;
+          hiringProbability?: number;
+        })
+      : null;
+    const prevLongestSec = prevStats?.longestSessionSec ?? 0;
     const isNewLongest = durationSec > prevLongestSec;
+    const prevInterviewCount = prevStats?.interviewsCompleted ?? 0;
+
+    // Store this week's interview scores (rolling avg), not EMA skill docs that
+    // start at DEFAULT_SKILL_SCORE=50 and land near ~49 after one interview.
+    const weekScores = {
+      technical: rollingWeekAverage(
+        prevStats?.technical ?? 0,
+        prevInterviewCount,
+        results.technicalScore,
+      ),
+      communication: rollingWeekAverage(
+        prevStats?.communication ?? 0,
+        prevInterviewCount,
+        results.communicationScore,
+      ),
+      confidence: rollingWeekAverage(
+        prevStats?.confidence ?? 0,
+        prevInterviewCount,
+        results.confidenceScore,
+      ),
+      problemSolving: rollingWeekAverage(
+        prevStats?.problemSolving ?? 0,
+        prevInterviewCount,
+        results.problemSolvingScore,
+      ),
+      coding:
+        typeof results.codingScore === 'number'
+          ? rollingWeekAverage(prevStats?.coding ?? 0, prevInterviewCount, results.codingScore)
+          : (prevStats?.coding ?? 0),
+      behavior:
+        typeof results.behaviorScore === 'number'
+          ? rollingWeekAverage(prevStats?.behavior ?? 0, prevInterviewCount, results.behaviorScore)
+          : (prevStats?.behavior ?? 0),
+      hiringProbability: rollingWeekAverage(
+        prevStats?.hiringProbability ?? 0,
+        prevInterviewCount,
+        results.overallScore,
+      ),
+    };
 
     if (statsSnap.exists) {
       tx.update(statsRef, {
-        technical: updatedSkills.technical,
-        communication: updatedSkills.communication,
-        confidence: updatedSkills.confidence,
-        problemSolving: updatedSkills.problemSolving,
-        coding: updatedSkills.coding,
-        behavior: updatedSkills.behavior,
-        hiringProbability: readinessScore,
+        ...weekScores,
         interviewsCompleted: FieldValue.increment(1),
         practiceMinutes: FieldValue.increment(minutes),
         [`practiceMinutesByDay.${todayAbbrev}`]: FieldValue.increment(minutes),
@@ -557,13 +613,7 @@ export async function completeInterview(
     } else {
       tx.set(statsRef, {
         weekStart,
-        technical: updatedSkills.technical,
-        communication: updatedSkills.communication,
-        confidence: updatedSkills.confidence,
-        problemSolving: updatedSkills.problemSolving,
-        coding: updatedSkills.coding,
-        behavior: updatedSkills.behavior,
-        hiringProbability: readinessScore,
+        ...weekScores,
         interviewsCompleted: 1,
         practiceMinutes: minutes,
         practiceMinutesByDay: { [todayAbbrev]: minutes },

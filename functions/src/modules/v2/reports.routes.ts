@@ -1,5 +1,6 @@
 /**
- * V2 reports Express routes — summary for /reports UI + per-interview reports.
+ * V2 reports Express routes — per-interview reports.
+ * Page summary (`/summary`) was removed; the frontend reads weeklyStats from Firestore.
  */
 
 import { Router } from 'express';
@@ -16,14 +17,6 @@ const idParamSchema = z.object({ id: z.string().min(1) });
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(50).optional(),
 });
-
-router.get(
-  '/summary',
-  asyncHandler(async (req, res) => {
-    const result = await reportsService.getReportsSummary(req.user!.uid);
-    sendSuccess(res, result, 'Reports summary fetched');
-  }),
-);
 
 router.get(
   '/',

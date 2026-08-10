@@ -2,9 +2,8 @@
  * V2 API router — mounts all architecture-aligned REST endpoints.
  * Auth: Firebase ID token via Authorization: Bearer <token>
  *
- * Practice / Reports / Interviews support the new dashboard UI:
+ * Practice / Interviews support the new dashboard UI:
  *   GET  /v2/practice/catalog
- *   GET  /v2/reports/summary
  *   POST /v2/interviews/start  (templateId | companyId | quickStart | full config)
  */
 
