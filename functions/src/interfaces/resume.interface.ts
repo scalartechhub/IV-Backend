@@ -206,6 +206,7 @@ export interface CareerPathTopic {
 
 export interface RecommendedCompany {
   name: string;
+  website: string;
   reason: string;
   /** 2–5 interview-relevant skills for this employer (practice company cards). */
   skills: string[];

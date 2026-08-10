@@ -45,6 +45,7 @@ Required JSON shape (exact keys):
   "recommendedCompanies": [
     {
       "name": "Google",
+      "website": "google.com",
       "reason": "Strong fit for the stated target role",
       "skills": ["Algorithms", "System Design", "Java"],
       "priority": 1
@@ -139,7 +140,7 @@ Required JSON shape (exact keys):
 
 HARD CONSTRAINTS:
 - careerPath: 20 to 30 topics, priority High|Medium|Low, completed always false, order 1..N
-- recommendedCompanies: exactly 10 well-known reputable employers matched to the stated role/domain; each MUST include skills array of 2-5 concrete skills (no difficulty field)
+- recommendedCompanies: exactly 10 well-known reputable employers matched to the stated role/domain; each MUST include website as domain only (e.g. google.com, microsoft.com — no https:// or www.) and skills array of 2-5 concrete skills (no difficulty field)
 - recommendedSessions: exactly 10 items for Practice page; each is { name: skill name only, subskills: 2-5 short subskill names }; no duration, difficulty, XP, or question counts
 - skillGapAnalysis: at least 10 skills based on experience level vs target role
 - learningRoadmap: 6 to 8 weeks with title, topics, hours, goal, checkpoint, mockInterview

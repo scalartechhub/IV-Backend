@@ -243,8 +243,24 @@ export function normalizeRawOnboarding(raw: unknown): unknown {
   const recommendedCompanies = Array.isArray(data.recommendedCompanies)
     ? data.recommendedCompanies.map((item, index) => {
         const obj = (item ?? {}) as Record<string, unknown>;
+        const name = String(obj.name ?? `Company ${index + 1}`).trim();
+        let website = String(obj.website ?? '').trim();
+        if (website) {
+          website = website
+            .replace(/^https?:\/\//i, '')
+            .replace(/^www\./i, '')
+            .replace(/\/.*$/, '')
+            .trim();
+        }
+        if (!website) {
+          website = `${name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '')
+            .slice(0, 40)}.com`;
+        }
         return {
-          name: String(obj.name ?? `Company ${index + 1}`).trim(),
+          name,
+          website,
           reason: String(obj.reason ?? 'Relevant to your resume skills').trim(),
           skills: clampStringList(obj.skills, 2, 5),
           priority: typeof obj.priority === 'number' ? obj.priority : index + 1,
