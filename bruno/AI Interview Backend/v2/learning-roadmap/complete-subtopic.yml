@@ -1,0 +1,28 @@
+info:
+  name: Complete Subtopic
+  type: http
+  seq: 3
+
+http:
+  method: PATCH
+  url: "{{baseUrl}}/v2/learning-roadmap/topics/{{learningRoadmapSubtopicId}}/complete"
+  headers:
+    - name: Content-Type
+      value: application/json
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Marks one subtopic as read/done. The subtopic's week must already be `unlocked` (week 1
+  always is). Recomputes the owning topic's `completionPercent`/`isComplete` and returns the
+  full roadmap — but the frontend doesn't need the response body either, the Firestore
+  `onSnapshot` listener on `users/{uid}/learningRoadmap/current` will pick up the change live.
+
+  Uses `{{learningRoadmapSubtopicId}}` auto-saved by Generate Roadmap.

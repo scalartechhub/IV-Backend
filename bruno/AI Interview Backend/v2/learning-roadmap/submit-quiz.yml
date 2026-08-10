@@ -1,0 +1,42 @@
+info:
+  name: Submit Quiz
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/learning-roadmap/quizzes/{{learningRoadmapQuizId}}/submit"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "answers": {
+          "{{learningRoadmapQuizId}}-q1": "Paste the option text the user picked here",
+          "{{learningRoadmapQuizId}}-q2": "Paste the option text the user picked here"
+        }
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 30000
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Grades a quiz attempt. `answers` is a map of `questionId -> selected option text` (must
+  match one of that question's `options` exactly to count as correct).
+
+  The quiz must already be generated once (frontend calls this the first time the user opens
+  a quiz — that request is not in this collection since it's a GET with no body; open it in
+  a browser/Postman as `GET {{baseUrl}}/v2/learning-roadmap/quizzes/{{learningRoadmapQuizId}}`
+  with a Bearer token to see its real question ids before filling `answers` here).
+
+  Marks the quiz `isComplete: true` with a `score`, and rolls it into the topic's
+  `completionPercent`. Visible live via the Firestore `onSnapshot` listener, same as the
+  other endpoints in this folder.
