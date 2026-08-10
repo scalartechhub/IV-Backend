@@ -27,6 +27,7 @@ export const careerPathTopicSchema = z.object({
 
 export const recommendedCompanySchema = z.object({
   name: z.string().min(1),
+  website: z.string().min(1),
   reason: z.string().min(1),
   skills: z.array(z.string().min(1)).min(2).max(5),
   priority: z.number(),
