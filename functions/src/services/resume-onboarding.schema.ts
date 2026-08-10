@@ -34,6 +34,7 @@ export const recommendedCompanySchema = z.object({
 });
 
 export const recommendedSessionSkillSchema = z.object({
+  title: z.string().min(1),
   name: z.string().min(1),
   subskills: z.array(z.string().min(1)).min(2).max(5),
 });

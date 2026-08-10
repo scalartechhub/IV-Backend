@@ -213,8 +213,11 @@ export interface RecommendedCompany {
   priority: number;
 }
 
-/** Practice “Recommended sessions” — skill name + subskills only. */
+/** Practice “Recommended sessions” — title + skill name + subskills. */
 export interface RecommendedSessionSkill {
+  /** Short interview title shown on Practice cards and passed as interview topic. */
+  title: string;
+  /** Primary skill / category name (logo + category). */
   name: string;
   subskills: string[];
 }

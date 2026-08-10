@@ -272,7 +272,11 @@ export function normalizeRawOnboarding(raw: unknown): unknown {
     ? data.recommendedSessions.map((item, index) => {
         const obj = (item ?? {}) as Record<string, unknown>;
         const name = String(obj.name ?? obj.skill ?? `Skill ${index + 1}`).trim();
+        const title = String(
+          obj.title ?? `${name} interview prep`,
+        ).trim();
         return {
+          title,
           name,
           subskills: clampStringList(obj.subskills ?? obj.skills, 2, 5),
         };
@@ -396,6 +400,7 @@ export function normalizeRawOnboarding(raw: unknown): unknown {
     const gapFallback = skillGapAnalysis.map((item) => item.name);
     const names = (trackFallback.length > 0 ? trackFallback : gapFallback).slice(0, 10);
     recommendedSessions = names.map((name) => ({
+      title: `${name} interview prep`,
       name,
       subskills: clampStringList([], 2, 5, [name, `${name} fundamentals`, `${name} advanced`]),
     }));
@@ -403,6 +408,7 @@ export function normalizeRawOnboarding(raw: unknown): unknown {
   if (recommendedSessions.length === 0) {
     recommendedSessions = [
       {
+        title: 'Technical interview prep',
         name: 'Technical',
         subskills: clampStringList([], 2, 5, ['Coding', 'System Design', 'Problem Solving']),
       },
