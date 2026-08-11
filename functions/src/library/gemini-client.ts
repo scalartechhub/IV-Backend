@@ -5,26 +5,14 @@
 
 import { GoogleGenAI, Modality } from '@google/genai';
 
-/**
- * Default text model for scoring / resume / roadmap.
- * gemini-2.5-flash is restricted for new API keys — prefer Gemini 3.x.
- * @see https://ai.google.dev/gemini-api/docs/deprecations
- */
-const DEFAULT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-3.6-flash';
+const DEFAULT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
 
-/** Ordered fallbacks when the primary model is unavailable (404 / quota / etc.). */
-const FALLBACK_MODELS: readonly string[] = [
-  DEFAULT_MODEL,
-  'gemini-3.1-flash-lite',
-  'gemini-2.0-flash',
-].filter((model, index, list) => list.indexOf(model) === index);
-
-/** Faster model for resume scoring when set (e.g. gemini-3.1-flash-lite). */
+/** Faster model for resume scoring when set (e.g. gemini-2.0-flash). */
 export const RESUME_GEMINI_MODEL =
   process.env.RESUME_GEMINI_MODEL ?? DEFAULT_MODEL;
 
 const supportsThinkingConfig = (model: string): boolean =>
-  /gemini-[23]\./i.test(model);
+  /gemini-2\./i.test(model);
 
 let client: GoogleGenAI | null = null;
 
@@ -40,17 +28,8 @@ export function getClient(): GoogleGenAI {
   return client;
 }
 
-function isModelUnavailableError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return (
-    /no longer available|NOT_FOUND|is not found|model .* not found/i.test(message) ||
-    /"code"\s*:\s*404/.test(message)
-  );
-}
-
 /**
  * Generate structured JSON from a system + user prompt pair.
- * Tries fallback models when the primary returns 404 / unavailable.
  */
 export async function generateJson<T>(params: {
   systemInstruction: string;
@@ -59,57 +38,36 @@ export async function generateJson<T>(params: {
   temperature?: number;
   maxOutputTokens?: number;
 }): Promise<T> {
-  const modelsToTry = params.model
-    ? [params.model, ...FALLBACK_MODELS.filter((model) => model !== params.model)]
-    : FALLBACK_MODELS;
+  const model = params.model ?? DEFAULT_MODEL;
+  const result = await getClient().models.generateContent({
+    model,
+    contents: params.userPrompt,
+    config: {
+      systemInstruction: params.systemInstruction,
+      temperature: params.temperature ?? 0.2,
+      maxOutputTokens: params.maxOutputTokens ?? 4096,
+      responseMimeType: 'application/json',
+      // Gemini 2.5+ thinking tokens add latency and burn output budget on JSON tasks.
+      ...(supportsThinkingConfig(model)
+        ? { thinkingConfig: { thinkingBudget: 0 } }
+        : {}),
+    },
+  });
 
-  let lastError: unknown;
-
-  for (const model of modelsToTry) {
-    try {
-      const result = await getClient().models.generateContent({
-        model,
-        contents: params.userPrompt,
-        config: {
-          systemInstruction: params.systemInstruction,
-          temperature: params.temperature ?? 0.2,
-          maxOutputTokens: params.maxOutputTokens ?? 4096,
-          responseMimeType: 'application/json',
-          // Gemini 2.5+ / 3.x thinking tokens add latency and burn output budget on JSON tasks.
-          ...(supportsThinkingConfig(model)
-            ? { thinkingConfig: { thinkingBudget: 0 } }
-            : {}),
-        },
-      });
-
-      const raw = (result.text ?? '').trim();
-      if (!raw) {
-        throw new Error('Empty Gemini response');
-      }
-
-      try {
-        return JSON.parse(raw) as T;
-      } catch {
-        const cleaned = raw
-          .replace(/^```(?:json)?\s*/i, '')
-          .replace(/\s*```$/i, '')
-          .trim();
-        return JSON.parse(cleaned) as T;
-      }
-    } catch (error) {
-      lastError = error;
-      if (!isModelUnavailableError(error) && params.model) {
-        // Explicit model requested and failure is not "unavailable" — don't silently switch.
-        throw error;
-      }
-      // Try next fallback for unavailable / transient model errors.
-      continue;
-    }
+  const raw = (result.text ?? '').trim();
+  if (!raw) {
+    throw new Error('Empty Gemini response');
   }
 
-  throw lastError instanceof Error
-    ? lastError
-    : new Error(`Gemini generateJson failed: ${String(lastError)}`);
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    const cleaned = raw
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+    return JSON.parse(cleaned) as T;
+  }
 }
 
 export const DEFAULT_LIVE_MODEL =
