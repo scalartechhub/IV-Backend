@@ -7,14 +7,13 @@
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type {
   LearningRoadmapDoc,
-  LearningTopicNotesDoc,
   QuizDoc,
   QuizQuestion,
   RoadmapQuiz,
   RoadmapSubtopic,
   RoadmapTopic,
   RoadmapWeek,
-  SubtopicNotes,
+  SubtopicNotesDoc,
 } from '../interfaces/learning-roadmap.interface';
 import { generateJson } from '../library/gemini-client';
 import { AppError } from '../shared/utils';
@@ -22,12 +21,12 @@ import { ensureAdmin } from '../utils/callable-auth';
 import {
   learningRoadmapQuizRef,
   learningRoadmapRef,
-  learningRoadmapTopicNotesRef,
+  learningRoadmapSubtopicNotesRef,
 } from '../utils/firestore-refs';
 import {
   quizQuestionsSchema,
   roadmapSkeletonSchema,
-  topicNotesBatchSchema,
+  subtopicNotesSchema,
 } from './learning-roadmap.schema';
 
 const PASS_THRESHOLD = 60;
@@ -76,17 +75,6 @@ function findSubtopic(
   return null;
 }
 
-function findTopic(
-  doc: LearningRoadmapDoc,
-  topicId: string,
-): { week: RoadmapWeek; topic: RoadmapTopic } | null {
-  for (const week of doc.weeks) {
-    const topic = week.topics.find((t) => t.id === topicId);
-    if (topic) return { week, topic };
-  }
-  return null;
-}
-
 function findQuiz(
   doc: LearningRoadmapDoc,
   quizId: string,
@@ -128,14 +116,16 @@ export async function generateRoadmap(
       'from the basics toward job-interview readiness. Split the plan into EXACTLY 4 weeks, ordered ' +
       'from foundational to advanced: week 1 = fundamentals, week 2 = advanced/core concepts, week 3 ' +
       '= ecosystem/tooling and performance/best practices, week 4 = system design and interview ' +
-      'preparation. Each week has 1-3 main topics. Each topic needs: a short name, a one-sentence ' +
-      'description, 3-12 subtopic names, a realistic lessonsCount, and 0-4 quizzes (each quiz just a ' +
-      'title and a questionCount between 10 and 15 — do NOT write the actual quiz questions here). ' +
-      'Respond ONLY with JSON: { "weeks": [ { "weekNumber": number, "title": string, "topics": [ { ' +
-      '"name": string, "description": string, "subtopics": string[], "lessonsCount": number, ' +
-      '"quizzes": [ { "title": string, "questionCount": number } ] } ] } ] }.',
+      'preparation. Each week has 7-10 main topics, each covering a distinct concept area, ordered ' +
+      'from foundational to advanced within the week, so the week has real breadth and fully covers ' +
+      'that stage of the technology. Each topic needs: a short name, a one-sentence description, ' +
+      '7-10 subtopic names, a realistic lessonsCount, and 0-4 quizzes (each quiz just a title and a ' +
+      'questionCount between 10 and 15 — do NOT write the actual quiz questions here). Respond ONLY ' +
+      'with JSON: { "weeks": [ { "weekNumber": number, "title": string, "topics": [ { "name": ' +
+      'string, "description": string, "subtopics": string[], "lessonsCount": number, "quizzes": [ { ' +
+      '"title": string, "questionCount": number } ] } ] } ] }.',
     userPrompt: JSON.stringify({ technology: trimmedTechnology }),
-    maxOutputTokens: 8192,
+    maxOutputTokens: 24576,
   });
 
   const parsed = roadmapSkeletonSchema.safeParse(raw);
@@ -211,76 +201,66 @@ export async function getActiveRoadmap(uid: string): Promise<LearningRoadmapDoc>
 }
 
 /**
- * Returns cached AI notes for every subtopic under one main topic, generating + caching all of
- * them together in a single request the first time the user opens that topic. This lets the
- * frontend drive a "topic 1 -> topic 2 -> ..." flow: open a topic, read all its subtopic notes,
- * click next to open the following topic (which lazily generates its own batch the same way).
+ * Returns cached AI notes for a single subtopic, generating + caching it on demand the first
+ * time the user opens it. Each subtopic is its own Gemini call, which keeps notes long and
+ * detailed without hitting output token limits, and keeps cost/latency bounded to what the
+ * user actually visits.
  */
-export async function getOrGenerateTopicNotes(
+export async function getOrGenerateSubtopicNotes(
   uid: string,
-  topicId: string,
-): Promise<LearningTopicNotesDoc> {
+  subtopicId: string,
+): Promise<SubtopicNotesDoc> {
   const db = ensureAdmin();
   const roadmapSnap = await learningRoadmapRef(db, uid).get();
   if (!roadmapSnap.exists) {
     throw new AppError(404, 'No learning roadmap found for this account.');
   }
   const roadmap = roadmapSnap.data() as LearningRoadmapDoc;
-  const found = findTopic(roadmap, topicId);
+  const found = findSubtopic(roadmap, subtopicId);
   if (!found) {
-    throw new AppError(404, 'Topic not found in your learning roadmap.');
+    throw new AppError(404, 'Subtopic not found in your learning roadmap.');
   }
 
-  const notesRef = learningRoadmapTopicNotesRef(db, uid, topicId);
+  const notesRef = learningRoadmapSubtopicNotesRef(db, uid, subtopicId);
   const cached = await notesRef.get();
   if (cached.exists) {
-    return cached.data() as LearningTopicNotesDoc;
+    return cached.data() as SubtopicNotesDoc;
   }
 
-  const { topic } = found;
+  const { topic, subtopic } = found;
   const technology = roadmap.technology;
-  const subtopicNames = topic.subtopics.map((s) => s.name);
 
-  const raw = await generateJson<{ subtopics?: unknown }>({
+  const raw = await generateJson<{ summary?: unknown; sections?: unknown; keyTakeaways?: unknown }>({
     systemInstruction:
-      `Write detailed, beginner-friendly study notes for EVERY subtopic listed below, part of the ` +
-      `main topic "${topic.name}" while learning "${technology}". Each subtopic's notes should be ` +
-      'thorough enough to prepare for an interview question on it. Respond ONLY with JSON: { ' +
-      '"subtopics": [ { "summary": string, "sections": [ { "heading": string, "content": string, ' +
-      '"bullets": string[] (optional) } ], "keyTakeaways": string[] } ] }. The "subtopics" array ' +
-      'MUST have exactly one entry per input subtopic, in the exact same order. Keep each ' +
-      "subtopic's notes around 400-600 words across 2-4 sections.",
-    userPrompt: JSON.stringify({ topic: topic.name, technology, subtopics: subtopicNames }),
+      `Write in-depth, interview-ready study notes for the subtopic "${subtopic.name}", part of ` +
+      `the main topic "${topic.name}" while learning "${technology}". The notes must be ` +
+      'comprehensive enough to fully prepare for interview questions on it: explain the concept ' +
+      'thoroughly from first principles, include concrete examples or short code snippets where ' +
+      'relevant, and call out common pitfalls or angles interviewers probe. Respond ONLY with JSON: ' +
+      '{ "summary": string, "sections": [ { "heading": string, "content": string, "bullets": ' +
+      'string[] (optional) } ], "keyTakeaways": string[] }. Keep the notes around 1500-2200 words ' +
+      'across 5-9 sections, covering the subtopic in full detail rather than a short summary.',
+    userPrompt: JSON.stringify({ subtopic: subtopic.name, topic: topic.name, technology }),
     maxOutputTokens: 8192,
   });
 
-  const parsed = topicNotesBatchSchema.safeParse(raw);
+  const parsed = subtopicNotesSchema.safeParse(raw);
   if (!parsed.success) {
     throw new AppError(
       502,
-      `Invalid topic notes from Gemini: ${parsed.error.message}`,
-    );
-  }
-  if (parsed.data.subtopics.length !== topic.subtopics.length) {
-    throw new AppError(
-      502,
-      'Gemini returned a different number of subtopic notes than expected.',
+      `Invalid subtopic notes from Gemini: ${parsed.error.message}`,
     );
   }
 
-  const subtopics: SubtopicNotes[] = parsed.data.subtopics.map((entry, index) => ({
-    subtopicId: topic.subtopics[index].id,
-    subtopicName: topic.subtopics[index].name,
-    summary: entry.summary,
-    sections: entry.sections,
-    keyTakeaways: entry.keyTakeaways,
-  }));
-
-  const doc: LearningTopicNotesDoc = {
-    topicId,
+  const doc: SubtopicNotesDoc = {
+    subtopicId,
+    subtopicName: subtopic.name,
+    topicId: topic.id,
     topicName: topic.name,
     technology,
-    subtopics,
+    summary: parsed.data.summary,
+    sections: parsed.data.sections,
+    keyTakeaways: parsed.data.keyTakeaways,
     createdAt: FieldValue.serverTimestamp() as never,
   };
 

@@ -1,6 +1,6 @@
 /**
  * Zod schemas for AI-generated learning roadmap content (4-week skeleton,
- * per-topic batched subtopic notes, quiz questions).
+ * per-subtopic notes, quiz questions).
  */
 
 import { z } from 'zod';
@@ -16,7 +16,7 @@ export const roadmapSkeletonSchema = z.object({
             z.object({
               name: z.string().min(1),
               description: z.string().min(1),
-              subtopics: z.array(z.string().min(1)).min(3).max(12),
+              subtopics: z.array(z.string().min(1)).min(7).max(10),
               lessonsCount: z.number().int().min(1).max(60),
               quizzes: z
                 .array(
@@ -29,8 +29,8 @@ export const roadmapSkeletonSchema = z.object({
                 .max(4),
             }),
           )
-          .min(1)
-          .max(3),
+          .min(7)
+          .max(10),
       }),
     )
     .length(4),
@@ -38,7 +38,8 @@ export const roadmapSkeletonSchema = z.object({
 
 export type RoadmapSkeletonParsed = z.infer<typeof roadmapSkeletonSchema>;
 
-const subtopicNotesEntrySchema = z.object({
+/** One Gemini call now returns notes for exactly one subtopic (generated on demand). */
+export const subtopicNotesSchema = z.object({
   summary: z.string().min(1),
   sections: z
     .array(
@@ -48,15 +49,12 @@ const subtopicNotesEntrySchema = z.object({
         bullets: z.array(z.string().min(1)).optional(),
       }),
     )
-    .min(1),
+    .min(5)
+    .max(10),
   keyTakeaways: z.array(z.string().min(1)).min(1),
 });
 
-export const topicNotesBatchSchema = z.object({
-  subtopics: z.array(subtopicNotesEntrySchema).min(1),
-});
-
-export type TopicNotesBatchParsed = z.infer<typeof topicNotesBatchSchema>;
+export type SubtopicNotesParsed = z.infer<typeof subtopicNotesSchema>;
 
 export const quizQuestionsSchema = z
   .object({

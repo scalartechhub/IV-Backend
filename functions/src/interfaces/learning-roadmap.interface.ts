@@ -1,5 +1,5 @@
 // Path: users/{uid}/learningRoadmap/current
-// Subcollections: topicNotes/{topicId}, quizzes/{quizId}
+// Subcollections: subtopicNotes/{subtopicId}, quizzes/{quizId}
 import type { Timestamp } from 'firebase-admin/firestore';
 
 export interface RoadmapSubtopic {
@@ -60,25 +60,20 @@ export interface LearningTopicNotesSection {
   bullets?: string[];
 }
 
-/** Detailed AI-generated notes for a single subtopic, part of a topic-level batch. */
-export interface SubtopicNotes {
+/**
+ * Path: users/{uid}/learningRoadmap/current/subtopicNotes/{subtopicId}
+ * Detailed AI-generated notes for a single subtopic, generated on demand the first time the
+ * user opens that subtopic (one Gemini call per subtopic, not batched per topic).
+ */
+export interface SubtopicNotesDoc {
   subtopicId: string;
   subtopicName: string;
-  summary: string;
-  sections: LearningTopicNotesSection[];
-  keyTakeaways: string[];
-}
-
-/**
- * Path: users/{uid}/learningRoadmap/current/topicNotes/{topicId}
- * Notes for every subtopic under one main topic, generated together in a single AI call
- * the first time the user opens that topic.
- */
-export interface LearningTopicNotesDoc {
   topicId: string;
   topicName: string;
   technology: string;
-  subtopics: SubtopicNotes[];
+  summary: string;
+  sections: LearningTopicNotesSection[];
+  keyTakeaways: string[];
   createdAt: Timestamp;
 }
 

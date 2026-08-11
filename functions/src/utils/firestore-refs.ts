@@ -225,13 +225,13 @@ export function learningRoadmapRef(db: Firestore, uid: string) {
     .doc('current');
 }
 
-/** Cached AI-generated notes for every subtopic under one main topic, keyed by topicId. */
-export function learningRoadmapTopicNotesRef(
+/** Cached AI-generated notes for a single subtopic, keyed by subtopicId, generated on demand. */
+export function learningRoadmapSubtopicNotesRef(
   db: Firestore,
   uid: string,
-  topicId: string,
+  subtopicId: string,
 ) {
-  return learningRoadmapRef(db, uid).collection('topicNotes').doc(topicId);
+  return learningRoadmapRef(db, uid).collection('subtopicNotes').doc(subtopicId);
 }
 
 /** Cached AI-generated quiz questions for a single quiz, keyed by quizId. */
