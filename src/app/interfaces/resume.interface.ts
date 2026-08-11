@@ -21,6 +21,7 @@ export interface ResumeWorkingWellItem {
 
 /** Nested analysis block on users/{uid}/resumes/{resumeId} */
 export interface ResumeAnalysis {
+  isCoder?: boolean;
   overallScore: number;
   atsScore: number;
   impactScore: number;

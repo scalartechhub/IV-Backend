@@ -5,6 +5,7 @@
  */
 
 const RESUME_REVIEW_SHAPE = `{
+  "isCoder": boolean,
   "experienceLevel": string (e.g. "Mid-Senior Level"),
   "scores": { "overall": 0-100, "overallMessage": string (max 4 words), "impact": 0-100, "content": 0-100, "structure": 0-100, "ats": 0-100, "relevance": 0-100, "peerPercentile": 0-100 },
   "scoreLabels": { "impact": string, "content": string, "structure": string, "ats": string, "relevance": string },

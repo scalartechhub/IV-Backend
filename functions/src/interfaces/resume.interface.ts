@@ -156,6 +156,7 @@ export interface ResumeDetailedMetrics {
  * from the rich fields in resume.service.ts — Gemini only ever produces the rich shape.
  */
 export interface ResumeAnalysis {
+  isCoder?: boolean;
   /* Legacy (derived) — kept for backward compatibility */
   overallScore: number;
   atsScore: number;
@@ -354,6 +355,7 @@ export interface ResumeDoc {
 export type OnboardingAnalysisDoc = ResumeDoc;
 
 export interface ResumeAnalysisPayload {
+  isCoder?: boolean;
   resumeId: string;
   analysisId: string;
   fileName: string;

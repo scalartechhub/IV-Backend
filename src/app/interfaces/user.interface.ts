@@ -105,4 +105,5 @@ export interface UserDoc {
   subscription: UserSubscription;
   // TODO: stats not in architecture §1 — denormalized counters for achievement rules
   stats?: UserStats;
+  isCoder?: boolean;
 }
