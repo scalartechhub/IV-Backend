@@ -68,7 +68,7 @@ const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
 
 /** Gemini 2.x thinking models accept thinkingConfig; older models reject it. */
 const supportsThinkingConfig = (model: string): boolean =>
-  /gemini-2\./i.test(model);
+  /gemini-[23]\./i.test(model);
 
 export type GenerateJSONOptions = {
   maxOutputTokens?: number;

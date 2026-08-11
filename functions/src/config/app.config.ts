@@ -8,7 +8,7 @@ const appConfigSchema = z.object({
   PORT: z.string().default("5000"),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   FIREBASE_STORAGE_BUCKET: z.string().optional(),
-  GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
+  GEMINI_MODEL: z.string().default("gemini-3.6-flash"),
   GEMINI_LIVE_MODEL: z
     .string()
     .default("gemini-2.5-flash-native-audio-preview-12-2025"),

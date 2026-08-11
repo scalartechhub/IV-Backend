@@ -45,7 +45,7 @@ function applyRuntimeEnv(): void {
   process.env.RAZORPAY_KEY_ID = razorpayKeyId.value();
   process.env.RAZORPAY_KEY_SECRET = razorpayKeySecret.value();
   process.env.RAZORPAY_WEBHOOK_SECRET = razorpayWebhookSecret.value();
-  process.env.GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+  process.env.GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-3.6-flash";
   process.env.GEMINI_TIMEOUT_MS = process.env.GEMINI_TIMEOUT_MS ?? "120000";
   process.env.FIREBASE_STORAGE_BUCKET =
     process.env.STORAGE_BUCKET ??

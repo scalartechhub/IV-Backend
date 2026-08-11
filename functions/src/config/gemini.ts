@@ -4,14 +4,18 @@ import { secretService } from "./secrets";
 import { logger } from "../shared/logger";
 import { AppError } from "../shared/utils";
 
-const SECONDARY_FALLBACK_MODEL = "gemini-1.5-flash";
+const SECONDARY_FALLBACK_MODEL = "gemini-3.1-flash-lite";
+const TERTIARY_FALLBACK_MODEL = "gemini-2.0-flash";
 
 export const GEMINI_MODEL = appConfig.geminiModel;
 
-export const GEMINI_FALLBACK_MODELS: readonly string[] =
-  GEMINI_MODEL === SECONDARY_FALLBACK_MODEL
-    ? [GEMINI_MODEL]
-    : [GEMINI_MODEL, SECONDARY_FALLBACK_MODEL];
+export const GEMINI_FALLBACK_MODELS: readonly string[] = Array.from(
+  new Set(
+    GEMINI_MODEL === SECONDARY_FALLBACK_MODEL
+      ? [GEMINI_MODEL, TERTIARY_FALLBACK_MODEL]
+      : [GEMINI_MODEL, SECONDARY_FALLBACK_MODEL, TERTIARY_FALLBACK_MODEL],
+  ),
+);
 
 export const GEMINI_REQUEST_TIMEOUT_MS = appConfig.geminiTimeoutMs;
 
