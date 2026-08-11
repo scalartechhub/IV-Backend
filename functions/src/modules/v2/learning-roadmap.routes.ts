@@ -15,7 +15,6 @@ const generateBodySchema = z.object({
   technology: z.string().min(1),
 });
 
-const topicIdParamSchema = z.object({ topicId: z.string().min(1) });
 const subtopicIdParamSchema = z.object({ subtopicId: z.string().min(1) });
 const quizIdParamSchema = z.object({ quizId: z.string().min(1) });
 const submitQuizBodySchema = z.object({
@@ -43,14 +42,14 @@ router.get(
 );
 
 router.get(
-  '/topics/:topicId/notes',
-  validate(topicIdParamSchema, 'params'),
+  '/subtopics/:subtopicId/notes',
+  validate(subtopicIdParamSchema, 'params'),
   asyncHandler(async (req, res) => {
-    const result = await learningRoadmapService.getOrGenerateTopicNotes(
+    const result = await learningRoadmapService.getOrGenerateSubtopicNotes(
       req.user!.uid,
-      String(req.params.topicId),
+      String(req.params.subtopicId),
     );
-    sendSuccess(res, result, 'Topic notes fetched');
+    sendSuccess(res, result, 'Subtopic notes fetched');
   }),
 );
 
