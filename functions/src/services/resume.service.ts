@@ -72,6 +72,7 @@ function buildResumeAnalysisFromReview(
     .map((s) => ({ id: s.id, text: s.text }));
 
   return {
+    isCoder: parsed.isCoder,
     // Legacy (derived)
     overallScore: parsed.scores.overall,
     atsScore: parsed.scores.ats,
@@ -692,6 +693,7 @@ function parseYearsExperience(raw: string | undefined): number | undefined {
 export async function mergeUserOnboardingFromPlan(
   uid: string,
   plan: ResumeOnboardingPlanParsed & { generatedAt: string },
+  isCoder: boolean,
   targetRole?: string,
 ): Promise<void> {
   const db = ensureAdmin();
@@ -819,6 +821,7 @@ export async function mergeUserOnboardingFromPlan(
       onboarding: nextOnboarding,
       resumeAnalysisCompleted: true,
       onboardingAnalysisCompleted: true,
+      isCoder,
       updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true },
@@ -840,6 +843,7 @@ function toAtsAnalysisFieldUpdates(
   ats: ResumeAnalysis,
 ): Record<string, unknown> {
   return {
+    'analysis.isCoder': ats.isCoder ?? false,
     // Legacy (derived) fields
     'analysis.overallScore': ats.overallScore,
     'analysis.atsScore': ats.atsScore,
@@ -1035,11 +1039,17 @@ export async function analyzeResume(
 
   // Seed users/{uid}.onboarding in background — analysis doc is source of truth for API response.
   const userPersist = onboardingPlan
-    ? mergeUserOnboardingFromPlan(uid, onboardingPlan, storedTargetRole)
+    ? mergeUserOnboardingFromPlan(
+        uid,
+        onboardingPlan,
+        Boolean(atsAnalysis.isCoder),
+        storedTargetRole,
+      )
     : userRef(db, uid).set(
         {
           resumeAnalysisCompleted: true,
           onboardingAnalysisCompleted: true,
+          isCoder: Boolean(atsAnalysis.isCoder),
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true },
@@ -1066,6 +1076,7 @@ export async function analyzeResume(
     : nowIso;
 
   return {
+    isCoder: atsAnalysis.isCoder,
     // New results-page contract
     resumeId,
     analysisId,

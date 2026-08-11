@@ -160,6 +160,7 @@ export interface User {
   stats?: UserStats;
   /** Dashboard interview analytics (aggregated, not full interview docs) */
   interview?: UserAnalytics;
+  isCoder?: boolean;
   subscription?: UserSubscription;
   resume?: UserResume;
   createdAt: Timestamp;
@@ -192,6 +193,7 @@ export interface UserResponse {
   preferences?: UserPreferences;
   stats?: UserStats;
   interview?: UserAnalytics;
+  isCoder?: boolean;
   subscription?: UserSubscription;
   resume?: UserResume;
 }

@@ -146,6 +146,7 @@ export interface UserDoc {
    * Path: users/{uid}/onboarding/analysis
    */
   onboardingAnalysisCompleted?: boolean;
+  isCoder?: boolean;
   /**
    * Average of each skill across the candidate's last 5 completed interviews,
    * plus totalScore (average of all 6 skills). Recomputed after every

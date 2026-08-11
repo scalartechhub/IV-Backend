@@ -29,8 +29,17 @@ import {
 
 export type AnalyzeFromAnswersInput = QaOnboardingAnswers;
 
+function inferIsCoderFromRole(role: string): boolean {
+  const value = role.trim().toLowerCase();
+  if (!value) return false;
+  return /software|developer|engineer|frontend|backend|full.?stack|web|mobile|react|angular|vue|node|java|python|javascript|typescript|c\+\+|c#|golang|devops|data|ml|ai|cloud|sde/.test(
+    value,
+  );
+}
+
 /** Q&A onboarding never runs the resume ATS reviewer — everything is zeroed/empty. */
 const EMPTY_ATS: Omit<ResumeAnalysis, 'onboarding' | 'extractedText'> = {
+  isCoder: false,
   overallScore: 0,
   atsScore: 0,
   impactScore: 0,
@@ -197,7 +206,12 @@ export async function analyzeFromAnswers(
 
   await ref.set(doc, { merge: true });
 
-  void mergeUserOnboardingFromPlan(uid, onboardingPlan, storedTargetRole).catch(
+  void mergeUserOnboardingFromPlan(
+    uid,
+    onboardingPlan,
+    inferIsCoderFromRole(storedTargetRole),
+    storedTargetRole,
+  ).catch(
     (err: unknown) => {
       logger.error('[onboarding.service] background user persist failed', {
         uid,

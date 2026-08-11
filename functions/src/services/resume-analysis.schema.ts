@@ -109,6 +109,7 @@ const detailedMetricsSchema = z.object({
 });
 
 export const resumeReviewSchema = z.object({
+  isCoder: z.boolean().optional(),
   experienceLevel: z.string().min(1),
   scores: scoreBlockSchema,
   scoreLabels: scoreLabelsSchema.optional(),
@@ -126,6 +127,64 @@ export const resumeReviewSchema = z.object({
 });
 
 export type ResumeReviewParsed = z.infer<typeof resumeReviewSchema>;
+
+function inferIsCoder(targetRole: string, rawRoleMatches: unknown, rawRecommendedSkills: unknown): boolean {
+  const codingKeywords = [
+    'software',
+    'developer',
+    'engineer',
+    'frontend',
+    'backend',
+    'full stack',
+    'full-stack',
+    'web',
+    'mobile',
+    'react',
+    'angular',
+    'vue',
+    'node',
+    'java',
+    'python',
+    'javascript',
+    'typescript',
+    'c++',
+    'c#',
+    'golang',
+    'devops',
+    'data',
+    'ml',
+    'ai',
+    'cloud',
+    'sde',
+  ];
+  const nonCodingKeywords = [
+    'hr',
+    'human resources',
+    'sales',
+    'marketing',
+    'finance',
+    'account',
+    'accountant',
+    'recruiter',
+    'operations',
+    'business development',
+  ];
+  const roleTexts = Array.isArray(rawRoleMatches)
+    ? rawRoleMatches
+        .map((item) => {
+          const obj = (item ?? {}) as Record<string, unknown>;
+          return String(obj.role ?? '').toLowerCase();
+        })
+        .filter(Boolean)
+    : [];
+  const skillTexts = asStringArray(rawRecommendedSkills).map((s) => s.toLowerCase());
+  const bag = [targetRole.toLowerCase(), ...roleTexts, ...skillTexts].join(' ');
+  const hasNonCoding = nonCodingKeywords.some((k) => bag.includes(k));
+  const hasCoding = codingKeywords.some((k) => bag.includes(k));
+  if (hasCoding) return true;
+  if (hasNonCoding) return false;
+  return false;
+}
 
 /** Fixed section ids Gemini is asked to always return, in this order. */
 export const RESUME_SECTION_IDS = [
@@ -466,8 +525,14 @@ export function normalizeRawResumeReview(raw: unknown, targetRole?: string): unk
   const scores = normalizeScoreBlock(data.scores);
   const ats = normalizeAts(data.ats, (scores as { ats: number }).ats);
   const scoreLabels = normalizeScoreLabels(data.scoreLabels);
+  const inferredIsCoder = inferIsCoder(
+    targetRole ?? '',
+    data.roleMatches,
+    data.recommendedSkills,
+  );
 
   return {
+    isCoder: typeof data.isCoder === 'boolean' ? data.isCoder : inferredIsCoder,
     experienceLevel: String(data.experienceLevel ?? 'Mid-Level').trim() || 'Mid-Level',
     scores,
     ...(scoreLabels ? { scoreLabels } : {}),
