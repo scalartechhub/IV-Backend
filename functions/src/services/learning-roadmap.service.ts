@@ -31,6 +31,10 @@ import {
 
 const PASS_THRESHOLD = 60;
 
+function stripWeekNumberFromTitle(title: string): string {
+  return title.replace(/^\s*week\s*\d+\s*[:.\-–—]?\s*/i, '').trim() || title.trim();
+}
+
 function computeTopicState(topic: RoadmapTopic): RoadmapTopic {
   const totalItems = topic.subtopics.length + topic.quizzes.length;
   const completedItems =
@@ -54,6 +58,7 @@ function computeWeekState(weeks: RoadmapWeek[]): RoadmapWeek[] {
     const topics = week.topics.map(computeTopicState);
     return {
       ...week,
+      title: stripWeekNumberFromTitle(week.title),
       topics,
       unlocked: index === 0 || weeks[index - 1].interview?.passed === true,
       interviewUnlocked: topics.every((topic) => topic.isComplete),
@@ -116,7 +121,8 @@ export async function generateRoadmap(
       'from the basics toward job-interview readiness. Split the plan into EXACTLY 4 weeks, ordered ' +
       'from foundational to advanced: week 1 = fundamentals, week 2 = advanced/core concepts, week 3 ' +
       '= ecosystem/tooling and performance/best practices, week 4 = system design and interview ' +
-      'preparation. Each week has 7-10 main topics, each covering a distinct concept area, ordered ' +
+      'preparation. Each week title is the theme only (e.g. "Angular Fundamentals"), never include ' +
+      '"Week 1" or a week number in the title. Each week has 7-10 main topics, each covering a distinct concept area, ordered ' +
       'from foundational to advanced within the week, so the week has real breadth and fully covers ' +
       'that stage of the technology. Each topic needs: a short name, a one-sentence description, ' +
       '7-10 subtopic names, a realistic lessonsCount, and 0-4 quizzes (each quiz just a title and a ' +
@@ -170,7 +176,7 @@ export async function generateRoadmap(
     });
     return {
       weekNumber,
-      title: week.title,
+      title: stripWeekNumberFromTitle(week.title),
       unlocked: weekNumber === 1,
       isComplete: false,
       interviewUnlocked: false,

@@ -16,7 +16,7 @@ export const roadmapSkeletonSchema = z.object({
             z.object({
               name: z.string().min(1),
               description: z.string().min(1),
-              subtopics: z.array(z.string().min(1)).min(7).max(10),
+              subtopics: z.array(z.string().min(1)).min(1).max(10),
               lessonsCount: z.number().int().min(1).max(60),
               quizzes: z
                 .array(
@@ -29,7 +29,7 @@ export const roadmapSkeletonSchema = z.object({
                 .max(4),
             }),
           )
-          .min(7)
+          .min(1)
           .max(10),
       }),
     )
