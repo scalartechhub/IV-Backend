@@ -30,6 +30,7 @@ Counts (concise text, max 90 chars per description/reason):
   "AWS"), ordered most-to-least relevant to the resume and target role — used as the technology picker for the
   candidate's Week 1 study roadmap
 - priorityPreparationAreas: 4-6
+- jobRoleRecommendation: exactly one role title only, based on the candidate's most likely current/professional role from the resume; no commas, slashes, "and", "or", or multi-role lists
 All content must be grounded in the resume — no generic filler.`.trim();
 }
 

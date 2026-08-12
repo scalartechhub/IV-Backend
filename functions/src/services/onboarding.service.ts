@@ -178,7 +178,7 @@ export async function analyzeFromAnswers(
   const storedTargetRole =
     onboardingPlan.jobRoleRecommendation?.trim() ||
     answers.roleLabel.trim() ||
-    'Software Engineer';
+    'Professional';
 
   const version = existing.exists
     ? ((existing.data()?.version ?? 0) as number) + 1

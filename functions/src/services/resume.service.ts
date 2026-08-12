@@ -455,7 +455,7 @@ export function normalizeRawOnboarding(raw: unknown): unknown {
       data.industryRecommendation ?? 'Technology',
     ).trim(),
     jobRoleRecommendation: String(
-      data.jobRoleRecommendation ?? 'Software Engineer',
+      data.jobRoleRecommendation ?? 'Professional',
     ).trim(),
     experienceLevelPrediction: String(
       data.experienceLevelPrediction ?? 'Mid-level',
@@ -686,6 +686,16 @@ function parseYearsExperience(raw: string | undefined): number | undefined {
   return Number.isFinite(n) ? Math.round(n) : undefined;
 }
 
+function normalizeSingleRole(raw: string | undefined, fallback = 'Professional'): string {
+  const value = raw?.trim();
+  if (!value) return fallback;
+  const first = value
+    .split(/\s*(?:,|\/|\||\band\b|\bor\b)\s*/i)
+    .map((part) => part.trim())
+    .find(Boolean);
+  return first || fallback;
+}
+
 /**
  * Merge onboarding plan into users/{uid}.onboarding and profile fields
  * without overwriting values the user already set.
@@ -718,7 +728,7 @@ export async function mergeUserOnboardingFromPlan(
   const nextOnboarding: UserOnboardingSnapshot = {
     selectedRole: preferExistingText(
       existingOnboarding?.selectedRole,
-      plan.jobRoleRecommendation || targetRole,
+      normalizeSingleRole(plan.jobRoleRecommendation || targetRole, ''),
     ),
     experience: preferExistingText(
       existingOnboarding?.experience,
@@ -731,7 +741,7 @@ export async function mergeUserOnboardingFromPlan(
     ),
     careerGoal: preferExistingText(
       existingOnboarding?.careerGoal,
-      `Prepare for ${plan.jobRoleRecommendation || targetRole} interviews`,
+      `Prepare for ${normalizeSingleRole(plan.jobRoleRecommendation || targetRole)} interviews`,
     ),
     preparationRoadmap:
       existingOnboarding?.preparationRoadmap &&
@@ -787,7 +797,7 @@ export async function mergeUserOnboardingFromPlan(
 
   if (isDefaultRole && (plan.jobRoleRecommendation || targetRole)) {
     profileUpdates['profile.targetRole'] =
-      plan.jobRoleRecommendation || targetRole;
+      normalizeSingleRole(plan.jobRoleRecommendation || targetRole);
   }
 
   if (
@@ -795,7 +805,7 @@ export async function mergeUserOnboardingFromPlan(
       existingProfile.currentRole === 'Software Developer') &&
     plan.jobRoleRecommendation
   ) {
-    profileUpdates['profile.currentRole'] = plan.jobRoleRecommendation;
+    profileUpdates['profile.currentRole'] = normalizeSingleRole(plan.jobRoleRecommendation);
   }
 
   if (
@@ -980,11 +990,12 @@ export async function analyzeResume(
 
   // Prefer explicit client role; otherwise use onboarding inference / existing doc.
   const storedTargetRole =
-    input.targetRole?.trim() ||
-    onboardingPlan?.jobRoleRecommendation?.trim() ||
-    existingOnboarding?.jobRoleRecommendation?.trim() ||
+    normalizeSingleRole(input.targetRole, '') ||
+    normalizeSingleRole(onboardingPlan?.jobRoleRecommendation, '') ||
+    normalizeSingleRole(atsAnalysis.roleMatches?.[0]?.role, '') ||
+    normalizeSingleRole(existingOnboarding?.jobRoleRecommendation, '') ||
     (existing.exists ? String(existingData?.targetRole ?? '').trim() : '') ||
-    'Software Engineer';
+    'Professional';
 
   const fileType = deriveFileType(input.fileName);
 
