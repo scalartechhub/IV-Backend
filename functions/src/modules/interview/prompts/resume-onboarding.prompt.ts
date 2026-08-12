@@ -6,7 +6,7 @@
 import type { ResumeAnalysis } from '../../../interfaces/resume.interface';
 
 export function buildResumeOnboardingSystemInstruction(): string {
-  return `You are an expert career coach and technical interview preparation architect.
+  return `You are an expert career coach and interview preparation architect.
 Respond ONLY with valid raw JSON. No markdown. No code fences. No explanations.
 
 Generate a personalized interview-preparation onboarding plan from the resume analysis and resume text.
@@ -141,7 +141,9 @@ HARD CONSTRAINTS:
   these become the technology choices the candidate picks from to generate their Week 1 study roadmap
 - priorityPreparationAreas: 3 to 8 areas
 - resource type MUST be one of: Official Docs | Course | Book | YouTube | Practice Platform | GitHub
-- skill levels MUST be one of: Beginner | Intermediate | Advanced | Expert`.trim();
+- skill levels MUST be one of: Beginner | Intermediate | Advanced | Expert
+- jobRoleRecommendation MUST be exactly one role title only, based on the candidate's most likely current/professional role from the resume
+- jobRoleRecommendation MUST NOT contain commas, slashes, "and", "or", multiple roles, examples, or a list`.trim();
 }
 
 export function buildResumeOnboardingUserPrompt(input: {
