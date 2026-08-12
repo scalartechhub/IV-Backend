@@ -76,6 +76,9 @@ export function updateStreak(
       'gamification.streakCount': result.streakCount,
       'gamification.longestStreak': result.longestStreak,
       'gamification.lastActiveDate': result.lastActiveDate,
+      // Dual-write flat fields for dashboard / legacy clients
+      streakDays: result.streakCount,
+      currentStreak: result.streakCount,
     });
   }
 
