@@ -1,16 +1,22 @@
 import Razorpay from "razorpay";
 import { AppError } from "../shared/utils";
+import { firestoreConfigService } from "./firestore-config.service";
 
 let razorpayInstance: Razorpay | null = null;
 
-export const isRazorpayConfigured = (): boolean =>
-  Boolean(process.env.RAZORPAY_KEY_ID?.trim() && process.env.RAZORPAY_KEY_SECRET?.trim());
+export const getRazorpayConfig = () => {
+  const config = firestoreConfigService.getRazorpayConfig();
+  return {
+    keyId: (config.keyId || process.env.RAZORPAY_KEY_ID || "").trim(),
+    keySecret: (config.keySecret || process.env.RAZORPAY_KEY_SECRET || "").trim(),
+    webhookSecret: (config.webhookSecret || process.env.RAZORPAY_WEBHOOK_SECRET || "").trim(),
+  };
+};
 
-export const getRazorpayConfig = () => ({
-  keyId: process.env.RAZORPAY_KEY_ID?.trim() ?? "",
-  keySecret: process.env.RAZORPAY_KEY_SECRET?.trim() ?? "",
-  webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET?.trim() ?? "",
-});
+export const isRazorpayConfigured = (): boolean => {
+  const { keyId, keySecret } = getRazorpayConfig();
+  return Boolean(keyId && keySecret);
+};
 
 /** Lazily initialized so the app can start when Razorpay env vars are unset (non-payment routes). */
 export const getRazorpay = (): Razorpay => {

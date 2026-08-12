@@ -1,5 +1,6 @@
 import sgMail from '@sendgrid/mail';
 import { AppError } from '../../shared/utils';
+import { firestoreConfigService } from '../../config/firestore-config.service';
 
 export interface ContactFormData {
   fullName: string;
@@ -17,10 +18,11 @@ const esc = (s: string): string =>
 
 /**
  * Initialises the SendGrid client once using the runtime API key.
- * Called lazily on the first send so that Firebase secrets are available.
+ * Reads from Firestore config/sendgrid document with fallback to process.env.
  */
 function getSgClient(): typeof sgMail {
-  const apiKey = process.env.SENDGRID_API_KEY;
+  const config = firestoreConfigService.getSendGridConfig();
+  const apiKey = config.apiKey || process.env.SENDGRID_API_KEY;
   if (!apiKey) {
     throw new AppError(503, 'Email service is not configured. Please contact support.');
   }
@@ -28,16 +30,17 @@ function getSgClient(): typeof sgMail {
   return sgMail;
 }
 
-const OWNER_EMAIL = 'ashishgupta95652@gmail.com';
-
 export async function sendContactEmail(data: ContactFormData): Promise<void> {
   const client = getSgClient();
+  const config = firestoreConfigService.getSendGridConfig();
 
   const { fullName, email, subject, message } = data;
-  const fromEmail = process.env.SENDGRID_FROM_EMAIL!;
+  const fromEmail = config.fromEmail || process.env.SENDGRID_FROM_EMAIL || 'info@scalartechhub.com';
+  const ownerEmail = config.ownerEmail || process.env.OWNER_EMAIL || 'ashishgupta95652@gmail.com';
+
 
   await client.send({
-    to: OWNER_EMAIL,
+    to: ownerEmail,
     from: { email: fromEmail, name: 'Scalar Techhub' },
     replyTo: { email, name: fullName },
     subject: `Contact Form: ${esc(subject)}`,

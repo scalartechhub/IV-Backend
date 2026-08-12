@@ -11,6 +11,7 @@
     "deploy-functions": "firebase deploy --only functions --force --project=interview-89e09",
     "emulators:start": "firebase emulators:start --project=interview-89e09",
     "sync:secrets": "node scripts/sync-firebase-secrets.js",
+    "sync:firebase-config": "node scripts/sync-env-to-firestore.js",
     "seed": "node scripts/seed.js",
     "seed:career-catalog": "node scripts/seed-career-catalog.js",
     "seed:coding": "node scripts/seed-coding-problems.js",

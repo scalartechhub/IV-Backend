@@ -4,6 +4,7 @@
  */
 
 import { GoogleGenAI, Modality } from '@google/genai';
+import { firestoreConfigService } from '../config/firestore-config.service';
 
 const DEFAULT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
 
@@ -19,7 +20,8 @@ let client: GoogleGenAI | null = null;
 /** Shared GoogleGenAI client, reused by text generation and the v2 live WS bridge. */
 export function getClient(): GoogleGenAI {
   if (!client) {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const config = firestoreConfigService.getGenAIConfig();
+    const apiKey = config.apiKey || process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error('GEMINI_API_KEY is not configured');
     }

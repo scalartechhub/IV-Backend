@@ -4,6 +4,8 @@ import { secretService } from "./secrets";
 import { logger } from "../shared/logger";
 import { AppError } from "../shared/utils";
 
+import { firestoreConfigService } from "./firestore-config.service";
+
 const SECONDARY_FALLBACK_MODEL = "gemini-1.5-flash";
 
 export const GEMINI_MODEL = appConfig.geminiModel;
@@ -19,7 +21,8 @@ let _genai: GoogleGenAI | null = null;
 
 export const initializeGemini = (): void => {
   if (_genai) return;
-  _genai = new GoogleGenAI({ apiKey: secretService.getGeminiApiKey() });
+  const apiKey = firestoreConfigService.getGenAIConfig().apiKey || secretService.getGeminiApiKey();
+  _genai = new GoogleGenAI({ apiKey });
 };
 
 export const getGenAI = (): GoogleGenAI => {

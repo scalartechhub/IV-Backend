@@ -4,6 +4,7 @@ import type { ServiceAccount } from "firebase-admin/app";
 import type { AppSecrets, FirebaseCredentials } from "../secret.types";
 import { isCloudRuntime } from "../../../shared/runtime";
 import type { SecretProvider } from "./secret-provider.interface";
+import { firestoreConfigService } from "../../firestore-config.service";
 
 const normalizePrivateKey = (key: string): string => key.replace(/\\n/g, "\n");
 
@@ -85,12 +86,15 @@ const loadFirebaseCredentials = (): FirebaseCredentials => {
 };
 
 /**
- * Loads secrets from environment variables (local dev, Docker, CI).
+ * Loads secrets from Firestore config documents or environment variables (local dev, Docker, CI).
  */
 export class EnvSecretProvider implements SecretProvider {
   load(): AppSecrets {
-    const geminiApiKey = process.env.GEMINI_API_KEY?.trim() ?? "";
-    const firebaseApiKey = process.env.FIREBASE_API_KEY?.trim() ?? "";
+    const genaiConfig = firestoreConfigService.getGenAIConfig();
+    const firebaseConfig = firestoreConfigService.getFirebaseConfig();
+
+    const geminiApiKey = (genaiConfig.apiKey || process.env.GEMINI_API_KEY || "").trim();
+    const firebaseApiKey = (firebaseConfig.apiKey || process.env.FIREBASE_API_KEY || "").trim();
     const jwtSecret = process.env.JWT_SECRET?.trim() || undefined;
     const smtpPassword = process.env.SMTP_PASSWORD?.trim() || undefined;
 
