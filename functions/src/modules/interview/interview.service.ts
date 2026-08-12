@@ -479,7 +479,7 @@ export const finishInterview = async (
     const totalScore = calculateInterviewTotalScore(interview.questions);
 
     let report: InterviewReport;
-    if (interview.questions.length === 0) {
+    if (submission.answeredCount === 0) {
       report = buildNoParticipationReport();
     } else {
       const rawReport = await generateReport({

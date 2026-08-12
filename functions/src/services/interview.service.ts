@@ -17,7 +17,11 @@ import type { GoalDoc } from '../interfaces/user.interface';
 import { buildGeminiSessionConfig } from '../library/gemini-client';
 import { applyLevelUpdate, resolveLevel } from '../library/level';
 import { writeReadiness } from '../library/readiness';
-import { scoreInterview } from '../library/scoring';
+import {
+  countCandidateAnswers,
+  countCandidateAnswersFromTranscript,
+  scoreInterview,
+} from '../library/scoring';
 import { updateUserSkillSignals } from '../library/skill-signals';
 import { refreshCareerProgressForUser } from './career-progress.service';
 import { loadTopicProfile, updateTopicProfile } from '../library/topic-profile';
@@ -699,9 +703,14 @@ export async function completeInterview(
   }).catch((err: unknown) => {
     console.error('[completeInterview] checkAchievements failed', err);
   });
-  await generateReport(uid, interviewId, results).catch((err: unknown) => {
-    console.error('[completeInterview] generateReport failed', err);
-  });
+  const answeredCount =
+    countCandidateAnswers(interview.conversation) ||
+    countCandidateAnswersFromTranscript(resolvedTranscript);
+  if (answeredCount > 0) {
+    await generateReport(uid, interviewId, results).catch((err: unknown) => {
+      console.error('[completeInterview] generateReport failed', err);
+    });
+  }
   await updateTopicProfile(db, uid, results.topicOutcomes ?? []).catch(
     (err: unknown) => {
       console.error('[completeInterview] updateTopicProfile failed', err);
