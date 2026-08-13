@@ -49,12 +49,26 @@ class FirestoreConfigService {
   private configCache: Partial<FirestoreConfigMap> = {};
   private loaded = false;
 
+  clearCache(): void {
+    this.loaded = false;
+    this.configCache = {};
+  }
+
+  async refreshConfig(): Promise<FirestoreConfigMap> {
+    this.clearCache();
+    return this.loadConfigFromFirestore();
+  }
+
   /**
    * Fetches all configuration documents from the 'config' collection in Firestore.
    * If a document or key is missing, falls back to process.env.
    * Caches results in memory for subsequent synchronous or fast access.
    */
-  async loadConfigFromFirestore(): Promise<FirestoreConfigMap> {
+  async loadConfigFromFirestore(forceRefresh = false): Promise<FirestoreConfigMap> {
+    if (forceRefresh) {
+      this.clearCache();
+    }
+
     if (this.loaded) {
       return this.configCache as FirestoreConfigMap;
     }

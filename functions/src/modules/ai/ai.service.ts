@@ -15,7 +15,8 @@ const BILLING_QUOTA_PATTERN =
 
 const RATE_LIMIT_PATTERN = /429|RESOURCE_EXHAUSTED|rate.?limit|too many requests/i;
 
-const INVALID_API_KEY_PATTERN = /api.?key|invalid.*key|API_KEY_INVALID|permission denied/i;
+const INVALID_API_KEY_PATTERN =
+  /api.?key|invalid.*key|API_KEY_INVALID|permission denied|UNAUTHENTICATED|ACCESS_TOKEN_TYPE_UNSUPPORTED|invalid authentication credentials|OAuth 2/i;
 
 const trimPrompt = (prompt: string): string =>
   prompt.length > MAX_PROMPT_CHARS ? prompt.slice(0, MAX_PROMPT_CHARS) : prompt;
@@ -160,16 +161,15 @@ export class AIService {
 
           if (isInvalidApiKeyError(error)) {
             console.error(
-              `[Gemini] ❌ Invalid or missing API key.\n` +
+              `[Gemini] ❌ Invalid or unauthorized API key.\n` +
               `  HOW TO FIX:\n` +
-              `  1. Open your .env file and check that GEMINI_API_KEY is set correctly.\n` +
-              `  2. Get a valid key from: https://aistudio.google.com/app/apikey\n` +
-              `  3. Restart the server after updating the key.\n` +
+              `  1. Get a valid Google AI Studio key (starts with AIzaSy...): https://aistudio.google.com/app/apikey\n` +
+              `  2. Update Firestore collection "config", document "genai" (field: apiKey) or your .env file.\n` +
               `  Raw error: ${errorMessage(error)}`
             );
             throw new AppError(
               401,
-              "Gemini API key is invalid or missing. Please contact support."
+              "Gemini API authentication failed: Invalid, unauthorized, or expired API key. Please check your Google AI Studio key (starting with AIzaSy...) in Firestore config/genai or .env."
             );
           }
 

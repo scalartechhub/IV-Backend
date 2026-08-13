@@ -62,17 +62,21 @@ export const initializeFirebase = (): void => {
     adminApp = initializeApp({
       ...(_storageBucket && { storageBucket: _storageBucket }),
     });
+  } else if (localServiceAccount) {
+    adminApp = initializeApp({
+      credential: cert(localServiceAccount),
+      projectId: localServiceAccount.project_id,
+      ...(_storageBucket && { storageBucket: _storageBucket }),
+    });
   } else {
     const credentials = secretService.getFirebaseCredentials();
     adminApp = initializeApp({
-      credential: localServiceAccount
-        ? cert(localServiceAccount)
-        : cert({
-            projectId: credentials.projectId,
-            clientEmail: credentials.clientEmail,
-            privateKey: credentials.privateKey,
-          }),
-      projectId: localServiceAccount?.project_id ?? credentials.projectId,
+      credential: cert({
+        projectId: credentials.projectId,
+        clientEmail: credentials.clientEmail,
+        privateKey: credentials.privateKey,
+      }),
+      projectId: credentials.projectId,
       ...(_storageBucket && { storageBucket: _storageBucket }),
     });
   }

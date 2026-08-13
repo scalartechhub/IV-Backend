@@ -6,6 +6,8 @@
 import { GoogleGenAI, Modality } from '@google/genai';
 import { firestoreConfigService } from '../config/firestore-config.service';
 
+import { AppError } from '../shared/utils';
+
 const DEFAULT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
 
 /** Faster model for resume scoring when set (e.g. gemini-2.0-flash). */
@@ -16,17 +18,25 @@ const supportsThinkingConfig = (model: string): boolean =>
   /gemini-2\./i.test(model);
 
 let client: GoogleGenAI | null = null;
+let currentApiKey: string | null = null;
 
 /** Shared GoogleGenAI client, reused by text generation and the v2 live WS bridge. */
 export function getClient(): GoogleGenAI {
-  if (!client) {
-    const config = firestoreConfigService.getGenAIConfig();
-    const apiKey = config.apiKey || process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error('GEMINI_API_KEY is not configured');
-    }
+  const config = firestoreConfigService.getGenAIConfig();
+  const apiKey = (config.apiKey || process.env.GEMINI_API_KEY || '').trim();
+
+  if (!apiKey) {
+    throw new AppError(
+      503,
+      'GEMINI_API_KEY is not configured. Please set a valid Google AI Studio API key in Firestore collection "config", document "genai".',
+    );
+  }
+
+  if (!client || currentApiKey !== apiKey) {
+    currentApiKey = apiKey;
     client = new GoogleGenAI({ apiKey });
   }
+
   return client;
 }
 
@@ -40,21 +50,47 @@ export async function generateJson<T>(params: {
   temperature?: number;
   maxOutputTokens?: number;
 }): Promise<T> {
-  const model = params.model ?? DEFAULT_MODEL;
-  const result = await getClient().models.generateContent({
-    model,
-    contents: params.userPrompt,
-    config: {
-      systemInstruction: params.systemInstruction,
-      temperature: params.temperature ?? 0.2,
-      maxOutputTokens: params.maxOutputTokens ?? 4096,
-      responseMimeType: 'application/json',
-      // Gemini 2.5+ thinking tokens add latency and burn output budget on JSON tasks.
-      ...(supportsThinkingConfig(model)
-        ? { thinkingConfig: { thinkingBudget: 0 } }
-        : {}),
-    },
-  });
+  const rawModel = params.model ?? firestoreConfigService.getGenAIConfig().model ?? DEFAULT_MODEL;
+  // Fallback to gemini-2.5-flash if an invalid model name is configured
+  const model = /gemini-/i.test(rawModel) ? rawModel : 'gemini-2.5-flash';
+
+  let result;
+  try {
+    result = await getClient().models.generateContent({
+      model,
+      contents: params.userPrompt,
+      config: {
+        systemInstruction: params.systemInstruction,
+        temperature: params.temperature ?? 0.2,
+        maxOutputTokens: params.maxOutputTokens ?? 4096,
+        responseMimeType: 'application/json',
+        // Gemini 2.5+ thinking tokens add latency and burn output budget on JSON tasks.
+        ...(supportsThinkingConfig(model)
+          ? { thinkingConfig: { thinkingBudget: 0 } }
+          : {}),
+      },
+    });
+  } catch (err: any) {
+    const msg = String(err?.message || err);
+    if (
+      msg.includes('401') ||
+      msg.includes('UNAUTHENTICATED') ||
+      msg.includes('ACCESS_TOKEN_TYPE_UNSUPPORTED') ||
+      msg.includes('invalid authentication credentials') ||
+      msg.includes('API_KEY_INVALID')
+    ) {
+      // Invalidate memory cache & client instance so next call re-fetches latest key from Firestore
+      client = null;
+      currentApiKey = null;
+      firestoreConfigService.clearCache();
+
+      throw new AppError(
+        401,
+        'Gemini API Authentication Failed: The API key in Firestore (config/genai) or .env is invalid, unauthorized, or expired. Please set a valid Google AI Studio Key (starting with AIzaSy...) at https://aistudio.google.com/app/apikey and update Firestore collection "config", document "genai".',
+      );
+    }
+    throw err;
+  }
 
   const raw = (result.text ?? '').trim();
   if (!raw) {

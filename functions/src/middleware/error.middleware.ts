@@ -14,13 +14,39 @@ interface ErrorResponseBody {
   errors?: ApiFieldError[];
 }
 
+const formatCleanErrorMessage = (rawMessage: string): string => {
+  if (
+    rawMessage.includes('"UNAUTHENTICATED"') ||
+    rawMessage.includes('ACCESS_TOKEN_TYPE_UNSUPPORTED') ||
+    rawMessage.includes('invalid authentication credentials') ||
+    rawMessage.includes('API_KEY_INVALID')
+  ) {
+    return 'Gemini API authentication failed: The API key configured in Firestore (config/genai) or environment variables is invalid, unauthorized, or expired. Please set a valid Google AI Studio Key (starting with AIzaSy...) at https://aistudio.google.com/app/apikey and update Firestore collection "config", document "genai".';
+  }
+
+  if (rawMessage.startsWith('{"error":') || rawMessage.includes('{"error":')) {
+    try {
+      const jsonStart = rawMessage.indexOf('{"error":');
+      const parsed = JSON.parse(rawMessage.slice(jsonStart));
+      if (parsed?.error?.message) {
+        return `Gemini AI Error: ${parsed.error.message}`;
+      }
+    } catch {
+      // ignore parse failure
+    }
+  }
+
+  return rawMessage;
+};
+
 const sendErrorResponse = (
   res: Response,
   statusCode: number,
   message: string,
   errors?: ApiFieldError[]
 ): void => {
-  const body: ErrorResponseBody = { success: false, message };
+  const cleanMessage = formatCleanErrorMessage(message);
+  const body: ErrorResponseBody = { success: false, message: cleanMessage };
   if (errors && errors.length > 0) {
     body.errors = errors;
   }
