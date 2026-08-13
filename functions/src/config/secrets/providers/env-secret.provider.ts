@@ -62,6 +62,31 @@ const loadFirebaseCredentials = (): FirebaseCredentials => {
     };
   }
 
+  const saBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64?.trim();
+  const saJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
+
+  if (saBase64 || saJson) {
+    try {
+      const rawString = saBase64
+        ? Buffer.from(saBase64, "base64").toString("utf-8")
+        : saJson!;
+      const parsed = JSON.parse(rawString);
+      const projectId = parsed.projectId ?? parsed.project_id;
+      const clientEmail = parsed.clientEmail ?? parsed.client_email;
+      const privateKey = parsed.privateKey ?? parsed.private_key;
+
+      if (projectId && clientEmail && privateKey) {
+        return {
+          projectId,
+          clientEmail,
+          privateKey: normalizePrivateKey(privateKey),
+        };
+      }
+    } catch (e) {
+      console.error("[EnvSecretProvider] Failed to parse FIREBASE_SERVICE_ACCOUNT env var:", e);
+    }
+  }
+
   const projectId = process.env.FIREBASE_PROJECT_ID?.trim();
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim();
   const privateKeyRaw = process.env.FIREBASE_PRIVATE_KEY?.trim();
@@ -81,7 +106,7 @@ const loadFirebaseCredentials = (): FirebaseCredentials => {
 
   throw new Error(
     "Firebase credentials not found. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and " +
-      "FIREBASE_PRIVATE_KEY, or provide GOOGLE_APPLICATION_CREDENTIALS / firebase-service-account.json"
+      "FIREBASE_PRIVATE_KEY, or FIREBASE_SERVICE_ACCOUNT_BASE64, or provide GOOGLE_APPLICATION_CREDENTIALS / firebase-service-account.json"
   );
 };
 

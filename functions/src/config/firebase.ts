@@ -69,6 +69,9 @@ export const initializeFirebase = (): void => {
       ...(_storageBucket && { storageBucket: _storageBucket }),
     });
   } else {
+    if (!secretService.isInitialized) {
+      secretService.initialize();
+    }
     const credentials = secretService.getFirebaseCredentials();
     adminApp = initializeApp({
       credential: cert({
