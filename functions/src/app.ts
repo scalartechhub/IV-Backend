@@ -42,11 +42,18 @@ app.use(
     },
   })
 );
+
+app.get(apiPath("/health"), (_req, res) => {
+  res.status(200).json({ success: true, message: "Healthy", data: { status: "ok" } });
+});
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 const globalLimiter = rateLimit({
   windowMs: RATE_LIMIT.WINDOW_MS,
   max: appConfig.isDevelopment ? 2000 : RATE_LIMIT.MAX_REQUESTS,
+  // Quality snapshots are intentionally periodic (every 5–10 seconds) and have
+  // their own tighter per-minute limiter in the monitoring router.
+  skip: (req) => req.path.includes("/interview/monitoring/quality"),
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: "Too many requests. Please try again later." },
