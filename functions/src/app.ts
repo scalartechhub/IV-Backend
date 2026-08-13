@@ -28,6 +28,9 @@ const parseCorsOrigin = (): cors.CorsOptions["origin"] => {
 
 const app: Application = express();
 
+// Trust Render / Cloudflare reverse proxy headers so rate limiting targets individual client IPs rather than Render's load balancer IP
+app.set("trust proxy", 1);
+
 app.use(helmet());
 app.use(cors({ origin: parseCorsOrigin(), credentials: true }));
 app.use(morgan("combined"));
@@ -43,7 +46,7 @@ app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 const globalLimiter = rateLimit({
   windowMs: RATE_LIMIT.WINDOW_MS,
-  max: RATE_LIMIT.MAX_REQUESTS,
+  max: appConfig.isDevelopment ? 2000 : RATE_LIMIT.MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: "Too many requests. Please try again later." },
@@ -51,7 +54,7 @@ const globalLimiter = rateLimit({
 
 const aiLimiter = rateLimit({
   windowMs: RATE_LIMIT.AI_WINDOW_MS,
-  max: RATE_LIMIT.AI_MAX_REQUESTS,
+  max: appConfig.isDevelopment ? 200 : RATE_LIMIT.AI_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
   message: {

@@ -131,7 +131,7 @@ export async function generateRoadmap(
       'string, "description": string, "subtopics": string[], "lessonsCount": number, "quizzes": [ { ' +
       '"title": string, "questionCount": number } ] } ] } ] }.',
     userPrompt: JSON.stringify({ technology: trimmedTechnology }),
-    maxOutputTokens: 24576,
+    maxOutputTokens: 8192,
   });
 
   const parsed = roadmapSkeletonSchema.safeParse(raw);
@@ -244,10 +244,10 @@ export async function getOrGenerateSubtopicNotes(
       'thoroughly from first principles, include concrete examples or short code snippets where ' +
       'relevant, and call out common pitfalls or angles interviewers probe. Respond ONLY with JSON: ' +
       '{ "summary": string, "sections": [ { "heading": string, "content": string, "bullets": ' +
-      'string[] (optional) } ], "keyTakeaways": string[] }. Keep the notes around 1500-2200 words ' +
-      'across 5-9 sections, covering the subtopic in full detail rather than a short summary.',
+      'string[] (optional) } ], "keyTakeaways": string[] }. Keep the notes around 800-1200 words ' +
+      'across 4-6 sections, covering the subtopic thoroughly.',
     userPrompt: JSON.stringify({ subtopic: subtopic.name, topic: topic.name, technology }),
-    maxOutputTokens: 8192,
+    maxOutputTokens: 4096,
   });
 
   const parsed = subtopicNotesSchema.safeParse(raw);

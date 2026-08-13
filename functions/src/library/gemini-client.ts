@@ -40,8 +40,11 @@ export function getClient(): GoogleGenAI {
   return client;
 }
 
+const FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+
 /**
  * Generate structured JSON from a system + user prompt pair.
+ * Automatically retries across fallback models if a model experiences high demand (HTTP 503).
  */
 export async function generateJson<T>(params: {
   systemInstruction: string;
@@ -51,61 +54,99 @@ export async function generateJson<T>(params: {
   maxOutputTokens?: number;
 }): Promise<T> {
   const rawModel = params.model ?? firestoreConfigService.getGenAIConfig().model ?? DEFAULT_MODEL;
-  // Fallback to gemini-2.5-flash if an invalid model name is configured
-  const model = /gemini-/i.test(rawModel) ? rawModel : 'gemini-2.5-flash';
+  const primaryModel = /gemini-/i.test(rawModel) ? rawModel : 'gemini-2.5-flash';
 
-  let result;
-  try {
-    result = await getClient().models.generateContent({
-      model,
-      contents: params.userPrompt,
-      config: {
-        systemInstruction: params.systemInstruction,
-        temperature: params.temperature ?? 0.2,
-        maxOutputTokens: params.maxOutputTokens ?? 4096,
-        responseMimeType: 'application/json',
-        // Gemini 2.5+ thinking tokens add latency and burn output budget on JSON tasks.
-        ...(supportsThinkingConfig(model)
-          ? { thinkingConfig: { thinkingBudget: 0 } }
-          : {}),
-      },
-    });
-  } catch (err: any) {
-    const msg = String(err?.message || err);
-    if (
-      msg.includes('401') ||
-      msg.includes('UNAUTHENTICATED') ||
-      msg.includes('ACCESS_TOKEN_TYPE_UNSUPPORTED') ||
-      msg.includes('invalid authentication credentials') ||
-      msg.includes('API_KEY_INVALID')
-    ) {
-      // Invalidate memory cache & client instance so next call re-fetches latest key from Firestore
-      client = null;
-      currentApiKey = null;
-      firestoreConfigService.clearCache();
+  const modelsToTry = [
+    primaryModel,
+    ...FALLBACK_MODELS.filter((m) => m !== primaryModel),
+  ];
 
-      throw new AppError(
-        401,
-        'Gemini API Authentication Failed: The API key in Firestore (config/genai) or .env is invalid, unauthorized, or expired. Please set a valid Google AI Studio Key (starting with AIzaSy...) at https://aistudio.google.com/app/apikey and update Firestore collection "config", document "genai".',
-      );
+  let lastErr: unknown = null;
+
+  for (const model of modelsToTry) {
+    try {
+      const result = await getClient().models.generateContent({
+        model,
+        contents: params.userPrompt,
+        config: {
+          systemInstruction: params.systemInstruction,
+          temperature: params.temperature ?? 0.2,
+          maxOutputTokens: params.maxOutputTokens ?? 4096,
+          responseMimeType: 'application/json',
+          // Gemini 2.5+ thinking tokens add latency and burn output budget on JSON tasks.
+          ...(supportsThinkingConfig(model)
+            ? { thinkingConfig: { thinkingBudget: 0 } }
+            : {}),
+        },
+      });
+
+      const raw = (result.text ?? '').trim();
+      if (!raw) {
+        throw new Error('Empty Gemini response');
+      }
+
+      try {
+        return JSON.parse(raw) as T;
+      } catch {
+        const cleaned = raw
+          .replace(/^```(?:json)?\s*/i, '')
+          .replace(/\s*```$/i, '')
+          .trim();
+        return JSON.parse(cleaned) as T;
+      }
+    } catch (err: any) {
+      lastErr = err;
+      const msg = String(err?.message || err);
+
+      if (
+        msg.includes('401') ||
+        msg.includes('UNAUTHENTICATED') ||
+        msg.includes('ACCESS_TOKEN_TYPE_UNSUPPORTED') ||
+        msg.includes('invalid authentication credentials') ||
+        msg.includes('API_KEY_INVALID')
+      ) {
+        // Invalidate memory cache & client instance so next call re-fetches latest key from Firestore
+        client = null;
+        currentApiKey = null;
+        firestoreConfigService.clearCache();
+
+        throw new AppError(
+          401,
+          'Gemini API Authentication Failed: The API key in Firestore (config/genai) or .env is invalid, unauthorized, or expired. Please set a valid Google AI Studio Key (starting with AIzaSy...) at https://aistudio.google.com/app/apikey and update Firestore collection "config", document "genai".',
+        );
+      }
+
+      const isHighDemand =
+        msg.includes('503') ||
+        msg.includes('high demand') ||
+        msg.includes('UNAVAILABLE') ||
+        msg.includes('RESOURCE_EXHAUSTED') ||
+        msg.includes('overloaded');
+
+      if (isHighDemand && model !== modelsToTry[modelsToTry.length - 1]) {
+        console.warn(
+          `[gemini-client] Model "${model}" is experiencing high demand, retrying with fallback model...`,
+        );
+        continue;
+      }
+
+      throw err;
     }
-    throw err;
   }
 
-  const raw = (result.text ?? '').trim();
-  if (!raw) {
-    throw new Error('Empty Gemini response');
+  const lastMsg = String((lastErr as any)?.message || lastErr);
+  if (
+    lastMsg.includes('503') ||
+    lastMsg.includes('high demand') ||
+    lastMsg.includes('UNAVAILABLE')
+  ) {
+    throw new AppError(
+      503,
+      'Gemini AI is currently experiencing high demand across all models. Spikes in demand are temporary, please try again in a few moments.',
+    );
   }
 
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    const cleaned = raw
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/\s*```$/i, '')
-      .trim();
-    return JSON.parse(cleaned) as T;
-  }
+  throw lastErr;
 }
 
 export const DEFAULT_LIVE_MODEL =
