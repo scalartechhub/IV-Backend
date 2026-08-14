@@ -1,0 +1,20 @@
+info:
+  name: Get Career Progress
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/v2/career-progress"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Fetches current user's career progress (job readiness score, readiness label, peer comparison percent, salary insights, peer benchmarks across skills, and career milestones).

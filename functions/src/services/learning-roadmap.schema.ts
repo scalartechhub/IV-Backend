@@ -49,29 +49,24 @@ export const subtopicNotesSchema = z.object({
         bullets: z.array(z.string().min(1)).optional(),
       }),
     )
-    .min(5)
-    .max(10),
+    .min(1)
+    .max(15),
   keyTakeaways: z.array(z.string().min(1)).min(1),
 });
 
 export type SubtopicNotesParsed = z.infer<typeof subtopicNotesSchema>;
 
-export const quizQuestionsSchema = z
-  .object({
-    questions: z
-      .array(
-        z.object({
-          question: z.string().min(1),
-          options: z.array(z.string().min(1)).length(4),
-          correctAnswer: z.string().min(1),
-        }),
-      )
-      .min(10)
-      .max(15),
-  })
-  .refine(
-    (data) => data.questions.every((q) => q.options.includes(q.correctAnswer)),
-    { message: 'Every correctAnswer must match one of its own options.' },
-  );
+export const quizQuestionsSchema = z.object({
+  questions: z
+    .array(
+      z.object({
+        question: z.string().min(1),
+        options: z.array(z.string().min(1)).min(2).max(10),
+        correctAnswer: z.string().min(1),
+      }),
+    )
+    .min(1)
+    .max(25),
+});
 
 export type QuizQuestionsParsed = z.infer<typeof quizQuestionsSchema>;

@@ -1,0 +1,20 @@
+info:
+  name: Refresh Career Progress
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/career-progress/refresh"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Forces recomputation of career progress for the authenticated user and returns updated career progress object.
