@@ -690,13 +690,6 @@ export async function completeInterview(
       problemSolving: results.problemSolvingScore,
       behavior: results.behaviorScore ?? 0,
     },
-    tracks: [
-      interview.mode,
-      ...(interview.config.technologies ?? []),
-      ...(interview.config.skills ?? []),
-      interview.config.topic,
-      interview.config.company,
-    ].filter((value): value is string => Boolean(value?.trim())),
   }).catch((err: unknown) => {
     console.error('[completeInterview] checkAchievements failed', err);
   });

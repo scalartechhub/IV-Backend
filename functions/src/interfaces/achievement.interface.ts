@@ -15,7 +15,6 @@ export type AchievementMetric =
   | 'problem_solving_score'
   | 'technical_score'
   | 'behavior_score'
-  | 'domain_sessions'
   | 'score_improvement'
   | 'problems_solved'
   | 'resume_analysis_completed'
@@ -35,8 +34,6 @@ export interface AchievementDoc {
   order: number;
   isActive: boolean;
   metric: AchievementMetric;
-  /** Optional domain filter for domain_sessions metric */
-  track?: string;
   createdAt?: Timestamp;
 }
 
