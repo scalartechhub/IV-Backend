@@ -23,12 +23,6 @@ const JUDGE0_STATUS = {
   RUNTIME_ERROR: 11,
 } as const;
 
-const XP_BY_DIFFICULTY: Record<string, number> = {
-  Easy: 10,
-  Medium: 25,
-  Hard: 50,
-};
-
 const normalizeOutput = (value: string | null | undefined): string =>
   (value ?? "")
     .replace(/\r\n/g, "\n")
@@ -204,7 +198,8 @@ export const submitCode = async (
   );
 
   const solved = result.verdict === "accepted" && result.passedCount === result.totalCount;
-  const xpEarned = solved ? (XP_BY_DIFFICULTY[problem.difficulty] ?? 10) : 0;
+  // XP rewards are disabled app-wide — always 0.
+  const xpEarned = 0;
 
   const submissionId = uuidv4();
   await repo.saveSubmission(uid, submissionId, {

@@ -3,10 +3,9 @@
  * All XP mutations must go through this module.
  */
 
-import { FieldValue, type Firestore, type Transaction } from 'firebase-admin/firestore';
+import type { Firestore, Transaction } from 'firebase-admin/firestore';
 import type { InterviewDifficulty } from '../interfaces/interview.interface';
 import type { XpReason } from '../interfaces/xp-transaction.interface';
-import { userRef, xpTransactionsCol } from '../utils/firestore-refs';
 
 export const XP_BASE = 80;
 export const XP_CAP_PER_INTERVIEW = 250;
@@ -25,17 +24,11 @@ export interface InterviewXpInput {
 }
 
 /**
- * Compute XP earned for a completed interview.
- * Formula: round((baseXP + scoreBonus + durationBonus) * difficultyMultiplier), capped at 250.
+ * XP rewards have been disabled app-wide. Kept as a no-op (rather than deleted) so every
+ * call site that still computes/displays "xpEarned" continues to compile and simply shows 0.
  */
-export function calculateInterviewXp(input: InterviewXpInput): number {
-  const baseXP = XP_BASE;
-  const scoreBonus = Math.round(input.overallScore * 0.6);
-  const plannedSec = input.durationMinutes * 60;
-  const durationBonus = input.durationSec >= plannedSec * 0.8 ? 20 : 0;
-  const multiplier = DIFFICULTY_MULTIPLIER[input.difficulty];
-  const xpEarned = Math.round((baseXP + scoreBonus + durationBonus) * multiplier);
-  return Math.min(xpEarned, XP_CAP_PER_INTERVIEW);
+export function calculateInterviewXp(_input: InterviewXpInput): number {
+  return 0;
 }
 
 export interface XpCredit {
@@ -53,29 +46,17 @@ export function normalizeXpAmount(amount: number): number {
 }
 
 /**
- * Write an xpTransactions audit doc and increment users/{uid}.gamification.currentXP.
- * Must be the only place that increments currentXP.
+ * XP rewards have been disabled app-wide — this is now a no-op so `gamification.currentXP`
+ * never changes and no xpTransactions audit docs are written. Kept as a no-op (rather than
+ * deleted/removed from call sites) since this was documented as "the only place that
+ * increments currentXP"; disabling it here guarantees no XP is credited from anywhere.
  */
 export function creditXpInTransaction(
-  tx: Transaction,
-  db: Firestore,
-  uid: string,
-  credit: XpCredit,
-  balanceAfter?: number,
+  _tx: Transaction,
+  _db: Firestore,
+  _uid: string,
+  _credit: XpCredit,
+  _balanceAfter?: number,
 ): void {
-  const amount = normalizeXpAmount(credit.amount);
-  if (amount <= 0) return;
-
-  const txRef = xpTransactionsCol(db, uid).doc();
-  tx.set(txRef, {
-    amount,
-    reason: credit.reason,
-    relatedId: credit.relatedId,
-    createdAt: FieldValue.serverTimestamp() as never,
-    ...(balanceAfter !== undefined ? { balanceAfter } : {}),
-  });
-
-  tx.update(userRef(db, uid), {
-    'gamification.currentXP': FieldValue.increment(amount),
-  });
+  return;
 }
