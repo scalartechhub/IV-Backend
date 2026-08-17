@@ -11,6 +11,7 @@ import type { UserDoc } from '../interfaces/user.interface';
 import { careerProgressRef, userRef } from '../utils/firestore-refs';
 import { daysAgo } from '../utils/date-helpers';
 import { ensureAdmin } from '../utils/callable-auth';
+import { AppError } from '../shared/utils';
 
 const SKILL_KEYS = [
   'technical',
@@ -43,6 +44,24 @@ const RESULT_FIELD: Record<SkillKey, string> = {
 
 function clamp(n: number, min = 0, max = 100): number {
   return Math.round(Math.min(max, Math.max(min, n)));
+}
+
+/** Firestore rejects `undefined` field values — drop them before writes. */
+function omitUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => omitUndefinedDeep(item))
+      .filter((item) => item !== undefined) as T;
+  }
+  if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+    const output: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      if (item === undefined) continue;
+      output[key] = omitUndefinedDeep(item);
+    }
+    return output as T;
+  }
+  return value;
 }
 
 function readinessLabel(score: number): string {
@@ -256,10 +275,10 @@ async function loadPeerAveragesForRole(
  * Recompute and write career progress for one user.
  * Safe to call after interview complete (uses skillSignals + recent peers).
  */
-export async function refreshCareerProgressForUser(uid: string): Promise<void> {
+export async function refreshCareerProgressForUser(uid: string): Promise<CareerProgressDoc | null> {
   const db = ensureAdmin();
   const snap = await userRef(db, uid).get();
-  if (!snap.exists) return;
+  if (!snap.exists) return null;
 
   const user = { uid, ...snap.data() } as CareerUser;
   const role = resolveRole(user);
@@ -267,9 +286,9 @@ export async function refreshCareerProgressForUser(uid: string): Promise<void> {
   const you = youScoresFromUser(user);
   const readiness = clamp(
     user.skillSignals?.totalScore ??
-      user.readiness?.score ??
-      user.readinessScore ??
-      0,
+    user.readiness?.score ??
+    user.readinessScore ??
+    0,
   );
 
   // Prefer existing peer averages (from nightly job) to avoid heavy queries on every complete.
@@ -320,7 +339,7 @@ export async function refreshCareerProgressForUser(uid: string): Promise<void> {
     lastComputedAt: FieldValue.serverTimestamp() as never,
   };
 
-  await careerProgressRef(db, uid).set(progress, { merge: true });
+  await careerProgressRef(db, uid).set(omitUndefinedDeep(progress), { merge: true });
 
   // Dual-write flat peer fields used by the dashboard home badge.
   await db.collection('users').doc(uid).set(
@@ -331,6 +350,28 @@ export async function refreshCareerProgressForUser(uid: string): Promise<void> {
     },
     { merge: true },
   );
+
+  return progress;
+}
+
+/**
+ * Fetch existing career progress doc for user. If it doesn't exist, compute & write it first.
+ */
+export async function getCareerProgress(uid: string): Promise<CareerProgressDoc> {
+  const db = ensureAdmin();
+  const snap = await careerProgressRef(db, uid).get();
+
+  if (snap.exists) {
+    return snap.data() as CareerProgressDoc;
+  }
+
+  const computed = await refreshCareerProgressForUser(uid);
+  if (!computed) {
+    throw new AppError(404, 'User profile not found.');
+  }
+
+  const fresh = await careerProgressRef(db, uid).get();
+  return (fresh.data() as CareerProgressDoc) || computed;
 }
 
 /**
@@ -386,7 +427,7 @@ export async function computeCareerProgressForAllUsers(): Promise<void> {
         lastComputedAt: FieldValue.serverTimestamp() as never,
       };
 
-      await careerProgressRef(db, uid).set(progress, { merge: true });
+      await careerProgressRef(db, uid).set(omitUndefinedDeep(progress), { merge: true });
       await db.collection('users').doc(uid).set(
         {
           peerComparisonPercent: comparison,
