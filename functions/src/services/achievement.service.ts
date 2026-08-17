@@ -86,7 +86,8 @@ function readProgress(raw: Partial<UserAchievementDoc> | undefined): ProgressSna
   };
 }
 
-function computeMetricValue(
+/** Exported for unit testing — pure function, no Firestore access. */
+export function computeMetricValue(
   metric: AchievementMetric,
   previousValue: number,
   user: UserDoc,
@@ -95,7 +96,6 @@ function computeMetricValue(
 ): number {
   const interviews = user.stats?.totalInterviews ?? 0;
   const streak = user.gamification?.streakCount ?? 0;
-  const xp = user.gamification?.currentXP ?? 0;
   const overall = opts.overallScore ?? 0;
 
   const normalizedTracks = (opts.tracks ?? []).map(normalizeTrack);
@@ -111,8 +111,6 @@ function computeMetricValue(
       return user.stats?.successfulInterviews ?? previousValue;
     case 'streak_days':
       return streak;
-    case 'xp_total':
-      return xp;
     case 'highest_score':
       return Math.max(previousValue, overall);
     case 'delivery_score':
@@ -142,6 +140,12 @@ function computeMetricValue(
       return previousValue + (hasTrack ? 1 : 0);
     case 'score_improvement':
       return Math.max(previousValue, opts.scoreImprovement ?? 0);
+    case 'problems_solved':
+      return user.stats?.problemsSolved ?? previousValue;
+    case 'resume_analysis_completed':
+      return user.resumeAnalysisCompleted ? 1 : previousValue;
+    case 'roadmap_weeks_completed':
+      return user.stats?.roadmapWeeksCompleted ?? previousValue;
     default:
       return previousValue;
   }

@@ -84,6 +84,10 @@ export interface UserStats {
   problemsSolved: number;
   /** Interviews with overallScore >= 70  used by successful_interviews achievements */
   successfulInterviews?: number;
+  /** Overall score of the most recently completed interview, used by score_improvement achievements. */
+  lastOverallScore?: number;
+  /** Count of distinct learning roadmap weeks passed, used by roadmap_weeks_completed achievements. */
+  roadmapWeeksCompleted?: number;
 }
 
 /**
