@@ -34,7 +34,6 @@ export interface CheckAchievementsOptions {
     problemSolving: number;
     behavior: number;
   }>;
-  tracks?: string[];
 }
 
 interface CatalogItem {
@@ -52,10 +51,6 @@ interface ProgressSnapshot {
 let catalogCache: CatalogItem[] | null = null;
 let catalogCachedAt = 0;
 const CATALOG_TTL_MS = 10 * 60 * 1000;
-
-function normalizeTrack(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s_]+/g, '-');
-}
 
 async function loadCatalog(): Promise<CatalogItem[]> {
   const now = Date.now();
@@ -92,16 +87,10 @@ export function computeMetricValue(
   previousValue: number,
   user: UserDoc,
   opts: CheckAchievementsOptions,
-  track?: string,
 ): number {
   const interviews = user.stats?.totalInterviews ?? 0;
   const streak = user.gamification?.streakCount ?? 0;
   const overall = opts.overallScore ?? 0;
-
-  const normalizedTracks = (opts.tracks ?? []).map(normalizeTrack);
-  const hasTrack = track
-    ? normalizedTracks.includes(normalizeTrack(track))
-    : false;
 
   switch (metric) {
     case 'interviews_completed':
@@ -136,8 +125,6 @@ export function computeMetricValue(
       return Math.max(previousValue, opts.skillScores?.technical ?? 0);
     case 'behavior_score':
       return Math.max(previousValue, opts.skillScores?.behavior ?? 0);
-    case 'domain_sessions':
-      return previousValue + (hasTrack ? 1 : 0);
     case 'score_improvement':
       return Math.max(previousValue, opts.scoreImprovement ?? 0);
     case 'problems_solved':
@@ -188,7 +175,6 @@ export async function checkAchievements(
       previous.currentValue,
       user,
       opts,
-      item.data.track,
     );
     const unlocked =
       previous.unlocked || nextValue >= (item.data.targetValue ?? 1);
