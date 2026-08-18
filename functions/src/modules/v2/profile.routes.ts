@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { asyncHandler } from '../../middleware/async.middleware';
 import { validate } from '../../middleware/validation.middleware';
 import { sendSuccess } from '../../shared/responses';
+import { refreshCareerProgressForUser } from '../../services/career-progress.service';
 import * as profileService from '../../services/profile.service';
 
 const router = Router();
@@ -50,6 +51,14 @@ router.patch(
       req.body,
     );
     sendSuccess(res, result, 'Settings saved');
+  }),
+);
+
+router.post(
+  '/career-progress/refresh',
+  asyncHandler(async (req, res) => {
+    const result = await refreshCareerProgressForUser(req.user!.uid);
+    sendSuccess(res, result, 'Career progress refreshed');
   }),
 );
 
