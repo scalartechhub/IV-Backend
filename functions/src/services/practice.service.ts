@@ -126,7 +126,7 @@ const DEFAULT_TEMPLATES: Array<PracticeTemplateDoc & { id: string }> = [
     durationMin: 25,
     questionCount: 8,
     difficulty: 'medium',
-    xpRewardHint: 150,
+    xpRewardHint: 0, // XP rewards disabled app-wide
     mode: 'conversational',
     configDefaults: {
       topic: 'RxJS + State Management',
@@ -148,7 +148,7 @@ const DEFAULT_TEMPLATES: Array<PracticeTemplateDoc & { id: string }> = [
     durationMin: 40,
     questionCount: 5,
     difficulty: 'hard',
-    xpRewardHint: 150,
+    xpRewardHint: 0, // XP rewards disabled app-wide
     mode: 'system_design',
     configDefaults: {
       topic: 'Design a URL Shortener',
@@ -169,7 +169,7 @@ const DEFAULT_TEMPLATES: Array<PracticeTemplateDoc & { id: string }> = [
     durationMin: 15,
     questionCount: 6,
     difficulty: 'easy',
-    xpRewardHint: 150,
+    xpRewardHint: 0, // XP rewards disabled app-wide
     mode: 'behavioral',
     configDefaults: {
       topic: 'Behavioral — failure and recovery',
@@ -190,7 +190,7 @@ const DEFAULT_TEMPLATES: Array<PracticeTemplateDoc & { id: string }> = [
     durationMin: 30,
     questionCount: 10,
     difficulty: 'medium',
-    xpRewardHint: 150,
+    xpRewardHint: 0, // XP rewards disabled app-wide
     mode: 'conversational',
     configDefaults: {
       topic: 'Rendering, hydration & performance',
@@ -211,7 +211,7 @@ const DEFAULT_TEMPLATES: Array<PracticeTemplateDoc & { id: string }> = [
     durationMin: 20,
     questionCount: 5,
     difficulty: 'medium',
-    xpRewardHint: 150,
+    xpRewardHint: 0, // XP rewards disabled app-wide
     mode: 'behavioral',
     configDefaults: {
       topic: 'Managing under-performers',
@@ -232,7 +232,7 @@ const DEFAULT_TEMPLATES: Array<PracticeTemplateDoc & { id: string }> = [
     durationMin: 25,
     questionCount: 7,
     difficulty: 'medium',
-    xpRewardHint: 150,
+    xpRewardHint: 0, // XP rewards disabled app-wide
     mode: 'conversational',
     configDefaults: {
       topic: 'REST vs GraphQL trade-offs',

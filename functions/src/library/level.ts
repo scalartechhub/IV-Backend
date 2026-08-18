@@ -2,8 +2,7 @@
  * XP → level resolution with hardcoded thresholds.
  */
 
-import { FieldValue, type Firestore, type Transaction } from 'firebase-admin/firestore';
-import { notificationsCol, userRef } from '../utils/firestore-refs';
+import type { Firestore, Transaction } from 'firebase-admin/firestore';
 
 export interface LevelThreshold {
   level: number;
@@ -51,35 +50,22 @@ export function resolveLevel(newXP: number): LevelResolution {
 }
 
 /**
- * Persist resolved level fields; if level increased, create a level_up notification.
+ * Leveling has been disabled app-wide — this is now a no-op that freezes the user at
+ * whatever level they were already on (no Firestore writes, no level_up notifications).
+ * Kept as a no-op (rather than removed from call sites) so callers keep compiling.
  */
 export function applyLevelUpdate(
-  tx: Transaction,
-  db: Firestore,
-  uid: string,
+  _tx: Transaction,
+  _db: Firestore,
+  _uid: string,
   previousLevel: number,
-  newXP: number,
+  _newXP: number,
 ): LevelResolution & { levelUp: boolean } {
-  const resolved = resolveLevel(newXP);
-  const levelUp = resolved.level > previousLevel;
-
-  tx.update(userRef(db, uid), {
-    'gamification.level': resolved.level,
-    'gamification.levelName': resolved.levelName,
-    'gamification.xpToNextLevel': resolved.xpToNextLevel,
-  });
-
-  if (levelUp) {
-    const notifRef = notificationsCol(db, uid).doc();
-    tx.set(notifRef, {
-      type: 'level_up',
-      title: `Level up! You're now ${resolved.levelName}`,
-      body: `You reached level ${resolved.level}.`,
-      read: false,
-      createdAt: FieldValue.serverTimestamp() as never,
-      actionUrl: '/career',
-    });
-  }
-
-  return { ...resolved, levelUp };
+  const frozen = LEVELS.find((l) => l.level === previousLevel) ?? LEVELS[0];
+  return {
+    level: frozen.level,
+    levelName: frozen.name,
+    xpToNextLevel: 0,
+    levelUp: false,
+  };
 }

@@ -1,4 +1,4 @@
-// Mirrors frontend achievement.interface.ts — keep in sync
+// Mirrors frontend achievement.interface.ts ï¿½ keep in sync
 import type { Timestamp } from 'firebase-admin/firestore';
 
 export type AchievementRarity = 'common' | 'rare' | 'epic' | 'legendary';
@@ -7,7 +7,6 @@ export type AchievementMetric =
   | 'interviews_completed'
   | 'successful_interviews'
   | 'streak_days'
-  | 'xp_total'
   | 'highest_score'
   | 'delivery_score'
   | 'content_score'
@@ -16,10 +15,12 @@ export type AchievementMetric =
   | 'problem_solving_score'
   | 'technical_score'
   | 'behavior_score'
-  | 'domain_sessions'
-  | 'score_improvement';
+  | 'score_improvement'
+  | 'problems_solved'
+  | 'resume_analysis_completed'
+  | 'roadmap_weeks_completed';
 
-/** Path: achievements/{achievementId} — master catalog (seeded, read-only for clients) */
+/** Path: achievements/{achievementId} ï¿½ master catalog (seeded, read-only for clients) */
 export interface AchievementDoc {
   name: string;
   description: string;
@@ -33,8 +34,6 @@ export interface AchievementDoc {
   order: number;
   isActive: boolean;
   metric: AchievementMetric;
-  /** Optional domain filter for domain_sessions metric */
-  track?: string;
   createdAt?: Timestamp;
 }
 
@@ -47,5 +46,5 @@ export interface UserAchievementDoc {
   updatedAt: Timestamp;
 }
 
-/** @deprecated Legacy catalog shape — kept for type compat during migration */
+/** @deprecated Legacy catalog shape ï¿½ kept for type compat during migration */
 export type AchievementCatalogDoc = AchievementDoc;

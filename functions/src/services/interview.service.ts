@@ -32,11 +32,7 @@ import {
   type SkillScoreMap,
 } from '../library/skills';
 import { updateStreak } from '../library/streak';
-import {
-  calculateInterviewXp,
-  creditXpInTransaction,
-  normalizeXpAmount,
-} from '../library/xp';
+import { calculateInterviewXp, creditXpInTransaction } from '../library/xp';
 import { AppError } from '../shared/utils';
 import { ensureAdmin } from '../utils/callable-auth';
 import { dayAbbrev, formatDate, getWeekStart } from '../utils/date-helpers';
@@ -105,6 +101,7 @@ export interface CompleteInterviewResult {
   updatedSkills: SkillScoreMap;
   streakCount: number;
   readinessScore: number;
+  scoreImprovement: number;
 }
 
 const MODE_GOAL_MATCH: Record<string, string[]> = {
@@ -530,7 +527,7 @@ export async function completeInterview(
       relatedId: interviewId,
     });
 
-    let runningXP = prevXP + xpEarned;
+    const runningXP = prevXP + xpEarned;
     const levelInfo = applyLevelUpdate(tx, db, uid, prevLevel, runningXP);
     const updatedSkills = writeSkillUpdates(tx, db, uid, currentSkills, results.skillDeltas);
 
@@ -635,17 +632,8 @@ export async function completeInterview(
         !implied ||
         matchKeys.some((k) => implied.includes(k) || k.includes(implied))
       ) {
+        // XP rewards are disabled app-wide — goals still complete, just without a bonus.
         tx.update(goalDoc.ref, { status: 'done' });
-        const reward = normalizeXpAmount(goal.xpReward ?? 0);
-        if (reward > 0) {
-          creditXpInTransaction(tx, db, uid, {
-            amount: reward,
-            reason: 'goal_completed',
-            relatedId: goalDoc.id,
-          });
-          runningXP += reward;
-          applyLevelUpdate(tx, db, uid, levelInfo.level, runningXP);
-        }
       }
     }
 
@@ -662,8 +650,15 @@ export async function completeInterview(
       updatedAt: FieldValue.serverTimestamp(),
     });
 
+    const previousOverallScore = user.stats?.lastOverallScore;
+    const scoreImprovement =
+      typeof previousOverallScore === 'number'
+        ? Math.max(0, results.overallScore - previousOverallScore)
+        : 0;
+
     tx.update(userRef(db, uid), {
       'stats.totalInterviews': FieldValue.increment(1),
+      'stats.lastOverallScore': results.overallScore,
       ...(results.overallScore >= 70
         ? { 'stats.successfulInterviews': FieldValue.increment(1) }
         : {}),
@@ -676,6 +671,7 @@ export async function completeInterview(
       updatedSkills,
       streakCount: streak.streakCount,
       readinessScore,
+      scoreImprovement,
     };
   });
 
@@ -686,6 +682,7 @@ export async function completeInterview(
     success: results.overallScore >= 70,
     deliveryScore: results.communicationScore,
     contentScore: results.technicalScore,
+    scoreImprovement: txResult.scoreImprovement,
     skillScores: {
       technical: results.technicalScore,
       communication: results.communicationScore,
@@ -693,13 +690,6 @@ export async function completeInterview(
       problemSolving: results.problemSolvingScore,
       behavior: results.behaviorScore ?? 0,
     },
-    tracks: [
-      interview.mode,
-      ...(interview.config.technologies ?? []),
-      ...(interview.config.skills ?? []),
-      interview.config.topic,
-      interview.config.company,
-    ].filter((value): value is string => Boolean(value?.trim())),
   }).catch((err: unknown) => {
     console.error('[completeInterview] checkAchievements failed', err);
   });

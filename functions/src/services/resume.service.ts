@@ -36,7 +36,7 @@ import {
 } from '../utils/firestore-refs';
 import {
   extractCandidateNameFromResumeText,
-  namesBelongToSamePerson,
+  namesBelongToSamePersonWithAi,
 } from './resume-name-match';
 import {
   normalizeRawResumeReview,
@@ -527,7 +527,7 @@ async function assertResumeBelongsToUser(
     );
   }
 
-  if (!namesBelongToSamePerson(registeredName, resumeName)) {
+  if (!(await namesBelongToSamePersonWithAi(registeredName, resumeName))) {
     throw new AppError(
       400,
       `The name on this resume ("${resumeName}") does not match your registered name ("${registeredName}"). Please upload your own resume.`,

@@ -149,6 +149,8 @@ export async function analyzeFromAnswers(
 
   if (existingOnboarding) {
     const prior = existing.data()!;
+    const resolvedTargetRole =
+      prior.targetRole || existingOnboarding.jobRoleRecommendation || '';
     return {
       analysisId: 'analysis',
       analysisStatus: 'completed' as const,
@@ -157,7 +159,11 @@ export async function analyzeFromAnswers(
         ...(prior.analysis ?? {}),
         onboarding: existingOnboarding,
       },
-      targetRole: prior.targetRole || existingOnboarding.jobRoleRecommendation,
+      // analysis.isCoder is always false for Q&A onboarding (no resume to grade) — the
+      // real signal is inferred from the selected role and returned at the top level so
+      // the client can gate coding-focused UI without waiting for a Firestore refetch.
+      isCoder: inferIsCoderFromRole(resolvedTargetRole),
+      targetRole: resolvedTargetRole,
       source: (prior.source ?? 'questions') as 'resume' | 'questions',
       onboardingGenerated: false,
       onboardingPreserved: true,
@@ -206,12 +212,9 @@ export async function analyzeFromAnswers(
 
   await ref.set(doc, { merge: true });
 
-  void mergeUserOnboardingFromPlan(
-    uid,
-    onboardingPlan,
-    inferIsCoderFromRole(storedTargetRole),
-    storedTargetRole,
-  ).catch(
+  const isCoder = inferIsCoderFromRole(storedTargetRole);
+
+  void mergeUserOnboardingFromPlan(uid, onboardingPlan, isCoder, storedTargetRole).catch(
     (err: unknown) => {
       logger.error('[onboarding.service] background user persist failed', {
         uid,
@@ -224,6 +227,8 @@ export async function analyzeFromAnswers(
     analysisId: 'analysis',
     analysisStatus: 'completed' as const,
     analysis,
+    // See isCoder note in the `existingOnboarding` branch above.
+    isCoder,
     targetRole: storedTargetRole,
     source: 'questions' as const,
     onboardingGenerated: true,

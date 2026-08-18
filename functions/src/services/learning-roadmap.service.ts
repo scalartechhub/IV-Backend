@@ -22,6 +22,7 @@ import {
   learningRoadmapQuizRef,
   learningRoadmapRef,
   learningRoadmapSubtopicNotesRef,
+  userRef,
 } from '../utils/firestore-refs';
 import {
   quizQuestionsSchema,
@@ -469,6 +470,7 @@ export async function evaluateWeekInterview(
   const weekIndex = doc.weeks.findIndex((w) => w.weekNumber === week);
   if (weekIndex === -1) return;
 
+  const wasAlreadyPassed = doc.weeks[weekIndex].interview?.passed === true;
   const passed = overallScore >= PASS_THRESHOLD;
   const weeks = doc.weeks.map((w, index) => {
     if (index !== weekIndex) return w;
@@ -484,4 +486,11 @@ export async function evaluateWeekInterview(
   });
 
   await ref.update({ weeks, updatedAt: FieldValue.serverTimestamp() });
+
+  // First-time pass only — retakes shouldn't inflate the achievement counter.
+  if (passed && !wasAlreadyPassed) {
+    await userRef(db, uid).update({
+      'stats.roadmapWeeksCompleted': FieldValue.increment(1),
+    });
+  }
 }

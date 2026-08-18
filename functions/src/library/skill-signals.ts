@@ -8,7 +8,7 @@ import type { Firestore } from 'firebase-admin/firestore';
 import type { InterviewResults } from '../interfaces/interview.interface';
 import type { SkillId } from '../interfaces/user.interface';
 import { SKILL_IDS, type SkillScoreMap } from './skills';
-import { userRef } from '../utils/firestore-refs';
+import { reportsCol, userRef } from '../utils/firestore-refs';
 
 export const RECENT_INTERVIEWS_FOR_SKILL_SIGNALS = 5;
 
@@ -60,17 +60,48 @@ export async function updateUserSkillSignals(
   db: Firestore,
   uid: string,
 ): Promise<void> {
-  const snap = await db
-    .collection('interviews')
-    .where('userId', '==', uid)
-    .where('status', '==', 'completed')
-    .orderBy('completedAt', 'desc')
+  const reportSnap = await reportsCol(db, uid)
+    .orderBy('generatedAt', 'desc')
     .limit(RECENT_INTERVIEWS_FOR_SKILL_SIGNALS)
     .get();
 
-  const recentResults = snap.docs
-    .map((d) => d.data().results as InterviewResults | undefined)
-    .filter((r): r is InterviewResults => Boolean(r));
+  const fromReports = reportSnap.docs.map((d) => {
+    const data = d.data() as {
+      charts?: {
+        skillBreakdown?: Partial<Record<SkillId, number>>;
+        timeline?: Array<{ score?: number }>;
+      };
+    };
+    const breakdown = data.charts?.skillBreakdown ?? {};
+    const overall = data.charts?.timeline?.[0]?.score;
+    return {
+      overallScore: typeof overall === 'number' ? overall : 0,
+      technicalScore: breakdown.technical ?? 0,
+      communicationScore: breakdown.communication ?? 0,
+      confidenceScore: breakdown.confidence ?? 0,
+      problemSolvingScore: breakdown.problemSolving ?? 0,
+      ...(typeof breakdown.coding === 'number' ? { codingScore: breakdown.coding } : {}),
+      ...(typeof breakdown.behavior === 'number' ? { behaviorScore: breakdown.behavior } : {}),
+      skillDeltas: {},
+      strengths: [],
+      weaknesses: [],
+      recommendations: [],
+    } as InterviewResults;
+  });
+
+  const recentResults = fromReports.length > 0
+    ? fromReports
+    : (
+        await db
+          .collection('interviews')
+          .where('userId', '==', uid)
+          .where('status', '==', 'completed')
+          .orderBy('completedAt', 'desc')
+          .limit(RECENT_INTERVIEWS_FOR_SKILL_SIGNALS)
+          .get()
+      ).docs
+        .map((d) => d.data().results as InterviewResults | undefined)
+        .filter((r): r is InterviewResults => Boolean(r));
 
   const skillSignals = computeSkillSignals(recentResults);
 

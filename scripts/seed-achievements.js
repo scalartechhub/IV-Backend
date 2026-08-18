@@ -58,10 +58,6 @@ async function seedAchievements() {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    if (achievement.track) {
-      payload.track = achievement.track;
-    }
-
     batch.set(docRef, payload, { merge: true });
     writesInBatch += 1;
     upserted += 1;
