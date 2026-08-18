@@ -9,6 +9,7 @@ export { startInterview } from "./callable/start-interview";
 export { completeInterview } from "./callable/complete-interview";
 export { submitCodingSolution } from "./callable/submit-coding-solution";
 export { saveProfileSettings } from "./callable/save-profile-settings";
+export { refreshCareerProgress } from "./callable/refresh-career-progress";
 
 // Triggers
 export { onInterviewComplete } from "./triggers/on-interview-complete";
