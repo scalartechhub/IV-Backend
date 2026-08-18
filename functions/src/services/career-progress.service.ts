@@ -12,6 +12,7 @@ import type { UserDoc } from '../interfaces/user.interface';
 import { careerProgressRef, reportsCol, skillRef, userRef } from '../utils/firestore-refs';
 import { ensureAdmin } from '../utils/callable-auth';
 import { AppError } from '../shared/utils';
+import { READINESS_WEIGHTS } from '../library/readiness';
 
 const SKILL_KEYS = [
   'technical',
@@ -158,13 +159,7 @@ async function loadYouScores(
         if (!breakdown) continue;
         for (const key of SKILL_KEYS) {
           const raw = breakdown[key];
-          const fallback =
-            key === 'coding'
-              ? breakdown.technical
-              : key === 'behavior'
-                ? breakdown.communication
-                : undefined;
-          const value = typeof raw === 'number' ? raw : fallback;
+          const value = typeof raw === 'number' ? raw : undefined;
           if (typeof value !== 'number' || !Number.isFinite(value)) continue;
           sums[key] = (sums[key] ?? 0) + value;
           counts[key] = (counts[key] ?? 0) + 1;
@@ -201,16 +196,72 @@ async function loadYouScores(
   return you;
 }
 
-/** Weighted readiness.score — never skillSignals.totalScore (that averages untested skills as 0). */
-function resolveReadiness(user: CareerUser): number {
-  const nested = user.readiness?.score;
-  if (typeof nested === 'number' && Number.isFinite(nested) && nested > 0) {
-    return clamp(nested);
+/** Weighted readiness from tested skills only — never pad missing skills with 50. */
+function readinessFromYou(you: Record<SkillKey, number>): number {
+  let sum = 0;
+  let weight = 0;
+  for (const key of SKILL_KEYS) {
+    const score = you[key] ?? 0;
+    if (score <= 0) continue;
+    const w = READINESS_WEIGHTS[key] ?? 0;
+    sum += score * w;
+    weight += w;
   }
-  if (typeof user.readinessScore === 'number' && user.readinessScore > 0) {
-    return clamp(user.readinessScore);
+  return weight > 0 ? clamp(sum / weight) : 0;
+}
+
+/**
+ * Same source as Reports "Hiring Probability": average overall of last 5 reports.
+ * Falls back to weighted skill scores from those reports (or skillSignals).
+ */
+async function loadCurrentPerformance(
+  db: Firestore,
+  uid: string,
+  user?: CareerUser,
+): Promise<{ you: Record<SkillKey, number>; readiness: number }> {
+  const reportSnap = await reportsCol(db, uid)
+    .orderBy('generatedAt', 'desc')
+    .limit(5)
+    .get();
+
+  if (!reportSnap.empty) {
+    const sums: Record<string, number> = {};
+    const counts: Record<string, number> = {};
+    const overalls: number[] = [];
+    for (const doc of reportSnap.docs) {
+      const data = doc.data() as {
+        charts?: {
+          skillBreakdown?: Record<string, number>;
+          timeline?: Array<{ score?: number }>;
+        };
+      };
+      const overall = data.charts?.timeline?.[0]?.score;
+      if (typeof overall === 'number' && Number.isFinite(overall)) {
+        overalls.push(overall);
+      }
+      const breakdown = data.charts?.skillBreakdown;
+      if (!breakdown) continue;
+      for (const key of SKILL_KEYS) {
+        const value = breakdown[key];
+        if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+        sums[key] = (sums[key] ?? 0) + value;
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
+    }
+    const you = {} as Record<SkillKey, number>;
+    for (const key of SKILL_KEYS) {
+      const count = counts[key] ?? 0;
+      you[key] = count > 0 ? clamp((sums[key] ?? 0) / count) : 0;
+    }
+    const hiring =
+      overalls.length > 0
+        ? clamp(overalls.reduce((s, n) => s + n, 0) / overalls.length)
+        : readinessFromYou(you);
+    return { you, readiness: hiring };
   }
-  return 0;
+
+  const you = await loadYouScores(db, uid, user, false);
+  return { you, readiness: readinessFromYou(you) };
 }
 
 function peerComparisonPercent(
@@ -454,8 +505,7 @@ export async function refreshCareerProgressForUser(uid: string): Promise<CareerP
   const user = { uid, ...snap.data() } as CareerUser;
   const role = resolveRole(user);
   const companies = resolveCompanies(user);
-  const you = await loadYouScores(db, uid, user, true);
-  const readiness = resolveReadiness(user);
+  const { you, readiness } = await loadCurrentPerformance(db, uid, user);
   const interviews = resolveInterviewCount(user);
   const interviewStats = await loadInterviewMilestoneStats(db, uid);
 
@@ -518,6 +568,7 @@ export async function refreshCareerProgressForUser(uid: string): Promise<CareerP
       peerComparisonPercent: comparison,
       peerRole: role === 'General' ? 'peers' : `${role} peers`,
       readinessScore: readiness,
+      'readiness.score': readiness,
       'stats.successfulInterviews': interviewStats.successful,
     },
     { merge: true },
@@ -562,8 +613,7 @@ export async function computeCareerProgressForAllUsers(): Promise<void> {
       const userSnap = await userRef(db, uid).get();
       if (!userSnap.exists) continue;
       const user = { uid, ...userSnap.data() } as CareerUser;
-      const you = await loadYouScores(db, uid, user, true);
-      const readiness = resolveReadiness(user);
+      const { you, readiness } = await loadCurrentPerformance(db, uid, user);
       const interviews = resolveInterviewCount(user);
       const interviewStats = await loadInterviewMilestoneStats(db, uid);
       const companies = resolveCompanies(user);
@@ -599,6 +649,7 @@ export async function computeCareerProgressForAllUsers(): Promise<void> {
           peerComparisonPercent: comparison,
           peerRole: role === 'General' ? 'peers' : `${role} peers`,
           readinessScore: readiness,
+          'readiness.score': readiness,
           'stats.successfulInterviews': interviewStats.successful,
         },
         { merge: true },
