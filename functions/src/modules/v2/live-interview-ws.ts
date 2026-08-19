@@ -44,6 +44,7 @@ import {
   buildResumeKickoffText,
   buildResumeSystemInstruction,
 } from './v2-live-interview.prompt';
+import { compressConversation, getReplayTurns } from '../live-interview/context-manager';
 
 const V2_LIVE_WS_PATHS = new Set([
   '/ws/v2/interview',
@@ -583,13 +584,17 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
 
       if (isResume && interview.conversation?.length) {
         try {
-          await geminiSession.sendClientContent({
-            turns: interview.conversation.map((message) => ({
-              role: message.role === 'assistant' ? 'model' : 'user',
-              parts: [{ text: message.text }],
-            })),
-            turnComplete: false,
-          });
+          // Use rolling context: only replay recent turns to reduce context usage.
+          // Older conversation is already compressed into the system instruction.
+          const compressed = compressConversation(interview.conversation);
+          const replayTurns = getReplayTurns(compressed);
+
+          if (replayTurns.length > 0) {
+            await geminiSession.sendClientContent({
+              turns: replayTurns,
+              turnComplete: false,
+            });
+          }
         } catch (error) {
           logger.warn(
             `[v2-live-interview] conversation replay failed interviewId=${interviewId}`,

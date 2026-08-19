@@ -13,6 +13,7 @@ import type {
   LiveTranscriptEntry,
   PersistedTurnPayload,
 } from "./live-interview.types";
+import { compressConversation, getReplayTurns } from "./context-manager";
 import { getDefaultLiveModel } from "../../library/gemini-client";
 
 export interface GeminiLiveBridgeOptions {
@@ -388,14 +389,18 @@ export const createGeminiLiveBridge = async (
 
   try {
     if (resumeMode !== "fresh" && interview.conversation?.length) {
-      await geminiSession.sendClientContent({
-        turns: interview.conversation.map((message) => ({
-          role: message.role === "assistant" ? "model" : "user",
-          parts: [{ text: message.message }],
-        })),
-        // Restore context without asking Gemini to produce a turn.
-        turnComplete: false,
-      });
+      // Use rolling context: only replay recent turns to reduce context usage.
+      // Older conversation is already compressed into the system instruction.
+      const compressed = compressConversation(interview.conversation);
+      const replayTurns = getReplayTurns(compressed);
+
+      if (replayTurns.length > 0) {
+        await geminiSession.sendClientContent({
+          turns: replayTurns,
+          // Restore context without asking Gemini to produce a turn.
+          turnComplete: false,
+        });
+      }
     }
 
     const lastAssistantQuestion = [...(interview.conversation ?? [])]

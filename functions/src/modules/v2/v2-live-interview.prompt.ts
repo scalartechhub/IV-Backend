@@ -3,6 +3,10 @@ import type {
   InterviewDoc,
 } from '../../interfaces/interview.interface';
 import type { V2LiveResumeMode } from './v2-live-interview.persistence';
+import {
+  compressConversation,
+  formatCompressedContextForPrompt,
+} from '../live-interview/context-manager';
 
 const truncate = (value: string, max: number): string =>
   value.length <= max ? value : `${value.slice(0, max)}...`;
@@ -10,16 +14,8 @@ const truncate = (value: string, max: number): string =>
 export const formatConversationContext = (
   conversation: InterviewConversationMessage[] | undefined,
 ): string => {
-  if (!conversation?.length) {
-    return 'No prior conversation.';
-  }
-
-  return conversation
-    .map((entry) => {
-      const speaker = entry.role === 'assistant' ? 'Interviewer' : 'Candidate';
-      return `${speaker}: ${entry.text}`;
-    })
-    .join('\n');
+  const compressed = compressConversation(conversation);
+  return formatCompressedContextForPrompt(compressed);
 };
 
 export const buildResumeSystemInstruction = (
@@ -27,10 +23,8 @@ export const buildResumeSystemInstruction = (
   interview: InterviewDoc,
   resumeMode: V2LiveResumeMode,
 ): string => {
-  const conversationContext = truncate(
-    formatConversationContext(interview.conversation),
-    12_000,
-  );
+  const compressed = compressConversation(interview.conversation);
+  const conversationContext = formatCompressedContextForPrompt(compressed);
 
   let resumeBehavior =
     '- When the session begins, immediately greet the candidate, introduce yourself as their AI interviewer, briefly explain how the interview will work, and ask the first question in your opening turn.';
