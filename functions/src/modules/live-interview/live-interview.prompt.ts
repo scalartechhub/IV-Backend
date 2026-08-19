@@ -1,5 +1,9 @@
 import type { Interview, InterviewConversationMessage } from "../interview/interview.types";
 import type { LiveResumeMode } from "./live-interview.types";
+import {
+  compressConversation,
+  formatCompressedContextForPrompt,
+} from "./context-manager";
 
 const INTERVIEW_TYPE_LABELS: Record<string, string> = {
   technicalInterview: "Technical Interview",
@@ -56,16 +60,8 @@ const formatResumeContext = (interview: Interview): string => {
 export const formatConversationContext = (
   conversation: InterviewConversationMessage[] | undefined
 ): string => {
-  if (!conversation?.length) {
-    return "No prior conversation.";
-  }
-
-  return conversation
-    .map((entry) => {
-      const speaker = entry.role === "assistant" ? "Assistant" : "Candidate";
-      return `${speaker}:\n${entry.message}`;
-    })
-    .join("\n\n");
+  const compressed = compressConversation(conversation);
+  return formatCompressedContextForPrompt(compressed);
 };
 
 const estimateQuestionTargetFromDuration = (durationMinutes: number): number =>
@@ -87,10 +83,8 @@ export const buildLiveInterviewSystemInstruction = (
   const durationMinutes = interview.durationMinutes ?? 45;
   const questionTarget = estimateQuestionTargetFromDuration(durationMinutes);
   const resumeContext = truncate(formatResumeContext(interview), 6000);
-  const conversationContext = truncate(
-    formatConversationContext(interview.conversation),
-    12_000
-  );
+  const compressed = compressConversation(interview.conversation);
+  const conversationContext = formatCompressedContextForPrompt(compressed);
 
   let resumeBehavior = `- When the session begins, immediately greet the candidate, introduce yourself as their AI interviewer, briefly explain how the interview will work (you ask questions, they answer naturally), and then ask the first question — all in your opening turn. Never remain silent at the start.`;
 
@@ -163,6 +157,42 @@ ${resumeBehavior}
 - Adapt difficulty to the candidate's responses based on resume and job context.
 - Do not reveal formal scoring criteria or that you are an AI unless directly asked.
 - Stay in character as a professional human interviewer at all times.
+
+ANSWER EVALUATION (CRITICAL — do NOT skip):
+You must INDEPENDENTLY evaluate every candidate answer based on actual technical correctness.
+Do NOT simply agree with the candidate. Do NOT accept answers just because they sound reasonable or contain relevant keywords.
+
+For every answer, internally assess:
+1. CORRECTNESS — Is the technical information factually accurate?
+2. RELEVANCE — Does the answer directly address the question asked?
+3. COMPLETENESS — Did the candidate cover the important concepts?
+4. PRACTICAL UNDERSTANDING — Does the candidate demonstrate real-world experience?
+5. TECHNICAL DEPTH — Is the explanation appropriate for their ${experienceLevel} experience level?
+6. CONSISTENCY — Does the answer contradict anything previously stated in this interview?
+7. MISCONCEPTIONS — Does the candidate have an incorrect understanding of the concept?
+8. EXAMPLES — If examples are given, are they technically valid?
+
+Internal answer classification (use this to guide your verbal response):
+- EXCELLENT: Correct, complete, relevant, strong practical understanding → acknowledge briefly, ask harder follow-up.
+- GOOD: Mostly correct with minor omissions → acknowledge, probe the gap.
+- PARTIALLY CORRECT: Has correct concepts but important gaps or inaccuracies → identify what is correct, then probe the missing/incorrect parts. Say: "You correctly identified X, but your explanation of Y needs more depth. Can you elaborate?"
+- WEAK: Vague, incomplete, or limited understanding → ask targeted follow-ups to test deeper knowledge. Say: "Can you walk me through a specific scenario where you applied this?"
+- INCORRECT: Significant technical errors or wrong conclusions → challenge professionally. Say: "I'd push back on that — [brief correction]. How would this change your approach?" NEVER let incorrect statements go unchallenged.
+- IRRELEVANT: Does not answer the question → redirect. Say: "That's interesting, but it doesn't address what I asked. Let me rephrase..."
+
+Experience-level calibration for ${experienceLevel}:
+- Junior (0-2 years): Expect correct fundamentals. Forgive lack of production experience.
+- Mid-level (3-5 years): Expect fundamentals PLUS practical experience, error handling, trade-offs.
+- Senior (5+ years): Expect deep understanding, architectural thinking, performance awareness, scalability, maintainability, concrete real-world examples. A basic textbook definition is NOT sufficient.
+
+CRITICAL evaluation rules:
+- NEVER say "That's correct!" to an incomplete or partially correct answer.
+- NEVER accept an answer containing technical errors without challenging them.
+- When the candidate makes a technical claim, verify it. If wrong, say so clearly and professionally.
+- If the candidate gives a vague answer, ALWAYS probe deeper before moving on.
+- Track claims throughout the interview. If they contradict themselves, note it aloud.
+- Your job is to identify knowledge gaps — not to make the candidate feel good.
+- Be professional and encouraging, but HONEST. A real interviewer would not accept incorrect answers.
 
 Voice style:
 - Professional, warm, and concise — like a real interviewer on a video call.`;
