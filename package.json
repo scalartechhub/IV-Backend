@@ -10,7 +10,7 @@
     "start:prod": "npm --prefix functions run start:prod",
     "deploy-firestore": "firebase deploy --only firestore:indexes --project=interview-prod-dd24f",
     "deploy-functions": "firebase deploy --only functions --force --project=interview-prod-dd24f",
-    "deploy-websocket": "gcloud run deploy interview-websocket --source . --region us-central1 --platform managed --allow-unauthenticated --timeout=3600 --session-affinity --set-env-vars \"NODE_ENV=production,STORAGE_BUCKET=interview-prod-dd24f.firebasestorage.app,GEMINI_MODEL=gemini-3.6-flash,GEMINI_LIVE_MODEL=gemini-2.5-flash-native-audio-preview-12-2025,CORS_ORIGIN=https://app.interviewup.ai,https://www.app.interviewup.ai,https://interview-prod-dd24f.web.app,https://interview-prod-dd24f.firebaseapp.com\" --project=interview-prod-dd24f",
+    "deploy-websocket": "gcloud run deploy interview-websocket --source . --region us-central1 --platform managed --allow-unauthenticated --timeout=3600 --session-affinity --set-env-vars \"^:^NODE_ENV=production:STORAGE_BUCKET=interview-prod-dd24f.firebasestorage.app:GEMINI_MODEL=gemini-2.0-flash:GEMINI_LIVE_MODEL=gemini-2.5-flash-native-audio-preview-12-2025:CORS_ORIGIN=https://app.interviewup.ai,https://www.app.interviewup.ai,https://interview-prod-dd24f.web.app,https://interview-prod-dd24f.firebaseapp.com\" --project=interview-prod-dd24f",
     "emulators:start": "firebase emulators:start --project=interview-prod-dd24f",
     "sync:secrets": "node scripts/sync-firebase-secrets.js",
     "sync:firebase-config": "node scripts/sync-env-to-firestore.js",
