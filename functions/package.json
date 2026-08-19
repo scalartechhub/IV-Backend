@@ -8,6 +8,8 @@
     "build": "tsc",
     "dev": "node -r ts-node/register src/server.ts",
     "start": "node lib/server.js",
+    "start:prod": "npm run build && node lib/server.js",
+    "serve:prod": "npm run build && node lib/server.js",
     "serve": "npm run build && firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",

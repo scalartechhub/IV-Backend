@@ -27,7 +27,12 @@ import type {
   PersistedTurnPayload,
 } from "./live-interview.types";
 
-const LIVE_WS_PATH = "/ws/interview";
+const LIVE_WS_PATHS = new Set([
+  "/ws/interview",
+  "/live-interview/ws",
+  "/api/ws/interview",
+  "/api/live-interview/ws",
+]);
 const TIMER_TICK_INTERVAL_MS = 30_000;
 /** Inject Gemini pacing context when remaining time crosses these thresholds (seconds). */
 const TIME_CONTEXT_THRESHOLDS = [
@@ -174,18 +179,11 @@ export const awaitLiveSessionPersist = async (interviewId: string): Promise<void
 };
 
 export const setupLiveInterviewWebSocket = (server: Server): void => {
-  if (isCloudRuntime()) {
-    logger.warn(
-      "[live-interview] WebSocket server skipped on Cloud Functions runtime - use Render/local Node server"
-    );
-    return;
-  }
-
   const wss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
-    if (url.pathname !== LIVE_WS_PATH) {
+    if (!LIVE_WS_PATHS.has(url.pathname)) {
       return;
     }
 
@@ -518,7 +516,7 @@ export const setupLiveInterviewWebSocket = (server: Server): void => {
     });
   });
 
-  logger.info(`[live-interview] WebSocket server ready at ${LIVE_WS_PATH}`);
+  logger.info(`[live-interview] WebSocket server ready`);
 };
 
-export const getLiveWsPath = (): string => LIVE_WS_PATH;
+export const getLiveWsPath = (): string => "/ws/interview";

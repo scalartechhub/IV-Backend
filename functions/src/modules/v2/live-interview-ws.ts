@@ -45,7 +45,12 @@ import {
   buildResumeSystemInstruction,
 } from './v2-live-interview.prompt';
 
-const V2_LIVE_WS_PATH = '/ws/v2/interview';
+const V2_LIVE_WS_PATHS = new Set([
+  '/ws/v2/interview',
+  '/v2/live-interview/ws',
+  '/api/ws/v2/interview',
+  '/api/v2/live-interview/ws',
+]);
 
 const NON_LIVE_STATUSES = new Set<InterviewStatus>(['completed', 'abandoned', 'expired']);
 
@@ -102,17 +107,11 @@ const toClientConversation = (
   }));
 
 export const setupV2LiveInterviewWebSocket = (server: Server): void => {
-  if (isCloudRuntime()) {
-    logger.warn(
-      '[v2-live-interview] WebSocket server skipped on Cloud Functions runtime - use Render/local Node server',
-    );
-    return;
-  }
-
   const wss = new WebSocketServer({ noServer: true });
 
   server.on('upgrade', (req, socket, head) => {
-    if (requestUrl(req).pathname !== V2_LIVE_WS_PATH) {
+    const pathname = requestUrl(req).pathname;
+    if (!V2_LIVE_WS_PATHS.has(pathname)) {
       return;
     }
 
@@ -582,5 +581,5 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
     });
   });
 
-  logger.info(`[v2-live-interview] WebSocket server ready at ${V2_LIVE_WS_PATH}`);
+  logger.info(`[v2-live-interview] WebSocket server ready`);
 };

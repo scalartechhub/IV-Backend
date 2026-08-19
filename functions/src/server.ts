@@ -35,10 +35,8 @@ async function startServer() {
     if (!process.env.GROQ_API_KEY?.trim()) {
       logger.warn("GROQ_API_KEY is not set — chat endpoints will be unavailable");
     }
-    if (!isCloudRuntime()) {
-      setupLiveInterviewWebSocket(server);
-      setupV2LiveInterviewWebSocket(server);
-    }
+    setupLiveInterviewWebSocket(server);
+    setupV2LiveInterviewWebSocket(server);
   });
 
   return server;

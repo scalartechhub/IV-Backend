@@ -7,6 +7,7 @@
     "dev": "npm --prefix functions run dev",
     "build": "npm --prefix functions run build",
     "start": "npm --prefix functions run start",
+    "start:prod": "npm --prefix functions run start:prod",
     "deploy-firestore": "firebase deploy --only firestore:indexes --project=interview-prod-dd24f",
     "deploy-functions": "firebase deploy --only functions --force --project=interview-prod-dd24f",
     "emulators:start": "firebase emulators:start --project=interview-prod-dd24f",
