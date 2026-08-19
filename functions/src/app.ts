@@ -43,9 +43,6 @@ app.use(
   })
 );
 
-app.get(apiPath("/health"), (_req, res) => {
-  res.status(200).json({ success: true, message: "Healthy", data: { status: "ok" } });
-});
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 const globalLimiter = rateLimit({
