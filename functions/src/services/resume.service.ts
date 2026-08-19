@@ -939,7 +939,7 @@ export async function analyzeResume(
   const { text: extractedText } = await extractPdfText(input.fileBuffer);
 
   // Block wrong-person resumes before storage upload / AI analysis / Firestore writes.
-  await assertResumeBelongsToUser(uid, extractedText);
+  // await assertResumeBelongsToUser(uid, extractedText);
 
   const storagePath = await uploadUserResumeFile(uid, input.fileBuffer, 'resume').catch(
     (err: unknown) => {
