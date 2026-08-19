@@ -18,6 +18,8 @@ const checkBodySchema = z.object({
 router.get(
   '/',
   asyncHandler(async (req, res) => {
+    // Re-evaluate all achievements on every page load so progress is always current.
+    await achievementService.checkAchievements(req.user!.uid);
     const result = await achievementService.listAchievements(req.user!.uid);
     sendSuccess(res, result, 'Achievements fetched');
   }),
