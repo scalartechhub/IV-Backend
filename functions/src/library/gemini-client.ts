@@ -8,11 +8,29 @@ import { firestoreConfigService } from '../config/firestore-config.service';
 
 import { AppError } from '../shared/utils';
 
-const DEFAULT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
+/** Dynamic model getters: Priority order: 1) Firestore config/genai -> 2) process.env -> 3) hardcoded default */
+export function getDefaultModel(): string {
+  return firestoreConfigService.getGenAIConfig().model || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+}
+
+export function getResumeModel(): string {
+  return (
+    firestoreConfigService.getGenAIConfig().resumeModel ||
+    process.env.RESUME_GEMINI_MODEL ||
+    getDefaultModel()
+  );
+}
+
+export function getDefaultLiveModel(): string {
+  return (
+    firestoreConfigService.getGenAIConfig().liveModel ||
+    process.env.GEMINI_LIVE_MODEL ||
+    'gemini-2.5-flash-native-audio-preview-12-2025'
+  );
+}
 
 /** Faster model for resume scoring when set (e.g. gemini-2.0-flash). */
-export const RESUME_GEMINI_MODEL =
-  process.env.RESUME_GEMINI_MODEL ?? DEFAULT_MODEL;
+export const RESUME_GEMINI_MODEL = getResumeModel();
 
 const supportsThinkingConfig = (model: string): boolean =>
   /gemini-2\./i.test(model);
@@ -40,7 +58,7 @@ export function getClient(): GoogleGenAI {
   return client;
 }
 
-const FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+const FALLBACK_MODELS = ['gemini-3.1-flash-lite', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
 
 /**
  * Generate structured JSON from a system + user prompt pair.
@@ -53,8 +71,8 @@ export async function generateJson<T>(params: {
   temperature?: number;
   maxOutputTokens?: number;
 }): Promise<T> {
-  const rawModel = params.model ?? firestoreConfigService.getGenAIConfig().model ?? DEFAULT_MODEL;
-  const primaryModel = /gemini-/i.test(rawModel) ? rawModel : 'gemini-2.5-flash';
+  const rawModel = params.model ?? getDefaultModel();
+  const primaryModel = /gemini-/i.test(rawModel) ? rawModel : getDefaultModel();
 
   const modelsToTry = [
     primaryModel,
@@ -149,8 +167,7 @@ export async function generateJson<T>(params: {
   throw lastErr;
 }
 
-export const DEFAULT_LIVE_MODEL =
-  process.env.GEMINI_LIVE_MODEL ?? 'gemini-2.5-flash-native-audio-preview-12-2025';
+export const DEFAULT_LIVE_MODEL = getDefaultLiveModel();
 
 /**
  * Without an explicit language, Gemini Live auto-detects language per utterance and can
@@ -182,7 +199,7 @@ export function buildGeminiSessionConfig(
   systemInstructions: string,
 ): GeminiSessionConfig {
   return {
-    modelVersion: DEFAULT_LIVE_MODEL,
+    modelVersion: getDefaultLiveModel(),
     systemInstructions,
     temperature: 0.7,
   };

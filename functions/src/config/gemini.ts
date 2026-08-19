@@ -8,12 +8,18 @@ import { firestoreConfigService } from "./firestore-config.service";
 
 const SECONDARY_FALLBACK_MODEL = "gemini-1.5-flash";
 
-export const GEMINI_MODEL = appConfig.geminiModel;
+export function getActiveGeminiModel(): string {
+  return firestoreConfigService.getGenAIConfig().model || appConfig.geminiModel || "gemini-2.5-flash";
+}
 
-export const GEMINI_FALLBACK_MODELS: readonly string[] =
-  GEMINI_MODEL === SECONDARY_FALLBACK_MODEL
-    ? [GEMINI_MODEL]
-    : [GEMINI_MODEL, SECONDARY_FALLBACK_MODEL];
+export const GEMINI_MODEL = getActiveGeminiModel();
+
+export const GEMINI_FALLBACK_MODELS: readonly string[] = [
+  "gemini-3.1-flash-lite",
+  "gemini-2.5-flash-lite",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
+];
 
 export const GEMINI_REQUEST_TIMEOUT_MS = appConfig.geminiTimeoutMs;
 
@@ -36,8 +42,9 @@ export const geminiModel = {
   async generateContent(
     prompt: string,
   ): Promise<{ response: { text: () => string } }> {
+    const model = getActiveGeminiModel();
     const result = await getGenAI().models.generateContent({
-      model: GEMINI_MODEL,
+      model,
       contents: prompt,
       config: {
         temperature: 0.7,
@@ -65,9 +72,10 @@ export const geminiModel = {
       useFallbackModels = true,
     } = options;
 
+    const primaryModel = getActiveGeminiModel();
     const modelsToTry = useFallbackModels
-      ? GEMINI_FALLBACK_MODELS
-      : [GEMINI_MODEL];
+      ? [primaryModel, ...GEMINI_FALLBACK_MODELS.filter((m) => m !== primaryModel)]
+      : [primaryModel];
     let lastError: Error | null = null;
 
     for (const model of modelsToTry) {
