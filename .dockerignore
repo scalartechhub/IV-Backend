@@ -1,0 +1,13 @@
+node_modules
+functions/node_modules
+functions/lib
+.git
+.gitignore
+.env
+.env.*
+functions/.env
+functions/.env.*
+*.log
+firebase-debug.log
+firebase-service-account.json
+scratch

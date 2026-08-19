@@ -49,9 +49,20 @@ process.on("unhandledRejection", (reason) => {
   logger.error("Unhandled Promise Rejection:", reason);
 });
 
-process.on("SIGTERM", async () => {
-  logger.info("SIGTERM received. Shutting down gracefully...");
-  const server = await serverPromise;
-  server.close(() => process.exit(0));
-});
+const gracefulShutdown = async (signal: string) => {
+  logger.info(`${signal} received. Shutting down gracefully...`);
+  try {
+    const server = await serverPromise;
+    server.close(() => {
+      logger.info("Server closed successfully.");
+      process.exit(0);
+    });
+  } catch {
+    process.exit(1);
+  }
+};
+
+process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => void gracefulShutdown("SIGINT"));
+
 

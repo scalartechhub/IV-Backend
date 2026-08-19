@@ -16,7 +16,7 @@ import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import type { LiveServerMessage, Session } from '@google/genai';
 import { auth } from '../../config/firebase';
 import { logger } from '../../shared/logger';
-import { isCloudRuntime } from '../../shared/runtime';
+import { appConfig } from '../../config/app.config';
 import { ensureAdmin } from '../../utils/callable-auth';
 import { interviewRef } from '../../utils/firestore-refs';
 import type {
@@ -53,6 +53,32 @@ const V2_LIVE_WS_PATHS = new Set([
 ]);
 
 const NON_LIVE_STATUSES = new Set<InterviewStatus>(['completed', 'abandoned', 'expired']);
+
+const ALLOWED_ORIGIN_PATTERNS = [
+  'app.interviewup.ai',
+  'ws.interviewup.ai',
+  'interviewup.ai',
+  'firebaseapp.com',
+  'web.app',
+  'localhost',
+  '127.0.0.1',
+];
+
+const isAllowedOrigin = (origin?: string): boolean => {
+  if (!origin) return true; // Allow non-browser clients (e.g. CLI tools / health checks)
+  if (!appConfig.isProduction) return true;
+  const corsConfig = appConfig.corsOrigin;
+  if (corsConfig && corsConfig !== '*') {
+    const allowedList = corsConfig.split(',').map((o) => o.trim().toLowerCase());
+    if (allowedList.includes(origin.toLowerCase())) return true;
+  }
+  const lower = origin.toLowerCase();
+  return ALLOWED_ORIGIN_PATTERNS.some((pattern) => lower.includes(pattern));
+};
+
+interface ExtWebSocket extends WebSocket {
+  isAlive?: boolean;
+}
 
 type V2LiveClientMessage =
   | { type: 'audio'; data: string; mimeType?: string }
@@ -115,12 +141,43 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       return;
     }
 
+    const origin = req.headers.origin;
+    if (!isAllowedOrigin(origin)) {
+      logger.warn('[v2-live-interview] Rejected WebSocket upgrade: forbidden origin', { origin });
+      socket.write(
+        'HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nForbidden Origin',
+      );
+      socket.destroy();
+      return;
+    }
+
     wss.handleUpgrade(req, socket, head, (ws) => {
       wss.emit('connection', ws, req);
     });
   });
 
   wss.on('connection', async (clientSocket, req) => {
+    const extSocket = clientSocket as ExtWebSocket;
+    extSocket.isAlive = true;
+
+    clientSocket.on('pong', () => {
+      extSocket.isAlive = true;
+    });
+
+    let pingTimer: ReturnType<typeof setInterval> | null = setInterval(() => {
+      if (extSocket.isAlive === false) {
+        logger.warn('[v2-live-interview] Terminating dead socket connection');
+        clientSocket.terminate();
+        return;
+      }
+      extSocket.isAlive = false;
+      try {
+        clientSocket.ping();
+      } catch {
+        // ignore write error
+      }
+    }, 30_000);
+
     let geminiSession: Session | null = null;
     let closed = false;
     let firstAiSignalReceived = false;
@@ -150,6 +207,13 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       }
     };
 
+    const clearPingTimer = (): void => {
+      if (pingTimer != null) {
+        clearInterval(pingTimer);
+        pingTimer = null;
+      }
+    };
+
     const enqueuePersist = (task: () => Promise<void>): void => {
       persistQueue = persistQueue
         .catch(() => undefined)
@@ -164,6 +228,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       closed = true;
       clearKickoffRetry();
       clearTimerTick();
+      clearPingTimer();
       userTurnOpen = false;
       try {
         geminiSession?.close();
@@ -182,30 +247,67 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
     let interviewId = '';
 
     try {
-      const uid = await verifyTokenFromRequest(req);
-      interviewId = getInterviewIdFromRequest(req);
+      try {
+        interviewId = getInterviewIdFromRequest(req);
+      } catch {
+        logger.warn('[v2-live-interview] Connection rejected: missing interviewId');
+        sendJson(clientSocket, { type: 'error', message: 'Missing interviewId' });
+        clientSocket.close(4000, 'Missing interviewId');
+        return;
+      }
+
+      logger.info('[v2-live-interview] WebSocket connection received', {
+        interviewId,
+        origin: req.headers.origin,
+      });
+
+      let uid = '';
+      try {
+        uid = await verifyTokenFromRequest(req);
+      } catch (authErr) {
+        const message = authErr instanceof Error ? authErr.message : 'Invalid authentication token';
+        logger.warn('[v2-live-interview] Token verification failed', { interviewId, error: message });
+        sendJson(clientSocket, { type: 'error', message });
+        clientSocket.close(4001, 'Unauthorized');
+        return;
+      }
 
       const db = ensureAdmin();
       const snap = await interviewRef(db, interviewId).get();
       if (!snap.exists) {
+        logger.warn('[v2-live-interview] Interview not found', { interviewId, uid });
         sendJson(clientSocket, { type: 'error', message: 'Interview not found.' });
-        clientSocket.close();
+        clientSocket.close(4004, 'Interview not found');
         return;
       }
       const loaded = snap.data() as InterviewDoc;
       if (loaded.userId !== uid) {
+        logger.warn('[v2-live-interview] Ownership authorization failed', {
+          interviewId,
+          authenticatedUid: uid,
+          ownerUid: loaded.userId,
+        });
         sendJson(clientSocket, {
           type: 'error',
           message: 'Interview does not belong to the authenticated user.',
         });
-        clientSocket.close();
+        clientSocket.close(4003, 'Forbidden');
         return;
       }
       if (NON_LIVE_STATUSES.has(loaded.status)) {
+        logger.warn('[v2-live-interview] Interview no longer active', {
+          interviewId,
+          status: loaded.status,
+        });
         sendJson(clientSocket, { type: 'error', message: 'Interview is no longer active.' });
-        clientSocket.close();
+        clientSocket.close(4000, 'Interview is no longer active');
         return;
       }
+
+      logger.info('[v2-live-interview] Connection authorized & starting session', {
+        interviewId,
+        uid,
+      });
 
       const started = await ensureInterviewLiveStarted(interviewId);
       let interview = started.interview;

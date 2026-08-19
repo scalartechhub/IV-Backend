@@ -95,9 +95,8 @@ Content-Type: application/json
 
 The v2 architecture proxies the live audio session through a backend WebSocket bridge — the same
 technique the legacy `/interviews/*` flow uses — so `GEMINI_API_KEY` never reaches the browser.
-This bridge only runs on the long-lived Node server (`npm run dev` locally, Render in production);
-it is **not** available on the Cloud Functions deployment (`isCloudRuntime()` gate), matching the
-legacy bridge's hosting constraints (Cloud Functions cannot hold WebSocket connections open).
+This bridge runs on a dedicated **Google Cloud Run** service (`interview-websocket` on `wss://<cloud-run-url>/ws/v2/interview` or custom domain `wss://ws.interviewup.ai/ws/v2/interview`). It runs as a long-lived Node server process because Firebase Cloud Functions HTTP triggers cannot maintain persistent WebSocket upgrade handshakes (HTTP 101).
+
 
 **Turn-taking:** Gemini automatic VAD is disabled. The browser marks answer boundaries with
 `activityStart` / `activityEnd` (typically when the candidate taps **Done answering**), so long

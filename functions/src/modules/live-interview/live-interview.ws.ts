@@ -4,7 +4,7 @@ import { URL } from "url";
 import type { Session } from "@google/genai";
 import { auth } from "../../config/firebase";
 import { logger } from "../../shared/logger";
-import { isCloudRuntime } from "../../shared/runtime";
+import { appConfig } from "../../config/app.config";
 import * as repo from "../interview/interview.repository";
 import type {
   Interview,
@@ -38,6 +38,32 @@ const TIMER_TICK_INTERVAL_MS = 30_000;
 const TIME_CONTEXT_THRESHOLDS = [
   3_600, 2_700, 1_800, 1_200, 900, 600, 300, 180, 120,
 ];
+
+const ALLOWED_ORIGIN_PATTERNS = [
+  "app.interviewup.ai",
+  "ws.interviewup.ai",
+  "interviewup.ai",
+  "firebaseapp.com",
+  "web.app",
+  "localhost",
+  "127.0.0.1",
+];
+
+const isAllowedOrigin = (origin?: string): boolean => {
+  if (!origin) return true;
+  if (!appConfig.isProduction) return true;
+  const corsConfig = appConfig.corsOrigin;
+  if (corsConfig && corsConfig !== "*") {
+    const allowedList = corsConfig.split(",").map((o) => o.trim().toLowerCase());
+    if (allowedList.includes(origin.toLowerCase())) return true;
+  }
+  const lower = origin.toLowerCase();
+  return ALLOWED_ORIGIN_PATTERNS.some((pattern) => lower.includes(pattern));
+};
+
+interface ExtWebSocket extends WebSocket {
+  isAlive?: boolean;
+}
 
 interface ActiveLiveSession {
   interviewId: string;
@@ -187,12 +213,43 @@ export const setupLiveInterviewWebSocket = (server: Server): void => {
       return;
     }
 
+    const origin = req.headers.origin;
+    if (!isAllowedOrigin(origin)) {
+      logger.warn("[live-interview] Rejected WebSocket upgrade: forbidden origin", { origin });
+      socket.write(
+        "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nForbidden Origin"
+      );
+      socket.destroy();
+      return;
+    }
+
     wss.handleUpgrade(req, socket, head, (ws) => {
       wss.emit("connection", ws, req);
     });
   });
 
   wss.on("connection", async (clientSocket, req) => {
+    const extSocket = clientSocket as ExtWebSocket;
+    extSocket.isAlive = true;
+
+    clientSocket.on("pong", () => {
+      extSocket.isAlive = true;
+    });
+
+    const pingTimer = setInterval(() => {
+      if (extSocket.isAlive === false) {
+        logger.warn("[live-interview] Terminating dead socket connection");
+        clientSocket.terminate();
+        return;
+      }
+      extSocket.isAlive = false;
+      try {
+        clientSocket.ping();
+      } catch {
+        // ignore
+      }
+    }, 30_000);
+
     let bridgeClose: (() => void) | null = null;
     let interviewIdForCleanup = "";
     let timerTickId: ReturnType<typeof setInterval> | null = null;
@@ -206,21 +263,51 @@ export const setupLiveInterviewWebSocket = (server: Server): void => {
       }
     };
 
+    const cleanupSocket = (): void => {
+      clearInterval(pingTimer);
+      clearTimerTick();
+      bridgeClose?.();
+      activeSessions.delete(clientSocket);
+      if (
+        interviewIdForCleanup &&
+        activeByInterviewId.get(interviewIdForCleanup) === clientSocket
+      ) {
+        activeByInterviewId.delete(interviewIdForCleanup);
+      }
+    };
+
     try {
-      const userId = await verifyTokenFromRequest(req);
+      let userId = "";
+      try {
+        userId = await verifyTokenFromRequest(req);
+      } catch (authErr) {
+        const message = authErr instanceof Error ? authErr.message : "Invalid authentication token";
+        logger.warn("[live-interview] Token verification failed", { error: message });
+        sendJson(clientSocket, { type: "error", message });
+        clientSocket.close(4001, "Unauthorized");
+        cleanupSocket();
+        return;
+      }
+
       const interviewId = getInterviewIdFromRequest(req);
       interviewIdForCleanup = interviewId;
+
+      logger.info("[live-interview] WebSocket connection received", { interviewId, userId });
 
       let interview = await repo.requireOwnedInterview(interviewId, userId);
 
       if (interview.status === InterviewStatus.COMPLETED) {
+        logger.warn("[live-interview] Interview already completed", { interviewId });
         sendJson(clientSocket, { type: "error", message: "Interview is already completed." });
-        clientSocket.close();
+        clientSocket.close(4000, "Interview Completed");
+        cleanupSocket();
         return;
       }
       if (interview.status === InterviewStatus.CANCELLED) {
+        logger.warn("[live-interview] Interview cancelled", { interviewId });
         sendJson(clientSocket, { type: "error", message: "Interview was cancelled." });
-        clientSocket.close();
+        clientSocket.close(4000, "Interview Cancelled");
+        cleanupSocket();
         return;
       }
 
