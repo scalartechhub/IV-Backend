@@ -35,7 +35,7 @@ const requiredKeys = ["GEMINI_API_KEY", "FIREBASE_API_KEY"];
 const optionalKeys = ["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "RAZORPAY_WEBHOOK_SECRET"];
 
 const syncSecret = (key) => {
-  const value = values[key]?.trim();
+  const value = (values[key] || (key === "FIREBASE_API_KEY" ? values["FB_API_KEY"] : undefined))?.trim();
   if (!value) return false;
 
   console.log(`Setting Firebase secret: ${key}`);

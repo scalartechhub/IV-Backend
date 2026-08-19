@@ -119,7 +119,7 @@ export class EnvSecretProvider implements SecretProvider {
     const firebaseConfig = firestoreConfigService.getFirebaseConfig();
 
     const geminiApiKey = (genaiConfig.apiKey || process.env.GEMINI_API_KEY || "").trim();
-    const firebaseApiKey = (firebaseConfig.apiKey || process.env.FIREBASE_API_KEY || "").trim();
+    const firebaseApiKey = (firebaseConfig.apiKey || process.env.FB_API_KEY || process.env.FIREBASE_API_KEY || "").trim();
     const jwtSecret = process.env.JWT_SECRET?.trim() || undefined;
     const smtpPassword = process.env.SMTP_PASSWORD?.trim() || undefined;
 

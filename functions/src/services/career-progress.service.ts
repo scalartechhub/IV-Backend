@@ -11,7 +11,7 @@ import type { InterviewResults } from '../interfaces/interview.interface';
 import type { UserDoc } from '../interfaces/user.interface';
 import { careerProgressRef, reportsCol, skillRef, userRef } from '../utils/firestore-refs';
 import { ensureAdmin } from '../utils/callable-auth';
-import { AppError } from '../shared/utils';
+import { READINESS_WEIGHTS } from '../library/readiness';
 
 const SKILL_KEYS = [
   'technical',
@@ -97,6 +97,17 @@ function resolveRole(user: CareerUser): string {
   );
 }
 
+function roleKey(role: string): string {
+  return role.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function isSameTargetRole(userRole: string, peerRole: string): boolean {
+  const userKey = roleKey(userRole);
+  const peerKey = roleKey(peerRole);
+  if (userKey === 'general') return true;
+  return userKey === peerKey;
+}
+
 function resolveCompanies(user: CareerUser): string[] {
   const onboarding = user.onboarding as { targetCompanies?: string[] } | undefined;
   const profile = user.profile as { targetCompanies?: string[] | string } | undefined;
@@ -116,24 +127,10 @@ function resolveInterviewCount(user: CareerUser): number {
   return Math.max(user.stats?.totalInterviews ?? 0, user.totalInterviews ?? 0);
 }
 
-/** Reuse cohort peer averages computed within this window instead of rescanning users. */
-const PEER_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 /** Cap how many candidate users are read when sampling a role cohort. */
 const PEER_CANDIDATE_LIMIT = 300;
 /** Stop sampling once enough peers have scored skills — averages stabilize well before this. */
 const PEER_SAMPLE_TARGET = 60;
-
-function isRecentTimestamp(value: unknown, maxAgeMs: number): boolean {
-  const ts = value as { toMillis?: () => number; seconds?: number } | undefined;
-  const millis =
-    typeof ts?.toMillis === 'function'
-      ? ts.toMillis()
-      : typeof ts?.seconds === 'number'
-        ? ts.seconds * 1000
-        : undefined;
-  if (millis === undefined) return false;
-  return Date.now() - millis < maxAgeMs;
-}
 
 /** Skill scores for "You". Reports page source when preferReports is set. */
 async function loadYouScores(
@@ -158,13 +155,7 @@ async function loadYouScores(
         if (!breakdown) continue;
         for (const key of SKILL_KEYS) {
           const raw = breakdown[key];
-          const fallback =
-            key === 'coding'
-              ? breakdown.technical
-              : key === 'behavior'
-                ? breakdown.communication
-                : undefined;
-          const value = typeof raw === 'number' ? raw : fallback;
+          const value = typeof raw === 'number' ? raw : undefined;
           if (typeof value !== 'number' || !Number.isFinite(value)) continue;
           sums[key] = (sums[key] ?? 0) + value;
           counts[key] = (counts[key] ?? 0) + 1;
@@ -201,16 +192,72 @@ async function loadYouScores(
   return you;
 }
 
-/** Weighted readiness.score — never skillSignals.totalScore (that averages untested skills as 0). */
-function resolveReadiness(user: CareerUser): number {
-  const nested = user.readiness?.score;
-  if (typeof nested === 'number' && Number.isFinite(nested) && nested > 0) {
-    return clamp(nested);
+/** Weighted readiness from tested skills only — never pad missing skills with 50. */
+function readinessFromYou(you: Record<SkillKey, number>): number {
+  let sum = 0;
+  let weight = 0;
+  for (const key of SKILL_KEYS) {
+    const score = you[key] ?? 0;
+    if (score <= 0) continue;
+    const w = READINESS_WEIGHTS[key] ?? 0;
+    sum += score * w;
+    weight += w;
   }
-  if (typeof user.readinessScore === 'number' && user.readinessScore > 0) {
-    return clamp(user.readinessScore);
+  return weight > 0 ? clamp(sum / weight) : 0;
+}
+
+/**
+ * Same source as Reports "Hiring Probability": average overall of last 5 reports.
+ * Falls back to weighted skill scores from those reports (or skillSignals).
+ */
+async function loadCurrentPerformance(
+  db: Firestore,
+  uid: string,
+  user?: CareerUser,
+): Promise<{ you: Record<SkillKey, number>; readiness: number }> {
+  const reportSnap = await reportsCol(db, uid)
+    .orderBy('generatedAt', 'desc')
+    .limit(5)
+    .get();
+
+  if (!reportSnap.empty) {
+    const sums: Record<string, number> = {};
+    const counts: Record<string, number> = {};
+    const overalls: number[] = [];
+    for (const doc of reportSnap.docs) {
+      const data = doc.data() as {
+        charts?: {
+          skillBreakdown?: Record<string, number>;
+          timeline?: Array<{ score?: number }>;
+        };
+      };
+      const overall = data.charts?.timeline?.[0]?.score;
+      if (typeof overall === 'number' && Number.isFinite(overall)) {
+        overalls.push(overall);
+      }
+      const breakdown = data.charts?.skillBreakdown;
+      if (!breakdown) continue;
+      for (const key of SKILL_KEYS) {
+        const value = breakdown[key];
+        if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+        sums[key] = (sums[key] ?? 0) + value;
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
+    }
+    const you = {} as Record<SkillKey, number>;
+    for (const key of SKILL_KEYS) {
+      const count = counts[key] ?? 0;
+      you[key] = count > 0 ? clamp((sums[key] ?? 0) / count) : 0;
+    }
+    const hiring =
+      overalls.length > 0
+        ? clamp(overalls.reduce((s, n) => s + n, 0) / overalls.length)
+        : readinessFromYou(you);
+    return { you, readiness: hiring };
   }
-  return 0;
+
+  const you = await loadYouScores(db, uid, user, false);
+  return { you, readiness: readinessFromYou(you) };
 }
 
 function peerComparisonPercent(
@@ -387,17 +434,17 @@ function buildSalaryInsights(
   };
 }
 
-async function computePeerAveragesFromUids(
+async function computePeerAveragesFromUsers(
   db: Firestore,
-  uids: string[],
-): Promise<{ peerAvg: Record<string, number>; sampleSize: number }> {
+  peers: CareerUser[],
+): Promise<{ peerAvg: Record<string, number>; sampleSize: number; cohortSize: number }> {
   const skillSums: Record<string, number> = {};
   const skillCounts: Record<string, number> = {};
   let sampleSize = 0;
 
-  for (const uid of uids) {
+  for (const peer of peers) {
     if (sampleSize >= PEER_SAMPLE_TARGET) break;
-    const you = await loadYouScores(db, uid);
+    const you = await loadYouScores(db, peer.uid, peer);
     if (!SKILL_KEYS.some((key) => you[key] > 0)) continue;
     sampleSize += 1;
     for (const key of SKILL_KEYS) {
@@ -413,38 +460,34 @@ async function computePeerAveragesFromUids(
     peerAvg[key] = count > 0 ? Math.round((skillSums[key] ?? 0) / count) : 50;
   }
 
-  return { peerAvg, sampleSize };
+  return { peerAvg, sampleSize, cohortSize: Math.max(peers.length, 1) };
 }
 
 async function loadPeerAveragesForRole(
   db: Firestore,
   role: string,
-): Promise<{ peerAvg: Record<string, number>; sampleSize: number }> {
-  // Bounded scan — role isn't a single indexed field (it can live in profile.targetRole,
-  // targetRole, or onboarding.selectedRole), so we page through a capped candidate set
-  // rather than the entire users collection.
+): Promise<{ peerAvg: Record<string, number>; sampleSize: number; cohortSize: number }> {
   const usersSnap = await db
     .collection('users')
-    .select('profile', 'onboarding', 'targetRole')
+    .select('profile', 'onboarding', 'targetRole', 'skillSignals')
     .limit(PEER_CANDIDATE_LIMIT)
     .get();
 
-  const uids: string[] = [];
+  const peers: CareerUser[] = [];
   for (const doc of usersSnap.docs) {
-    const peerRole = resolveRole({ ...doc.data(), uid: doc.id } as CareerUser);
-    if (role === 'General' || peerRole === role) {
-      uids.push(doc.id);
+    const peer = { uid: doc.id, ...doc.data() } as CareerUser;
+    if (isSameTargetRole(role, resolveRole(peer))) {
+      peers.push(peer);
     }
   }
 
-  return computePeerAveragesFromUids(db, uids);
+  return computePeerAveragesFromUsers(db, peers);
 }
 
 /**
  * Recompute and write career progress for one user.
- * Safe to call after interview complete: reads the user's own skill scores fresh,
- * but reuses cohort peer averages computed within PEER_CACHE_TTL_MS (nightly job or a
- * recent refresh) instead of rescanning the users collection on every interview.
+ * Always rescans the role cohort so a second user with the same target role
+ * is counted immediately (no stale 1-person cache).
  */
 export async function refreshCareerProgressForUser(uid: string): Promise<CareerProgressDoc | null> {
   const db = ensureAdmin();
@@ -454,30 +497,13 @@ export async function refreshCareerProgressForUser(uid: string): Promise<CareerP
   const user = { uid, ...snap.data() } as CareerUser;
   const role = resolveRole(user);
   const companies = resolveCompanies(user);
-  const you = await loadYouScores(db, uid, user, true);
-  const readiness = resolveReadiness(user);
+  const { you, readiness } = await loadCurrentPerformance(db, uid, user);
   const interviews = resolveInterviewCount(user);
   const interviewStats = await loadInterviewMilestoneStats(db, uid);
 
-  const existing = await careerProgressRef(db, uid).get();
-  const existingData = existing.exists ? (existing.data() as CareerProgressDoc) : null;
-  const cacheIsFresh =
-    !!existingData?.lastComputedAt &&
-    isRecentTimestamp(existingData.lastComputedAt, PEER_CACHE_TTL_MS);
-
-  let peerAvg: Record<string, number>;
-  let cohortSize: number;
-  if (cacheIsFresh && existingData) {
-    peerAvg = {};
-    for (const key of SKILL_KEYS) {
-      peerAvg[key] = existingData.peerBenchmark?.scores?.[key]?.peerAvg ?? 50;
-    }
-    cohortSize = Math.max(1, existingData.peerBenchmark?.cohortSize ?? 1);
-  } else {
-    const loaded = await loadPeerAveragesForRole(db, role);
-    peerAvg = loaded.peerAvg;
-    cohortSize = Math.max(1, loaded.sampleSize);
-  }
+  const loaded = await loadPeerAveragesForRole(db, role);
+  const peerAvg = loaded.peerAvg;
+  const cohortSize = loaded.cohortSize;
 
   const scores: CareerProgressDoc['peerBenchmark']['scores'] = {};
   for (const key of SKILL_KEYS) {
@@ -518,6 +544,7 @@ export async function refreshCareerProgressForUser(uid: string): Promise<CareerP
       peerComparisonPercent: comparison,
       peerRole: role === 'General' ? 'peers' : `${role} peers`,
       readinessScore: readiness,
+      'readiness.score': readiness,
       'stats.successfulInterviews': interviewStats.successful,
     },
     { merge: true },
@@ -527,52 +554,50 @@ export async function refreshCareerProgressForUser(uid: string): Promise<CareerP
 }
 
 /**
- * Fetch existing career progress doc for user. If it doesn't exist, compute & write it first.
- */
-export async function getCareerProgress(uid: string): Promise<CareerProgressDoc> {
-  const computed = await refreshCareerProgressForUser(uid);
-  if (!computed) {
-    throw new AppError(404, 'User profile not found.');
-  }
-
-  const db = ensureAdmin();
-  const fresh = await careerProgressRef(db, uid).get();
-  return (fresh.data() as CareerProgressDoc) || computed;
-}
-
-/**
  * Nightly cohort recompute: refresh peer averages for every user, then rewrite progress.
  */
 export async function computeCareerProgressForAllUsers(): Promise<void> {
   const db = ensureAdmin();
-  const usersSnap = await db.collection('users').select('profile', 'onboarding', 'targetRole').get();
+  const usersSnap = await db
+    .collection('users')
+    .select('profile', 'onboarding', 'targetRole', 'skillSignals')
+    .get();
 
-  const byRole = new Map<string, string[]>();
+  const allUsers: CareerUser[] = [];
+  const byRole = new Map<string, CareerUser[]>();
+  const roleLabel = new Map<string, string>();
+
   for (const doc of usersSnap.docs) {
-    const data = doc.data() as CareerUser;
-    const role = resolveRole({ ...data, uid: doc.id });
-    if (!byRole.has(role)) byRole.set(role, []);
-    byRole.get(role)!.push(doc.id);
+    const user = { uid: doc.id, ...doc.data() } as CareerUser;
+    allUsers.push(user);
+    const role = resolveRole(user);
+    const key = roleKey(role);
+    if (!byRole.has(key)) {
+      byRole.set(key, []);
+      roleLabel.set(key, role);
+    }
+    byRole.get(key)!.push(user);
   }
 
-  for (const [role, uids] of byRole) {
-    const { peerAvg, sampleSize } = await computePeerAveragesFromUids(db, uids);
+  for (const [key, group] of byRole) {
+    const role = roleLabel.get(key) ?? 'General';
+    const peers = key === 'general' ? allUsers : group;
+    const { peerAvg, cohortSize } = await computePeerAveragesFromUsers(db, peers);
 
-    for (const uid of uids) {
-      const userSnap = await userRef(db, uid).get();
+    for (const peer of group) {
+      const userSnap = await userRef(db, peer.uid).get();
       if (!userSnap.exists) continue;
-      const user = { uid, ...userSnap.data() } as CareerUser;
-      const you = await loadYouScores(db, uid, user, true);
-      const readiness = resolveReadiness(user);
+      const user = { uid: peer.uid, ...userSnap.data() } as CareerUser;
+      const { you, readiness } = await loadCurrentPerformance(db, peer.uid, user);
       const interviews = resolveInterviewCount(user);
-      const interviewStats = await loadInterviewMilestoneStats(db, uid);
+      const interviewStats = await loadInterviewMilestoneStats(db, peer.uid);
       const companies = resolveCompanies(user);
       const comparison = peerComparisonPercent(you, peerAvg);
       const deltaWeek = user.readiness?.deltaWeek ?? 0;
 
       const scores: CareerProgressDoc['peerBenchmark']['scores'] = {};
-      for (const key of SKILL_KEYS) {
-        scores[key] = { you: you[key], peerAvg: peerAvg[key] ?? 50 };
+      for (const skill of SKILL_KEYS) {
+        scores[skill] = { you: you[skill], peerAvg: peerAvg[skill] ?? 50 };
       }
 
       const progress: CareerProgressDoc = {
@@ -586,19 +611,20 @@ export async function computeCareerProgressForAllUsers(): Promise<void> {
             companies.length > 0
               ? `${role} targeting ${companies.join(', ')}`
               : `${role} cohort`,
-          cohortSize: Math.max(uids.length, sampleSize, 1),
+          cohortSize,
           scores,
         },
         milestones: buildMilestones(user, interviewStats),
         lastComputedAt: FieldValue.serverTimestamp() as never,
       };
 
-      await careerProgressRef(db, uid).set(omitUndefinedDeep(progress), { merge: true });
-      await db.collection('users').doc(uid).set(
+      await careerProgressRef(db, peer.uid).set(omitUndefinedDeep(progress), { merge: true });
+      await db.collection('users').doc(peer.uid).set(
         {
           peerComparisonPercent: comparison,
-          peerRole: role === 'General' ? 'peers' : `${role} peers`,
+          peerRole: roleKey(role) === 'general' ? 'peers' : `${role} peers`,
           readinessScore: readiness,
+          'readiness.score': readiness,
           'stats.successfulInterviews': interviewStats.successful,
         },
         { merge: true },

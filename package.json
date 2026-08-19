@@ -7,9 +7,9 @@
     "dev": "npm --prefix functions run dev",
     "build": "npm --prefix functions run build",
     "start": "npm --prefix functions run start",
-    "deploy-firestore": "firebase deploy --only firestore:indexes --project=interview-89e09",
-    "deploy-functions": "firebase deploy --only functions --force --project=interview-89e09",
-    "emulators:start": "firebase emulators:start --project=interview-89e09",
+    "deploy-firestore": "firebase deploy --only firestore:indexes --project=interview-prod-dd24f",
+    "deploy-functions": "firebase deploy --only functions --force --project=interview-prod-dd24f",
+    "emulators:start": "firebase emulators:start --project=interview-prod-dd24f",
     "sync:secrets": "node scripts/sync-firebase-secrets.js",
     "sync:firebase-config": "node scripts/sync-env-to-firestore.js",
     "seed": "node scripts/seed.js",
@@ -21,6 +21,7 @@
   "license": "ISC",
   "dependencies": {
     "@sparticuz/chromium": "^149.0.0",
+    "firebase-admin": "^13.10.0",
     "puppeteer-core": "^25.3.0"
   }
 }

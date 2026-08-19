@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "interview-89e09"
+    "default": "interview-prod-dd24f",
+    "production": "interview-prod-dd24f",
+    "dev": "interview-89e09"
   }
 }

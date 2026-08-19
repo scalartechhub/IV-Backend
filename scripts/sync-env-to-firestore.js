@@ -13,7 +13,15 @@
 
 const fs = require("fs");
 const path = require("path");
-const admin = require("firebase-admin");
+let admin;
+try {
+  admin = require("firebase-admin");
+} catch (_err) {
+  const functionsAdminPath = require.resolve("firebase-admin", {
+    paths: [path.resolve(__dirname, "..", "functions")],
+  });
+  admin = require(functionsAdminPath);
+}
 
 // 1. Load .env file
 const envPath = path.resolve(__dirname, "..", ".env");
@@ -98,8 +106,8 @@ async function syncToFirestore() {
       url: envValues.JUDGE0_URL || "http://localhost:2358",
     },
     firebase: {
-      apiKey: envValues.FIREBASE_API_KEY || "",
-      storageBucket: envValues.FIREBASE_STORAGE_BUCKET || "",
+      apiKey: envValues.FB_API_KEY || envValues.FIREBASE_API_KEY || "",
+      storageBucket: envValues.FB_STORAGE_BUCKET || envValues.FIREBASE_STORAGE_BUCKET || "",
     },
   };
 

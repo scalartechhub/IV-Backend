@@ -537,7 +537,18 @@ export async function completeInterview(
       tx,
       db,
       uid,
-      updatedSkills,
+      {
+        technical: results.technicalScore,
+        communication: results.communicationScore,
+        confidence: results.confidenceScore,
+        problemSolving: results.problemSolvingScore,
+        ...(typeof results.codingScore === 'number'
+          ? { coding: results.codingScore }
+          : {}),
+        ...(typeof results.behaviorScore === 'number'
+          ? { behavior: results.behaviorScore }
+          : {}),
+      },
       score7dAgo,
     );
 

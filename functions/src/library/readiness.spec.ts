@@ -20,8 +20,9 @@ describe('calculateReadiness', () => {
     assert.equal(score, 69);
   });
 
-  it('defaults missing skills to 50', () => {
-    assert.equal(calculateReadiness({}), 50);
+  it('omits missing skills instead of padding with 50', () => {
+    assert.equal(calculateReadiness({}), 0);
+    assert.equal(calculateReadiness({ technical: 5, communication: 5 }), 5);
   });
 
   it('computes deltaWeek as current - snapshot (0 if missing)', () => {
