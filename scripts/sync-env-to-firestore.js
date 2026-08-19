@@ -51,6 +51,26 @@ if (fs.existsSync(envPath)) {
   console.log("[SyncScript] .env file not found, using process.env...");
 }
 
+// Validate required environment variables — no hardcoded defaults allowed
+const REQUIRED_ENV_KEYS = [
+  "GEMINI_API_KEY",
+  "GEMINI_MODEL",
+  "GEMINI_LIVE_MODEL",
+];
+
+const missingKeys = REQUIRED_ENV_KEYS.filter(
+  (k) => !envValues[k] || !String(envValues[k]).trim()
+);
+
+if (missingKeys.length > 0) {
+  console.error(
+    `\n❌ [SyncScript Error] Missing required environment variables in .env:\n` +
+      missingKeys.map((k) => `   - ${k}`).join("\n") +
+      `\n\nPlease add all required environment variables to your .env file before running sync-env-to-firestore.\n`
+  );
+  process.exit(1);
+}
+
 // 2. Initialize Firebase Admin SDK
 function initFirebase() {
   const saCandidates = [
@@ -77,42 +97,49 @@ function initFirebase() {
 
 async function syncToFirestore() {
   const db = initFirebase();
-  console.log("\n[SyncScript] Syncing configuration documents to Firestore collection 'config'...\n");
+  console.log(
+    "\n[SyncScript] Syncing configuration documents to Firestore collection 'config'...\n"
+  );
 
   const configs = {
     genai: {
-      apiKey: envValues.GEMINI_API_KEY || "",
-      model: envValues.GEMINI_MODEL || "gemini-2.5-flash",
-      liveModel: envValues.GEMINI_LIVE_MODEL || "gemini-2.5-flash-native-audio-preview-12-2025",
-      voiceName: envValues.GEMINI_VOICE_NAME || "Charon",
-      timeoutMs: Number(envValues.GEMINI_TIMEOUT_MS || 60000),
-      resumeModel: envValues.RESUME_GEMINI_MODEL || "",
+      apiKey: envValues.GEMINI_API_KEY,
+      model: envValues.GEMINI_MODEL,
+      fallbackModels: envValues.GEMINI_FALLBACK_MODELS
+        ? envValues.GEMINI_FALLBACK_MODELS.split(",").map((s) => s.trim()).filter(Boolean)
+        : undefined,
+      liveModel: envValues.GEMINI_LIVE_MODEL,
+      voiceName: envValues.GEMINI_VOICE_NAME,
+      timeoutMs: envValues.GEMINI_TIMEOUT_MS
+        ? Number(envValues.GEMINI_TIMEOUT_MS)
+        : undefined,
+      resumeModel: envValues.RESUME_GEMINI_MODEL,
     },
     sendgrid: {
-      apiKey: envValues.SENDGRID_API_KEY || "",
-      fromEmail: envValues.SENDGRID_FROM_EMAIL || "info@scalartechhub.com",
-      ownerEmail: envValues.OWNER_EMAIL || "ashishgupta95652@gmail.com",
+      apiKey: envValues.SENDGRID_API_KEY,
+      fromEmail: envValues.SENDGRID_FROM_EMAIL,
+      ownerEmail: envValues.OWNER_EMAIL,
     },
     razorpay: {
-      keyId: envValues.RAZORPAY_KEY_ID || "",
-      keySecret: envValues.RAZORPAY_KEY_SECRET || "",
-      webhookSecret: envValues.RAZORPAY_WEBHOOK_SECRET || "",
+      keyId: envValues.RAZORPAY_KEY_ID,
+      keySecret: envValues.RAZORPAY_KEY_SECRET,
+      webhookSecret: envValues.RAZORPAY_WEBHOOK_SECRET,
     },
     groq: {
-      apiKey: envValues.GROQ_API_KEY || "",
-      model: envValues.GROQ_MODEL || "llama-3.3-70b-versatile",
+      apiKey: envValues.GROQ_API_KEY,
+      model: envValues.GROQ_MODEL,
     },
     judge0: {
-      url: envValues.JUDGE0_URL || "http://localhost:2358",
+      url: envValues.JUDGE0_URL,
     },
     firebase: {
-      apiKey: envValues.FB_API_KEY || envValues.FIREBASE_API_KEY || "",
-      storageBucket: envValues.FB_STORAGE_BUCKET || envValues.FIREBASE_STORAGE_BUCKET || "",
+      apiKey: envValues.FB_API_KEY || envValues.FIREBASE_API_KEY,
+      storageBucket: envValues.FB_STORAGE_BUCKET || envValues.FIREBASE_STORAGE_BUCKET,
     },
   };
 
   for (const [docId, data] of Object.entries(configs)) {
-    // Remove empty string fields to keep docs clean, unless specified
+    // Remove empty string / undefined / null fields to keep Firestore docs clean
     const cleanedData = {};
     for (const [k, v] of Object.entries(data)) {
       if (v !== "" && v !== undefined && v !== null) {
@@ -128,7 +155,9 @@ async function syncToFirestore() {
     }
   }
 
-  console.log("\n✅ All environment credentials synced successfully to Firebase Firestore!\n");
+  console.log(
+    "\n✅ All environment credentials synced successfully to Firebase Firestore!\n"
+  );
   process.exit(0);
 }
 

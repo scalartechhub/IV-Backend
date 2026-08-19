@@ -14,13 +14,25 @@ import { Firestore, getFirestore } from "firebase-admin/firestore";
 import { isCloudRuntime } from "../shared/runtime";
 import { appConfig } from "./app.config";
 import { secretService } from "./secrets";
+import { firestoreConfigService } from "./firestore-config.service";
 
 export let db: Firestore;
 export let auth: Auth;
 export { admin };
 
-let _storageBucket: string | undefined;
 let _initialized = false;
+
+export const getStorageBucket = (): string | undefined => {
+  const fromFirestore = firestoreConfigService.getFirebaseConfig()?.storageBucket;
+  const raw =
+    fromFirestore ||
+    appConfig.firebaseStorageBucket ||
+    process.env.FB_STORAGE_BUCKET ||
+    process.env.FIREBASE_STORAGE_BUCKET ||
+    "";
+  const cleaned = raw.replace(/^gs:\/\//, "").trim();
+  return cleaned || undefined;
+};
 
 const findServiceAccountPath = (): string | null => {
   const configured = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim();
@@ -54,19 +66,19 @@ export const initializeFirebase = (): void => {
     return;
   }
 
-  _storageBucket = appConfig.firebaseStorageBucket?.replace(/^gs:\/\//, "");
+  const storageBucket = getStorageBucket();
 
   let adminApp: App;
 
   if (isCloudRuntime()) {
     adminApp = initializeApp({
-      ...(_storageBucket && { storageBucket: _storageBucket }),
+      ...(storageBucket && { storageBucket }),
     });
   } else if (localServiceAccount) {
     adminApp = initializeApp({
       credential: cert(localServiceAccount),
       projectId: localServiceAccount.project_id,
-      ...(_storageBucket && { storageBucket: _storageBucket }),
+      ...(storageBucket && { storageBucket }),
     });
   } else {
     if (!secretService.isInitialized) {
@@ -80,7 +92,7 @@ export const initializeFirebase = (): void => {
         privateKey: credentials.privateKey,
       }),
       projectId: credentials.projectId,
-      ...(_storageBucket && { storageBucket: _storageBucket }),
+      ...(storageBucket && { storageBucket }),
     });
   }
 
@@ -90,4 +102,4 @@ export const initializeFirebase = (): void => {
   _initialized = true;
 };
 
-export const isStorageConfigured = (): boolean => Boolean(_storageBucket);
+export const isStorageConfigured = (): boolean => Boolean(getStorageBucket());

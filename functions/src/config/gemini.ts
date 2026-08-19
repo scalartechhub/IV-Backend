@@ -9,17 +9,29 @@ import { firestoreConfigService } from "./firestore-config.service";
 const SECONDARY_FALLBACK_MODEL = "gemini-1.5-flash";
 
 export function getActiveGeminiModel(): string {
-  return firestoreConfigService.getGenAIConfig().model || appConfig.geminiModel || "gemini-2.5-flash";
+  const model = (
+    firestoreConfigService.getGenAIConfig().model ||
+    appConfig.geminiModel ||
+    process.env.GEMINI_MODEL ||
+    ""
+  ).trim();
+  if (!model) {
+    throw new AppError(
+      503,
+      'Gemini AI model is not configured. Please set the "model" field in Firestore collection "config", document "genai" (e.g. "gemini-2.0-flash").'
+    );
+  }
+  return model;
 }
 
-export const GEMINI_MODEL = getActiveGeminiModel();
-
-export const GEMINI_FALLBACK_MODELS: readonly string[] = [
-  "gemini-3.1-flash-lite",
-  "gemini-2.5-flash-lite",
-  "gemini-2.0-flash",
-  "gemini-1.5-flash",
-];
+export function getGeminiFallbackModels(): readonly string[] {
+  const configured = firestoreConfigService.getGenAIConfig().fallbackModels;
+  if (Array.isArray(configured) && configured.length > 0) {
+    return configured;
+  }
+  const primary = getActiveGeminiModel();
+  return [primary];
+}
 
 export const GEMINI_REQUEST_TIMEOUT_MS = appConfig.geminiTimeoutMs;
 
@@ -73,8 +85,9 @@ export const geminiModel = {
     } = options;
 
     const primaryModel = getActiveGeminiModel();
+    const fallbackList = getGeminiFallbackModels();
     const modelsToTry = useFallbackModels
-      ? [primaryModel, ...GEMINI_FALLBACK_MODELS.filter((m) => m !== primaryModel)]
+      ? [primaryModel, ...fallbackList.filter((m: string) => m !== primaryModel)]
       : [primaryModel];
     let lastError: Error | null = null;
 

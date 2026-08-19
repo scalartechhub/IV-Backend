@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { getStorage } from "firebase-admin/storage";
-import { isStorageConfigured } from "../../config/firebase";
+import { getStorageBucket, isStorageConfigured } from "../../config/firebase";
 import { STORAGE_PATHS } from "../../shared/constants";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
@@ -17,12 +17,13 @@ export const uploadUserResumeFile = async (
   fileKey = `resume-${Date.now()}-${randomUUID()}`,
   contentType = "application/pdf"
 ): Promise<string | undefined> => {
-  if (!isStorageConfigured()) {
+  const bucketName = getStorageBucket();
+  if (!bucketName) {
     logger.warn("[storage] FIREBASE_STORAGE_BUCKET not set — skipping user resume upload");
     return undefined;
   }
 
-  const bucket = getStorage().bucket();
+  const bucket = getStorage().bucket(bucketName);
   const filePath = STORAGE_PATHS.USER_RESUME(uid, fileKey);
   const file = bucket.file(filePath);
   const downloadToken = randomUUID();

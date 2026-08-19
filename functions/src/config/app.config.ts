@@ -8,10 +8,9 @@ const appConfigSchema = z.object({
   PORT: z.string().default("5000"),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   FIREBASE_STORAGE_BUCKET: z.string().optional(),
-  GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
-  GEMINI_LIVE_MODEL: z
-    .string()
-    .default("gemini-2.5-flash-native-audio-preview-12-2025"),
+  FB_STORAGE_BUCKET: z.string().optional(),
+  GEMINI_MODEL: z.string().optional(),
+  GEMINI_LIVE_MODEL: z.string().optional(),
   GEMINI_VOICE_NAME: z.string().default("Charon"),
   GEMINI_TIMEOUT_MS: z
     .string()
@@ -38,7 +37,7 @@ export const appConfig = {
   nodeEnv: data.NODE_ENV,
   isProduction: data.NODE_ENV === "production",
   isDevelopment: data.NODE_ENV === "development",
-  firebaseStorageBucket: data.FIREBASE_STORAGE_BUCKET,
+  firebaseStorageBucket: data.FB_STORAGE_BUCKET || data.FIREBASE_STORAGE_BUCKET,
   geminiModel: data.GEMINI_MODEL,
   geminiLiveModel: data.GEMINI_LIVE_MODEL,
   geminiVoiceName: data.GEMINI_VOICE_NAME,

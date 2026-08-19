@@ -27,7 +27,7 @@ import type {
 } from '../../interfaces/interview.interface';
 import {
   buildLiveConnectConfig,
-  DEFAULT_LIVE_MODEL,
+  getDefaultLiveModel,
   getClient,
 } from '../../library/gemini-client';
 import { buildInterviewSystemInstructions } from '../../services/interview-prompt';
@@ -399,7 +399,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
         interview,
         resumeMode,
       );
-      const model = interview.aiSession?.modelVersion || DEFAULT_LIVE_MODEL;
+      const model = interview.aiSession?.modelVersion || getDefaultLiveModel();
 
       const sessionPayload = {
         conversation: toClientConversation(conversation),

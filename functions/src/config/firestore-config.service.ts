@@ -5,6 +5,7 @@ export interface GenAIConfig {
   apiKey?: string;
   model?: string;
   liveModel?: string;
+  fallbackModels?: string[];
   voiceName?: string;
   timeoutMs?: number;
   resumeModel?: string;
@@ -90,12 +91,23 @@ class FirestoreConfigService {
 
       // Parse GenAI Config
       const genaiDoc = docsData["genai"] || {};
+      const parseFallbackModels = (val: any): string[] => {
+        if (Array.isArray(val) && val.length > 0) {
+          return val.map((s) => String(s).trim()).filter(Boolean);
+        }
+        if (typeof val === "string" && val.trim()) {
+          return val.split(",").map((s) => s.trim()).filter(Boolean);
+        }
+        return [];
+      };
+
       const genaiConfig: GenAIConfig = {
         apiKey: genaiDoc.apiKey || genaiDoc.GEMINI_API_KEY || process.env.GEMINI_API_KEY,
-        model: genaiDoc.model || genaiDoc.GEMINI_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash",
-        liveModel: genaiDoc.liveModel || genaiDoc.GEMINI_LIVE_MODEL || process.env.GEMINI_LIVE_MODEL || "gemini-2.5-flash-native-audio-preview-12-2025",
+        model: genaiDoc.model || genaiDoc.GEMINI_MODEL || process.env.GEMINI_MODEL,
+        liveModel: genaiDoc.liveModel || genaiDoc.GEMINI_LIVE_MODEL || process.env.GEMINI_LIVE_MODEL,
+        fallbackModels: parseFallbackModels(genaiDoc.fallbackModels || genaiDoc.GEMINI_FALLBACK_MODELS || process.env.GEMINI_FALLBACK_MODELS),
         voiceName: genaiDoc.voiceName || genaiDoc.GEMINI_VOICE_NAME || process.env.GEMINI_VOICE_NAME || "Charon",
-        timeoutMs: genaiDoc.timeoutMs ? Number(genaiDoc.timeoutMs) : (process.env.GEMINI_TIMEOUT_MS ? Number(process.env.GEMINI_TIMEOUT_MS) : 60000),
+        timeoutMs: genaiDoc.timeoutMs ? Number(genaiDoc.timeoutMs) : (process.env.GEMINI_TIMEOUT_MS ? Number(process.env.GEMINI_TIMEOUT_MS) : 120000),
         resumeModel: genaiDoc.resumeModel || genaiDoc.RESUME_GEMINI_MODEL || process.env.RESUME_GEMINI_MODEL,
       };
 
@@ -131,8 +143,8 @@ class FirestoreConfigService {
       // Parse Firebase Client Config
       const firebaseDoc = docsData["firebase"] || {};
       const firebaseConfig: FirebaseClientConfig = {
-        apiKey: firebaseDoc.apiKey || firebaseDoc.FIREBASE_API_KEY || process.env.FIREBASE_API_KEY,
-        storageBucket: firebaseDoc.storageBucket || firebaseDoc.FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET,
+        apiKey: firebaseDoc.apiKey || firebaseDoc.FIREBASE_API_KEY || firebaseDoc.FB_API_KEY || process.env.FIREBASE_API_KEY || process.env.FB_API_KEY,
+        storageBucket: firebaseDoc.storageBucket || firebaseDoc.FIREBASE_STORAGE_BUCKET || firebaseDoc.FB_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || process.env.FB_STORAGE_BUCKET,
       };
 
       this.configCache = {
@@ -161,13 +173,19 @@ class FirestoreConfigService {
   }
 
   private populateFromEnv(): void {
+    const rawFallback = process.env.GEMINI_FALLBACK_MODELS;
+    const fallbackModels = rawFallback
+      ? rawFallback.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+
     this.configCache = {
       genai: {
         apiKey: process.env.GEMINI_API_KEY,
-        model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
-        liveModel: process.env.GEMINI_LIVE_MODEL || "gemini-2.5-flash-native-audio-preview-12-2025",
+        model: process.env.GEMINI_MODEL,
+        fallbackModels,
+        liveModel: process.env.GEMINI_LIVE_MODEL,
         voiceName: process.env.GEMINI_VOICE_NAME || "Charon",
-        timeoutMs: process.env.GEMINI_TIMEOUT_MS ? Number(process.env.GEMINI_TIMEOUT_MS) : 60000,
+        timeoutMs: process.env.GEMINI_TIMEOUT_MS ? Number(process.env.GEMINI_TIMEOUT_MS) : 120000,
         resumeModel: process.env.RESUME_GEMINI_MODEL,
       },
       sendgrid: {
@@ -188,8 +206,8 @@ class FirestoreConfigService {
         url: process.env.JUDGE0_URL || "http://localhost:2358",
       },
       firebase: {
-        apiKey: process.env.FIREBASE_API_KEY,
-        storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+        apiKey: process.env.FIREBASE_API_KEY || process.env.FB_API_KEY,
+        storageBucket: process.env.FIREBASE_STORAGE_BUCKET || process.env.FB_STORAGE_BUCKET,
       },
     };
   }
@@ -199,6 +217,7 @@ class FirestoreConfigService {
 
     if (genai?.apiKey) process.env.GEMINI_API_KEY = genai.apiKey;
     if (genai?.model) process.env.GEMINI_MODEL = genai.model;
+    if (genai?.fallbackModels?.length) process.env.GEMINI_FALLBACK_MODELS = genai.fallbackModels.join(",");
     if (genai?.liveModel) process.env.GEMINI_LIVE_MODEL = genai.liveModel;
     if (genai?.voiceName) process.env.GEMINI_VOICE_NAME = genai.voiceName;
     if (genai?.timeoutMs) process.env.GEMINI_TIMEOUT_MS = String(genai.timeoutMs);
@@ -216,8 +235,14 @@ class FirestoreConfigService {
 
     if (judge0?.url) process.env.JUDGE0_URL = judge0.url;
 
-    if (firebase?.apiKey) process.env.FIREBASE_API_KEY = firebase.apiKey;
-    if (firebase?.storageBucket) process.env.FIREBASE_STORAGE_BUCKET = firebase.storageBucket;
+    if (firebase?.apiKey) {
+      process.env.FIREBASE_API_KEY = firebase.apiKey;
+      process.env.FB_API_KEY = firebase.apiKey;
+    }
+    if (firebase?.storageBucket) {
+      process.env.FIREBASE_STORAGE_BUCKET = firebase.storageBucket;
+      process.env.FB_STORAGE_BUCKET = firebase.storageBucket;
+    }
   }
 
   getGenAIConfig(): GenAIConfig {

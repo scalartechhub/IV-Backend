@@ -8,29 +8,47 @@ import { firestoreConfigService } from '../config/firestore-config.service';
 
 import { AppError } from '../shared/utils';
 
-/** Dynamic model getters: Priority order: 1) Firestore config/genai -> 2) process.env -> 3) hardcoded default */
+/** Dynamic model getters: Fetched strictly from Firestore config/genai document or process.env */
 export function getDefaultModel(): string {
-  return firestoreConfigService.getGenAIConfig().model || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const model = (
+    firestoreConfigService.getGenAIConfig().model ||
+    process.env.GEMINI_MODEL ||
+    ''
+  ).trim();
+  if (!model) {
+    throw new AppError(
+      503,
+      'Gemini AI model is not configured. Please set the "model" field in Firestore collection "config", document "genai" (e.g. "gemini-2.0-flash").',
+    );
+  }
+  return model;
 }
 
 export function getResumeModel(): string {
-  return (
+  const resumeModel = (
     firestoreConfigService.getGenAIConfig().resumeModel ||
     process.env.RESUME_GEMINI_MODEL ||
-    getDefaultModel()
-  );
+    ''
+  ).trim();
+  return resumeModel || getDefaultModel();
 }
 
 export function getDefaultLiveModel(): string {
-  return (
+  const liveModel = (
     firestoreConfigService.getGenAIConfig().liveModel ||
     process.env.GEMINI_LIVE_MODEL ||
-    'gemini-2.5-flash-native-audio-preview-12-2025'
-  );
+    ''
+  ).trim();
+  if (!liveModel) {
+    throw new AppError(
+      503,
+      'Gemini Live model is not configured. Please set the "liveModel" field in Firestore collection "config", document "genai" (e.g. "gemini-2.5-flash-native-audio-preview-12-2025").',
+    );
+  }
+  return liveModel;
 }
 
-/** Faster model for resume scoring when set (e.g. gemini-2.0-flash). */
-export const RESUME_GEMINI_MODEL = getResumeModel();
+export const RESUME_GEMINI_MODEL = 'RESUME_GEMINI_MODEL';
 
 const supportsThinkingConfig = (model: string): boolean =>
   /gemini-2\./i.test(model);
@@ -58,7 +76,13 @@ export function getClient(): GoogleGenAI {
   return client;
 }
 
-const FALLBACK_MODELS = ['gemini-3.1-flash-lite', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
+export function getFallbackModels(): string[] {
+  const configured = firestoreConfigService.getGenAIConfig().fallbackModels;
+  if (Array.isArray(configured) && configured.length > 0) {
+    return configured;
+  }
+  return [];
+}
 
 /**
  * Generate structured JSON from a system + user prompt pair.
@@ -71,12 +95,18 @@ export async function generateJson<T>(params: {
   temperature?: number;
   maxOutputTokens?: number;
 }): Promise<T> {
-  const rawModel = params.model ?? getDefaultModel();
+  const rawModel =
+    !params.model || params.model === 'RESUME_GEMINI_MODEL'
+      ? params.model === 'RESUME_GEMINI_MODEL'
+        ? getResumeModel()
+        : getDefaultModel()
+      : params.model;
   const primaryModel = /gemini-/i.test(rawModel) ? rawModel : getDefaultModel();
+  const fallbacks = getFallbackModels();
 
   const modelsToTry = [
     primaryModel,
-    ...FALLBACK_MODELS.filter((m) => m !== primaryModel),
+    ...fallbacks.filter((m) => m !== primaryModel),
   ];
 
   let lastErr: unknown = null;
@@ -167,7 +197,7 @@ export async function generateJson<T>(params: {
   throw lastErr;
 }
 
-export const DEFAULT_LIVE_MODEL = getDefaultLiveModel();
+export const DEFAULT_LIVE_MODEL = 'DEFAULT_LIVE_MODEL';
 
 /**
  * Without an explicit language, Gemini Live auto-detects language per utterance and can

@@ -1,4 +1,4 @@
-import { getGenAI, GEMINI_FALLBACK_MODELS, GEMINI_REQUEST_TIMEOUT_MS } from "../../config/gemini";
+import { getGenAI, getGeminiFallbackModels, GEMINI_REQUEST_TIMEOUT_MS } from "../../config/gemini";
 import { appConfig } from "../../config/app.config";
 import { logger } from "../../shared/logger";
 import { AppError, safeJsonParse } from "../../shared/utils";
@@ -96,9 +96,10 @@ export class AIService {
     const { maxOutputTokens, temperature } = resolveGenerateJSONOptions(options);
     const trimmedPrompt = trimPrompt(prompt);
     let lastError: unknown;
-    const primaryModel = GEMINI_FALLBACK_MODELS[0];
+    const fallbackModels = getGeminiFallbackModels();
+    const primaryModel = fallbackModels[0];
 
-    for (const model of GEMINI_FALLBACK_MODELS) {
+    for (const model of fallbackModels) {
       for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_MODEL; attempt++) {
         const startedAt = Date.now();
 

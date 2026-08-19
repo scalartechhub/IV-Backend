@@ -13,6 +13,7 @@ import type {
   LiveTranscriptEntry,
   PersistedTurnPayload,
 } from "./live-interview.types";
+import { getDefaultLiveModel } from "../../library/gemini-client";
 
 export interface GeminiLiveBridgeOptions {
   interview: Interview;
@@ -344,7 +345,7 @@ export const createGeminiLiveBridge = async (
   const systemInstruction = buildLiveInterviewSystemInstruction(interview, resumeMode);
 
   geminiSession = await getGenAI().live.connect({
-    model: appConfig.geminiLiveModel,
+    model: getDefaultLiveModel(),
     config: {
       responseModalities: [Modality.AUDIO],
       speechConfig: {
