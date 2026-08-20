@@ -16,14 +16,44 @@ const API_PREFIX = isCloudRuntime() ? "" : "/api";
 const apiPath = (suffix: string): string => `${API_PREFIX}${suffix}`;
 
 const parseCorsOrigin = (): cors.CorsOptions["origin"] => {
-  const raw = appConfig.corsOrigin;
-  if (!raw) {
-    return appConfig.isProduction ? false : true;
-  }
-  if (raw === "*") {
-    return appConfig.isProduction ? false : true;
-  }
-  return raw.split(",").map((origin) => origin.trim());
+  const raw = appConfig.corsOrigin || process.env.CORS_ORIGIN;
+  const configured = raw
+    ? raw.split(",").map((origin) => origin.trim()).filter(Boolean)
+    : [];
+
+  const defaultAllowed = [
+    "https://app.interviewup.ai",
+    "https://www.app.interviewup.ai",
+    "https://interview-prod-dd24f.web.app",
+    "https://interview-prod-dd24f.firebaseapp.com",
+    "http://localhost:4200",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:4200",
+  ];
+
+  const allowedSet = new Set([...configured, ...defaultAllowed]);
+
+  return (origin, callback) => {
+    // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
+    if (!origin) {
+      return callback(null, true);
+    }
+    if (allowedSet.has(origin)) {
+      return callback(null, true);
+    }
+    // Allow any localhost / 127.0.0.1 port for local development
+    if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      return callback(null, true);
+    }
+    // Allow subdomains of interviewup.ai, web.app, firebaseapp.com
+    if (/\.interviewup\.ai$/.test(origin) || /\.web\.app$/.test(origin) || /\.firebaseapp\.com$/.test(origin)) {
+      return callback(null, true);
+    }
+
+    logger.warn(`[CORS] Blocked request from unauthorized origin: ${origin}`);
+    callback(null, false);
+  };
 };
 
 const app: Application = express();
