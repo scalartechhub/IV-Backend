@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { appConfig } from "./app.config";
 import { secretService } from "./secrets";
 import { logger } from "../shared/logger";
-import { AppError } from "../shared/utils";
+import { AppError, parseModelJson } from "../shared/utils";
 
 import { firestoreConfigService } from "./firestore-config.service";
 
@@ -111,16 +111,7 @@ export const geminiModel = {
           throw new Error("Empty response from Gemini");
         }
 
-        try {
-          return JSON.parse(rawText.trim()) as T;
-        } catch {
-          const cleaned = rawText
-            .trim()
-            .replace(/^```(?:json)?\s*/i, "")
-            .replace(/\s*```$/i, "")
-            .trim();
-          return JSON.parse(cleaned) as T;
-        }
+        return parseModelJson<T>(rawText);
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         logger.warn(
@@ -141,24 +132,5 @@ export const geminiModel = {
 };
 
 export function parseGeminiJSON(text: string): any {
-  const cleanText = text
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-
-  try {
-    return JSON.parse(cleanText);
-  } catch {
-    console.error(
-      `[Gemini] ❌ Failed to parse JSON response from Gemini.\n` +
-      `  HOW TO FIX:\n` +
-      `  1. The model returned text that is not valid JSON. This usually means the prompt\n` +
-      `     did not clearly ask for JSON output.\n` +
-      `  2. Make sure your prompt explicitly says: "Respond ONLY with valid JSON. No extra text."\n` +
-      `  3. Check if the model is set to use responseMimeType: "application/json".\n` +
-      `  Raw response received:\n  ${cleanText.slice(0, 500)}${cleanText.length > 500 ? "... (truncated)" : ""}`
-    );
-    throw new Error("AI returned an invalid response format. Please try again.");
-  }
+  return parseModelJson(text);
 }

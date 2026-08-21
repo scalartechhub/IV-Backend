@@ -6,7 +6,7 @@
 import { GoogleGenAI, Modality } from '@google/genai';
 import { firestoreConfigService } from '../config/firestore-config.service';
 
-import { AppError } from '../shared/utils';
+import { AppError, parseModelJson } from '../shared/utils';
 
 /** Dynamic model getters: Fetched strictly from Firestore config/genai document or process.env */
 export function getDefaultModel(): string {
@@ -133,18 +133,20 @@ export async function generateJson<T>(params: {
         throw new Error('Empty Gemini response');
       }
 
-      try {
-        return JSON.parse(raw) as T;
-      } catch {
-        const cleaned = raw
-          .replace(/^```(?:json)?\s*/i, '')
-          .replace(/\s*```$/i, '')
-          .trim();
-        return JSON.parse(cleaned) as T;
-      }
+      return parseModelJson<T>(raw);
     } catch (err: any) {
       lastErr = err;
       const msg = String(err?.message || err);
+
+      if (err instanceof AppError) {
+        if (err.statusCode === 502 && model !== modelsToTry[modelsToTry.length - 1]) {
+          console.warn(
+            `[gemini-client] Model "${model}" returned unreadable JSON, retrying with fallback model...`,
+          );
+          continue;
+        }
+        throw err;
+      }
 
       if (
         msg.includes('401') ||
@@ -153,7 +155,6 @@ export async function generateJson<T>(params: {
         msg.includes('invalid authentication credentials') ||
         msg.includes('API_KEY_INVALID')
       ) {
-        // Invalidate memory cache & client instance so next call re-fetches latest key from Firestore
         client = null;
         currentApiKey = null;
         firestoreConfigService.clearCache();
@@ -161,6 +162,26 @@ export async function generateJson<T>(params: {
         throw new AppError(
           401,
           'Gemini API Authentication Failed: The API key in Firestore (config/genai) or .env is invalid, unauthorized, or expired. Please set a valid Google AI Studio Key (starting with AIzaSy...) at https://aistudio.google.com/app/apikey and update Firestore collection "config", document "genai".',
+        );
+      }
+
+      const isParseError =
+        err?.name === 'SyntaxError' ||
+        msg.includes('Unexpected non-whitespace character after JSON') ||
+        msg.includes('Unexpected token') ||
+        msg.includes('is not valid JSON');
+
+      if (isParseError && model !== modelsToTry[modelsToTry.length - 1]) {
+        console.warn(
+          `[gemini-client] Model "${model}" returned invalid JSON, retrying with fallback model...`,
+        );
+        continue;
+      }
+
+      if (isParseError) {
+        throw new AppError(
+          502,
+          'AI returned a response we could not read. Please try again.',
         );
       }
 
