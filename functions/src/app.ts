@@ -97,20 +97,7 @@ const aiLimiter = rateLimit({
   },
 });
 
-const paymentLimiter = rateLimit({
-  windowMs: RATE_LIMIT.WINDOW_MS,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, message: "Too many payment requests. Please try again later." },
-});
-
 app.use(apiPath("") || "/", globalLimiter);
-app.use(apiPath("/interviews/create"), aiLimiter);
-app.use(apiPath("/interviews/create-with-documents"), aiLimiter);
-app.use(apiPath("/interviews/resume-analysis"), aiLimiter);
-app.use(apiPath("/interviews/resume-pdf"), aiLimiter);
-app.use(apiPath("/interviews/:id/finish"), aiLimiter);
 app.use(apiPath("/v2/interviews/start"), aiLimiter);
 app.use(apiPath("/v2/interviews/:id/complete"), aiLimiter);
 app.use(apiPath("/v2/resumes/analyze"), aiLimiter);
@@ -118,11 +105,6 @@ app.use(apiPath("/v2/onboarding/analyze-from-answers"), aiLimiter);
 app.use(apiPath("/v2/roadmap/regenerate"), aiLimiter);
 app.use(apiPath("/v2/coding/run"), aiLimiter);
 app.use(apiPath("/v2/coding/submit"), aiLimiter);
-app.use(apiPath("/chat"), aiLimiter);
-app.use(apiPath("/chat-bot"), aiLimiter);
-app.use(apiPath("/ats/analyze"), aiLimiter);
-app.use(apiPath("/payment/create-order"), paymentLimiter);
-app.use(apiPath("/payment/verify"), paymentLimiter);
 
 app.use((req, _res, next) => {
   logger.info(`→ ${req.method} ${req.path}`);
