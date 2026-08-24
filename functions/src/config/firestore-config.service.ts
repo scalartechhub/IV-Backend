@@ -37,6 +37,10 @@ export interface FirebaseClientConfig {
   storageBucket?: string;
 }
 
+export interface DiscordConfig {
+  webhookUrl?: string;
+}
+
 export interface FirestoreConfigMap {
   genai: GenAIConfig;
   sendgrid: SendGridConfig;
@@ -44,6 +48,7 @@ export interface FirestoreConfigMap {
   groq: GroqConfig;
   judge0: Judge0Config;
   firebase: FirebaseClientConfig;
+  discord: DiscordConfig;
 }
 
 class FirestoreConfigService {
@@ -147,6 +152,17 @@ class FirestoreConfigService {
         storageBucket: firebaseDoc.storageBucket || firebaseDoc.FIREBASE_STORAGE_BUCKET || firebaseDoc.FB_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || process.env.FB_STORAGE_BUCKET,
       };
 
+      // Parse Discord Config (reads from 'discord' or 'alerts' document in 'config' collection)
+      const discordDoc = docsData["discord"] || docsData["alerts"] || {};
+      const discordConfig: DiscordConfig = {
+        webhookUrl:
+          discordDoc.webhookUrl ||
+          discordDoc.DISCORD_WEBHOOK_URL ||
+          discordDoc.webhook_url ||
+          discordDoc.url ||
+          process.env.DISCORD_WEBHOOK_URL,
+      };
+
       this.configCache = {
         genai: genaiConfig,
         sendgrid: sendgridConfig,
@@ -154,6 +170,7 @@ class FirestoreConfigService {
         groq: groqConfig,
         judge0: judge0Config,
         firebase: firebaseConfig,
+        discord: discordConfig,
       };
 
       // Sync to process.env for third-party libraries reading directly from environment
@@ -209,11 +226,14 @@ class FirestoreConfigService {
         apiKey: process.env.FIREBASE_API_KEY || process.env.FB_API_KEY,
         storageBucket: process.env.FIREBASE_STORAGE_BUCKET || process.env.FB_STORAGE_BUCKET,
       },
+      discord: {
+        webhookUrl: process.env.DISCORD_WEBHOOK_URL,
+      },
     };
   }
 
   private syncToProcessEnv(): void {
-    const { genai, sendgrid, razorpay, groq, judge0, firebase } = this.configCache;
+    const { genai, sendgrid, razorpay, groq, judge0, firebase, discord } = this.configCache;
 
     if (genai?.apiKey) process.env.GEMINI_API_KEY = genai.apiKey;
     if (genai?.model) process.env.GEMINI_MODEL = genai.model;
@@ -242,6 +262,9 @@ class FirestoreConfigService {
     if (firebase?.storageBucket) {
       process.env.FIREBASE_STORAGE_BUCKET = firebase.storageBucket;
       process.env.FB_STORAGE_BUCKET = firebase.storageBucket;
+    }
+    if (discord?.webhookUrl) {
+      process.env.DISCORD_WEBHOOK_URL = discord.webhookUrl;
     }
   }
 
@@ -273,6 +296,11 @@ class FirestoreConfigService {
   getFirebaseConfig(): FirebaseClientConfig {
     if (!this.loaded) this.populateFromEnv();
     return this.configCache.firebase || {};
+  }
+
+  getDiscordConfig(): DiscordConfig {
+    if (!this.loaded) this.populateFromEnv();
+    return this.configCache.discord || {};
   }
 }
 

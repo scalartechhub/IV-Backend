@@ -32,7 +32,7 @@ for (const line of env.split(/\r?\n/)) {
 }
 
 const requiredKeys = ["GEMINI_API_KEY", "FIREBASE_API_KEY"];
-const optionalKeys = ["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "RAZORPAY_WEBHOOK_SECRET"];
+const optionalKeys = ["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "RAZORPAY_WEBHOOK_SECRET", "DISCORD_WEBHOOK_URL"];
 
 const syncSecret = (key) => {
   const value = (values[key] || (key === "FIREBASE_API_KEY" ? values["FB_API_KEY"] : undefined))?.trim();

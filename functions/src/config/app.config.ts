@@ -21,7 +21,10 @@ const appConfigSchema = z.object({
   JUDGE0_URL: z.string().url().default("http://localhost:2358"),
   GROQ_MODEL: z.string().default("llama-3.3-70b-versatile"),
   /** Discord Incoming Webhook URL for error alerting */
-  DISCORD_WEBHOOK_URL: z.string().url().optional(),
+  DISCORD_WEBHOOK_URL: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v.trim() : undefined)),
   /** Set to "true" to enable Teams alerts in non-production environments */
   TEAMS_ALERT_IN_DEV: z.string().default("false"),
 });

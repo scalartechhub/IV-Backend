@@ -13,8 +13,15 @@
  */
 
 import { logger } from './logger';
+import { firestoreConfigService } from '../config/firestore-config.service';
 
-const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL?.trim();
+function getDiscordWebhookUrl(): string | undefined {
+  return (
+    firestoreConfigService.getDiscordConfig().webhookUrl ||
+    process.env.DISCORD_WEBHOOK_URL
+  )?.trim();
+}
+
 const TEAMS_ALERT_IN_DEV = process.env.TEAMS_ALERT_IN_DEV === 'true';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const MAX_STACK_LENGTH = 1000;
@@ -99,8 +106,10 @@ function buildPayload(opts: AlertOptions): Record<string, unknown> {
  * Safe to call from anywhere — never throws.
  */
 export async function notify(opts: AlertOptions): Promise<void> {
-  if (!DISCORD_WEBHOOK_URL) {
-    logger.debug('[alerter] DISCORD_WEBHOOK_URL not set — skipping alert');
+  const webhookUrl = getDiscordWebhookUrl();
+
+  if (!webhookUrl) {
+    logger.debug('[alerter] DISCORD_WEBHOOK_URL not configured — skipping alert');
     return;
   }
 
@@ -111,7 +120,7 @@ export async function notify(opts: AlertOptions): Promise<void> {
 
   try {
     const payload = buildPayload(opts);
-    const response = await fetch(DISCORD_WEBHOOK_URL, {
+    const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

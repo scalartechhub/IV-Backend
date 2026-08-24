@@ -7,6 +7,7 @@
  *  - config/groq
  *  - config/judge0
  *  - config/firebase
+ *  - config/discord
  *
  * Usage: node scripts/sync-env-to-firestore.js
  */
@@ -135,6 +136,9 @@ async function syncToFirestore() {
     firebase: {
       apiKey: envValues.FB_API_KEY || envValues.FIREBASE_API_KEY,
       storageBucket: envValues.FB_STORAGE_BUCKET || envValues.FIREBASE_STORAGE_BUCKET,
+    },
+    discord: {
+      webhookUrl: envValues.DISCORD_WEBHOOK_URL,
     },
   };
 
