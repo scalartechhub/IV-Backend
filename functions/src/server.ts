@@ -4,6 +4,7 @@ import { bootstrapApplication, SecretValidationError } from "./bootstrap";
 import { isStorageConfigured } from "./config/firebase";
 import app from "./app";
 import { logger } from "./shared/logger";
+import * as teamsAlerter from "./shared/teams-alerter";
 import { setupLiveInterviewWebSocket } from "./modules/live-interview/live-interview.ws";
 import { setupV2LiveInterviewWebSocket } from "./modules/v2/live-interview-ws";
 import { isCloudRuntime } from "./shared/runtime";
@@ -43,6 +44,13 @@ const serverPromise = startServer();
 
 process.on("unhandledRejection", (reason) => {
   logger.error("Unhandled Promise Rejection:", reason);
+  void teamsAlerter.notify({
+    context: "process.unhandledRejection",
+    error: reason instanceof Error ? reason : new Error(String(reason)),
+    extras: {
+      'Function Type': 'Express Server / Process',
+    },
+  });
 });
 
 const gracefulShutdown = async (signal: string) => {

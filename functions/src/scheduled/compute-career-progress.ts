@@ -5,6 +5,7 @@
 
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { computeCareerProgressForAllUsers } from '../services/career-progress.service';
+import { withTeamsAlert } from '../shared/with-teams-alert';
 
 export const computeCareerProgress = onSchedule(
   {
@@ -14,7 +15,7 @@ export const computeCareerProgress = onSchedule(
     memory: '1GiB',
     timeoutSeconds: 540,
   },
-  async () => {
+  withTeamsAlert('computeCareerProgress', async () => {
     await computeCareerProgressForAllUsers();
-  },
+  }),
 );

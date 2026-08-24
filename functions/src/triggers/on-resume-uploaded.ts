@@ -7,6 +7,7 @@ import { onObjectFinalized } from 'firebase-functions/v2/storage';
 import { FieldValue } from 'firebase-admin/firestore';
 import { ensureAdmin } from '../utils/callable-auth';
 import { resumesCol } from '../utils/firestore-refs';
+import { withTeamsAlert } from '../shared/with-teams-alert';
 
 /**
  * When a resume PDF lands in Storage, mark matching pending resume docs as processing.
@@ -17,7 +18,7 @@ export const onResumeUploaded = onObjectFinalized(
     region: 'us-central1',
     memory: '512MiB',
   },
-  async (event) => {
+  withTeamsAlert('onResumeUploaded', async (event) => {
     const name = event.data.name;
     if (!name) return;
 
@@ -51,5 +52,5 @@ export const onResumeUploaded = onObjectFinalized(
     if (snap.data()?.analysisStatus === 'pending') {
       await ref.update({ analysisStatus: 'processing' });
     }
-  },
+  }),
 );

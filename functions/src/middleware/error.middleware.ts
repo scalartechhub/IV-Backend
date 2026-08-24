@@ -3,6 +3,7 @@ import multer from "multer";
 import { appConfig } from "../config/app.config";
 import { AppError } from "../shared/utils";
 import { logger } from "../shared/logger";
+import * as teamsAlerter from "../shared/teams-alerter";
 import {
   formatMulterError,
   type ApiFieldError,
@@ -111,6 +112,17 @@ export const errorMiddleware = (
       );
     }
 
+    if (statusCode >= 500) {
+      void teamsAlerter.notify({
+        context: `${req.method} ${req.path}`,
+        error,
+        extras: {
+          'Status Code': String(statusCode),
+          'User Agent': req.headers['user-agent'] ?? 'unknown',
+        },
+      });
+    }
+
     sendErrorResponse(res, statusCode, error.message, error.errors);
     return;
   }
@@ -192,6 +204,16 @@ export const errorMiddleware = (
     `  Error: ${error.message}\n` +
     `  Stack: ${error.stack ?? "no stack available"}`
   );
+
+  // Unhandled server error — alert Teams
+  void teamsAlerter.notify({
+    context: `${req.method} ${req.path}`,
+    error,
+    extras: {
+      'Error Name': error.name,
+      'User Agent': req.headers['user-agent'] ?? 'unknown',
+    },
+  });
 
   sendErrorResponse(
     res,

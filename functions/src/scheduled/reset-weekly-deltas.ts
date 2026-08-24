@@ -5,6 +5,7 @@
 import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { ensureAdmin } from '../utils/callable-auth';
+import { withTeamsAlert } from '../shared/with-teams-alert';
 
 const BATCH_SIZE = 500;
 
@@ -19,7 +20,7 @@ export const resetWeeklyDeltas = onSchedule(
     memory: '1GiB',
     timeoutSeconds: 540,
   },
-  async () => {
+  withTeamsAlert('resetWeeklyDeltas', async () => {
     const db = ensureAdmin();
     let lastDoc: QueryDocumentSnapshot | undefined;
 
@@ -43,5 +44,5 @@ export const resetWeeklyDeltas = onSchedule(
       lastDoc = snap.docs[snap.docs.length - 1];
       if (snap.size < BATCH_SIZE) break;
     }
-  },
+  }),
 );

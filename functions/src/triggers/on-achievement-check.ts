@@ -5,6 +5,7 @@
 
 import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { checkAchievements } from '../services/achievement.service';
+import { withTeamsAlert } from '../shared/with-teams-alert';
 
 export { checkAchievements } from '../services/achievement.service';
 
@@ -13,9 +14,9 @@ export const onAchievementCheck = onDocumentUpdated(
     document: 'users/{uid}',
     region: 'us-central1',
   },
-  async (event) => {
+  withTeamsAlert('onAchievementCheck', async (event) => {
     const uid = event.params.uid;
     if (!uid) return;
     await checkAchievements(uid);
-  },
+  }),
 );

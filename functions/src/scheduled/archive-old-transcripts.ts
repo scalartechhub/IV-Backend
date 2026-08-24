@@ -8,6 +8,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { ensureAdmin, ensureStorage } from '../utils/callable-auth';
 import { conversationCol, interviewRef } from '../utils/firestore-refs';
 import { daysAgo } from '../utils/date-helpers';
+import { withTeamsAlert } from '../shared/with-teams-alert';
 
 const PAGE_SIZE = 50;
 
@@ -24,7 +25,7 @@ export const archiveOldTranscripts = onSchedule(
     memory: '1GiB',
     timeoutSeconds: 540,
   },
-  async () => {
+  withTeamsAlert('archiveOldTranscripts', async () => {
     const db = ensureAdmin();
     const storage = ensureStorage();
     const cutoff = Timestamp.fromDate(daysAgo(90));
@@ -90,5 +91,5 @@ export const archiveOldTranscripts = onSchedule(
         updatedAt: FieldValue.serverTimestamp(),
       });
     }
-  },
+  }),
 );

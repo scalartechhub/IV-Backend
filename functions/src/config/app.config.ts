@@ -19,7 +19,11 @@ const appConfigSchema = z.object({
     .pipe(z.number().int().min(5000).max(300_000)),
   CORS_ORIGIN: z.string().optional(),
   JUDGE0_URL: z.string().url().default("http://localhost:2358"),
-  GROQ_MODEL: z.string().default("llama-3.3-70b-versatile"), 
+  GROQ_MODEL: z.string().default("llama-3.3-70b-versatile"),
+  /** Discord Incoming Webhook URL for error alerting */
+  DISCORD_WEBHOOK_URL: z.string().url().optional(),
+  /** Set to "true" to enable Teams alerts in non-production environments */
+  TEAMS_ALERT_IN_DEV: z.string().default("false"),
 });
 
 const parsed = appConfigSchema.safeParse(process.env);
@@ -45,6 +49,8 @@ export const appConfig = {
   geminiTimeoutMs: data.GEMINI_TIMEOUT_MS,
   corsOrigin: data.CORS_ORIGIN,
   judge0Url: data.JUDGE0_URL,
+  teamsWebhookUrl: data.DISCORD_WEBHOOK_URL,
+  teamsAlertInDev: data.TEAMS_ALERT_IN_DEV === "true",
 } as const;
 
 export type AppConfig = typeof appConfig;

@@ -7,6 +7,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import type { JobMatchDoc } from '../interfaces/job.interface';
 import { ensureAdmin } from '../utils/callable-auth';
 import { jobListingsCol, jobMatchRef } from '../utils/firestore-refs';
+import { withTeamsAlert } from '../shared/with-teams-alert';
 
 function matchPercent(
   userSkills: string[],
@@ -32,7 +33,7 @@ export const computeJobMatches = onSchedule(
     memory: '1GiB',
     timeoutSeconds: 540,
   },
-  async () => {
+  withTeamsAlert('computeJobMatches', async () => {
     const db = ensureAdmin();
     const listingsSnap = await jobListingsCol(db)
       .where('active', '==', true)
@@ -84,5 +85,5 @@ export const computeJobMatches = onSchedule(
         await jobMatchRef(db, uid, listing.id).set(doc);
       }
     }
-  },
+  }),
 );

@@ -8,13 +8,14 @@
 import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import type { InterviewResults } from '../interfaces/interview.interface';
 import { checkAchievements } from '../services/achievement.service';
+import { withTeamsAlert } from '../shared/with-teams-alert';
 
 export const onInterviewComplete = onDocumentUpdated(
   {
     document: 'interviews/{interviewId}',
     region: 'us-central1',
   },
-  async (event) => {
+  withTeamsAlert('onInterviewComplete', async (event) => {
     const before = event.data?.before.data();
     const after = event.data?.after.data();
     if (!before || !after) return;
@@ -46,5 +47,5 @@ export const onInterviewComplete = onDocumentUpdated(
           }
         : undefined,
     });
-  },
+  }),
 );
