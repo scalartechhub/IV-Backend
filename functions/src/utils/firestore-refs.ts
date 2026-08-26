@@ -216,31 +216,40 @@ export function topicProfileRef(db: Firestore, uid: string) {
     .doc('profile');
 }
 
-/** Fixed singleton path: users/{uid}/learningRoadmap/current — active 4-week roadmap. */
-export function learningRoadmapRef(db: Firestore, uid: string) {
-  return db
-    .collection('users')
-    .doc(uid)
-    .collection('learningRoadmap')
-    .doc('current');
+/** Collection of a user's learning roadmaps: users/{uid}/learningRoadmap/{roadmapId}. */
+export function learningRoadmapCol(db: Firestore, uid: string) {
+  return db.collection('users').doc(uid).collection('learningRoadmap');
+}
+
+/** One roadmap doc, keyed by its generated roadmapId (previously the fixed id "current"). */
+export function learningRoadmapRef(
+  db: Firestore,
+  uid: string,
+  roadmapId: string,
+) {
+  return learningRoadmapCol(db, uid).doc(roadmapId);
 }
 
 /** Cached AI-generated notes for a single subtopic, keyed by subtopicId, generated on demand. */
 export function learningRoadmapSubtopicNotesRef(
   db: Firestore,
   uid: string,
+  roadmapId: string,
   subtopicId: string,
 ) {
-  return learningRoadmapRef(db, uid).collection('subtopicNotes').doc(subtopicId);
+  return learningRoadmapRef(db, uid, roadmapId)
+    .collection('subtopicNotes')
+    .doc(subtopicId);
 }
 
 /** Cached AI-generated quiz questions for a single quiz, keyed by quizId. */
 export function learningRoadmapQuizRef(
   db: Firestore,
   uid: string,
+  roadmapId: string,
   quizId: string,
 ) {
-  return learningRoadmapRef(db, uid).collection('quizzes').doc(quizId);
+  return learningRoadmapRef(db, uid, roadmapId).collection('quizzes').doc(quizId);
 }
 
 export function companiesCol(db: Firestore) {

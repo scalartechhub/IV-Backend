@@ -5,11 +5,17 @@
 
 import { z } from 'zod';
 
-export const roadmapSkeletonSchema = z.object({
+/**
+ * Roadmaps can span 1-12 weeks depending on the requested duration (2w/4w/6w/8w, or a custom
+ * value), so the exact week count — and the max valid `weekNumber` — must be validated
+ * dynamically instead of being hardcoded to 4.
+ */
+export function buildRoadmapSkeletonSchema(weekCount: number) {
+return z.object({
   weeks: z
     .array(
       z.object({
-        weekNumber: z.number().int().min(1).max(4),
+        weekNumber: z.number().int().min(1).max(weekCount),
         title: z.string().min(1),
         topics: z
           .array(
@@ -33,10 +39,14 @@ export const roadmapSkeletonSchema = z.object({
           .max(10),
       }),
     )
-    .length(4),
+    .length(weekCount),
 });
+}
 
-export type RoadmapSkeletonParsed = z.infer<typeof roadmapSkeletonSchema>;
+/** Default 4-week schema, kept for callers that don't need a custom week count. */
+export const roadmapSkeletonSchema = buildRoadmapSkeletonSchema(4);
+
+export type RoadmapSkeletonParsed = z.infer<ReturnType<typeof buildRoadmapSkeletonSchema>>;
 
 /** One Gemini call now returns notes for exactly one subtopic (generated on demand). */
 export const subtopicNotesSchema = z.object({

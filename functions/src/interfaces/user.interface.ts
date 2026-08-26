@@ -163,4 +163,5 @@ export interface UserDoc {
   peerComparisonPercent?: number;
   peerRole?: string;
   updatedAt?: Timestamp;
+  activeLearningRoadmapId?: string;
 }
