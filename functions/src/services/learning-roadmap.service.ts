@@ -477,6 +477,7 @@ export async function getOrGenerateQuiz(
       `Write a multiple-choice quiz titled "${quiz.title}" for the topic "${topic.name}", part of ` +
       `learning "${technology}". Generate exactly ${quiz.questionCount} questions. Each question ` +
       'needs 4 distinct answer options and one correctAnswer that matches one of the options exactly. ' +
+      'Generate a fresh set of questions; vary difficulty and wording so retries do not feel identical. ' +
       'Respond ONLY with JSON: { "questions": [ { "question": string, "options": string[4], ' +
       '"correctAnswer": string } ] }.',
     userPrompt: JSON.stringify({
@@ -514,7 +515,8 @@ export async function getOrGenerateQuiz(
 
 /**
  * Grades a quiz attempt against the cached questions, marks it complete, and rolls the score
- * into the owning topic's completion state.
+ * into the owning topic's completion state. On fail (< PASS_THRESHOLD), the cached quiz doc is
+ * deleted so the next open regenerates a fresh question set via Gemini.
  */
 export async function submitQuiz(
   uid: string,
@@ -523,7 +525,8 @@ export async function submitQuiz(
   answers: Record<string, string>,
 ): Promise<{ score: number; roadmap: LearningRoadmapDoc }> {
   const db = ensureAdmin();
-  const quizSnap = await learningRoadmapQuizRef(db, uid, roadmapId, quizId).get();
+  const quizRef = learningRoadmapQuizRef(db, uid, roadmapId, quizId);
+  const quizSnap = await quizRef.get();
   if (!quizSnap.exists) {
     throw new AppError(404, 'Quiz not found. Open the quiz before submitting.');
   }
@@ -555,6 +558,13 @@ export async function submitQuiz(
   });
 
   await ref.update({ weeks, updatedAt: FieldValue.serverTimestamp() });
+
+  // Failed attempts clear the question cache so retakes get a new Gemini-generated set.
+  // Passed quizzes keep their cache so reopen still shows the same questions / results.
+  if (score < PASS_THRESHOLD) {
+    await quizRef.delete();
+  }
+
   return { score, roadmap: { ...doc, weeks: computeWeekState(weeks) } };
 }
 
