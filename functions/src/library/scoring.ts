@@ -11,6 +11,7 @@ import type {
   InterviewResults,
 } from '../interfaces/interview.interface';
 import { generateJson } from './gemini-client';
+import { requiredSnippetQuestionCount } from './code-snippet';
 
 const scoreInterviewSchema = z.object({
   overallScore: z.number().min(0).max(100),
@@ -33,6 +34,7 @@ const scoreInterviewSchema = z.object({
       }),
     )
     .default([]),
+  isTechDomainInterview: z.boolean().default(false),
 });
 
 export type ScoreInterviewResult = z.infer<typeof scoreInterviewSchema>;
@@ -51,7 +53,8 @@ Respond ONLY with valid JSON matching this shape:
   "strengths": string[],
   "weaknesses": string[],
   "recommendations": string[],
-  "topicOutcomes": [ { "topic": string, "status": "strong"|"weak" } ]
+  "topicOutcomes": [ { "topic": string, "status": "strong"|"weak" } ],
+  "isTechDomainInterview": boolean
 }
 skillDeltas should be small integers typically in [-8, +8]. No markdown.
 
@@ -67,7 +70,22 @@ topicOutcomes rules (mandatory):
   (e.g. "useEffect cleanup", "closures", "REST API design", "SQL joins" — not vague labels like "JavaScript" alone).
 - Classify each as "strong" (candidate answered confidently and correctly) or "weak"
   (struggled, vague, incorrect, or avoided the question).
-- Only include topics that were actually asked about — do not invent topics.`;
+- Only include topics that were actually asked about — do not invent topics.
+
+isTechDomainInterview rule (mandatory):
+- Decide whether this interview is for a technology/software/IT/coding-engineering role, based on
+  the config (currentRole, targetRole, technologies, skills, topic, company) and the transcript.
+- Set true for software/technical roles; set false for non-technical domains (marketing, sales,
+  civil/mechanical/other non-software engineering, pure HR/behavioral-only screens).
+
+Code-snippet questions (only relevant when isTechDomainInterview is true):
+- Turns in the transcript marked "[CODE SNIPPET - <language>]" are code-reading/debugging
+  questions. Grade the candidate's ability to trace/explain/debug code specifically, and factor
+  that into codingScore (include codingScore whenever isTechDomainInterview is true).
+- sessionMeta.codeSnippetQuestionsAsked / codeSnippetQuestionsRequired tell you how many were
+  actually asked vs required. If asked < required, treat it as incomplete coverage: mention it in
+  weaknesses (e.g. "Too few code-snippet questions were asked/answered") and do not award a high
+  codingScore or overallScore purely on conceptual answers.`;
 
 /** ~1 question per 3 minutes; clamp to a sensible interview range. */
 export function expectedQuestionCount(durationMinutes: number): number {
@@ -252,6 +270,48 @@ export function applyCoverageAdjustment(
   return omitUndefinedScoreFields(adjusted);
 }
 
+/** Scale factor applied to codingScore/overallScore when required snippet questions were skipped. */
+export function snippetCoverageMultiplier(asked: number, required: number): number {
+  if (required <= 0) return 1;
+  const ratio = Math.min(1, Math.max(0, asked / required));
+  return 0.6 + 0.4 * ratio;
+}
+
+/**
+ * Second, independent deterministic pass (runs after applyCoverageAdjustment): penalizes
+ * tech-domain interviews that skipped the required minimum of code-snippet questions
+ * (see CODE SNIPPET QUESTIONS in interview-prompt.ts). No-ops for non-tech-domain interviews
+ * or when the requirement was met.
+ */
+export function applySnippetCoverageAdjustment(
+  scores: ScoreInterviewResult,
+  params: {
+    codeSnippetQuestionsAsked: number;
+    codeSnippetQuestionsRequired: number;
+  },
+): ScoreInterviewResult {
+  if (!scores.isTechDomainInterview) return scores;
+
+  const { codeSnippetQuestionsAsked: asked, codeSnippetQuestionsRequired: required } = params;
+  if (required <= 0 || asked >= required) return scores;
+
+  const multiplier = snippetCoverageMultiplier(asked, required);
+  const baseCoding = scores.codingScore ?? Math.round(scores.technicalScore * 0.8);
+  const adjustedCoding = clampScore(baseCoding * multiplier);
+  const overallMultiplier = 0.85 + 0.15 * (asked / required);
+  const adjustedOverall = clampScore(scores.overallScore * overallMultiplier);
+
+  const note = `Incomplete code-snippet coverage: asked ${asked} of ${required} required code-snippet question${required === 1 ? '' : 's'}.`;
+  const alreadyNoted = scores.weaknesses.some((w) => /code-snippet coverage/i.test(w));
+
+  return {
+    ...scores,
+    overallScore: adjustedOverall,
+    codingScore: adjustedCoding,
+    weaknesses: alreadyNoted ? scores.weaknesses : [note, ...scores.weaknesses].slice(0, 6),
+  };
+}
+
 /** Drop keys whose value is `undefined` so Firestore writes do not fail. */
 function omitUndefinedScoreFields(
   scores: ScoreInterviewResult,
@@ -275,6 +335,7 @@ export async function scoreInterview(params: {
   durationMinutes: number;
   endReason: EndReason;
   conversation?: InterviewConversationMessage[];
+  codeSnippetQuestionsAsked?: number;
 }): Promise<InterviewResults> {
   const fromConversation = countCandidateAnswers(params.conversation);
   const questionsAnswered =
@@ -290,6 +351,9 @@ export async function scoreInterview(params: {
     questionsAsked,
   });
 
+  const codeSnippetQuestionsAsked = Math.max(0, params.codeSnippetQuestionsAsked ?? 0);
+  const codeSnippetQuestionsRequired = requiredSnippetQuestionCount(params.durationMinutes);
+
   const userPrompt = JSON.stringify({
     mode: params.mode,
     config: params.config,
@@ -303,6 +367,8 @@ export async function scoreInterview(params: {
       questionsAsked: coverage.questionsAsked,
       coverageRatio: Number(coverage.coverageRatio.toFixed(2)),
       timeRatio: Number(coverage.timeRatio.toFixed(2)),
+      codeSnippetQuestionsAsked,
+      codeSnippetQuestionsRequired,
     },
   });
 
@@ -318,13 +384,18 @@ export async function scoreInterview(params: {
     );
   }
 
+  const coverageAdjusted = applyCoverageAdjustment(parsed.data, {
+    durationSec: params.durationSec,
+    durationMinutes: params.durationMinutes,
+    endReason: params.endReason,
+    questionsAnswered,
+    questionsAsked,
+  });
+
   return omitUndefinedScoreFields(
-    applyCoverageAdjustment(parsed.data, {
-      durationSec: params.durationSec,
-      durationMinutes: params.durationMinutes,
-      endReason: params.endReason,
-      questionsAnswered,
-      questionsAsked,
+    applySnippetCoverageAdjustment(coverageAdjusted, {
+      codeSnippetQuestionsAsked,
+      codeSnippetQuestionsRequired,
     }),
   );
 }

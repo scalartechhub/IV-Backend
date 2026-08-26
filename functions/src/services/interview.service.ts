@@ -464,6 +464,7 @@ export async function completeInterview(
     durationMinutes: interview.config.durationMinutes,
     endReason,
     conversation: interview.conversation,
+    codeSnippetQuestionsAsked: interview.codeSnippetQuestionsAsked ?? 0,
   });
 
   const xpEarned = calculateInterviewXp({

@@ -79,6 +79,8 @@ export interface InterviewResults {
   nextLearningPathId?: string;
   /** Per-topic strong/weak classification extracted from this interview's transcript. */
   topicOutcomes?: TopicOutcome[];
+  /** Whether the scorer judged this to be a technology/software/IT-role interview. */
+  isTechDomainInterview?: boolean;
 }
 
 export type TopicStatus = 'strong' | 'weak';
@@ -106,12 +108,20 @@ export interface InterviewCodingData {
 
 export type InterviewConversationRole = 'assistant' | 'candidate';
 
+/** Structured code-snippet question data, captured via Gemini Live tool-calling. */
+export interface InterviewCodeSnippet {
+  code: string;
+  language: string;
+}
+
 /** Persisted mid-call transcript turns on interviews/{interviewId} */
 export interface InterviewConversationMessage {
   id: string;
   role: InterviewConversationRole;
   text: string;
   createdAt: Timestamp;
+  /** Present when this assistant turn is a code-snippet question. */
+  codeSnippet?: InterviewCodeSnippet;
 }
 
 /** Path: interviews/{interviewId} */
@@ -135,6 +145,8 @@ export interface InterviewDoc {
   /** Mid-call transcript for refresh recovery and scoring fallback */
   conversation?: InterviewConversationMessage[];
   lastSpeaker?: InterviewConversationRole;
+  /** Number of code-snippet questions asked so far (via present_code_snippet tool calls). */
+  codeSnippetQuestionsAsked?: number;
   /** Snapshot of time left; derived from startedAt + config.durationMinutes when live */
   remainingSeconds?: number;
   /** Elapsed live seconds (durationMinutes * 60 - remainingSeconds), persisted for refresh */

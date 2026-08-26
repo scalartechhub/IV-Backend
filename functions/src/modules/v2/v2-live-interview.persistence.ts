@@ -5,6 +5,7 @@
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { randomUUID } from 'crypto';
 import type {
+  InterviewCodeSnippet,
   InterviewConversationMessage,
   InterviewConversationRole,
   InterviewDoc,
@@ -88,6 +89,12 @@ export const formatConversationTranscript = (
   return conversation
     .map((entry) => {
       const speaker = entry.role === 'assistant' ? 'Interviewer' : 'Candidate';
+      if (entry.codeSnippet) {
+        return (
+          `${speaker} [CODE SNIPPET - ${entry.codeSnippet.language}]: ${entry.text}\n` +
+          `\`\`\`${entry.codeSnippet.language}\n${entry.codeSnippet.code}\n\`\`\``
+        );
+      }
       return `${speaker}: ${entry.text}`;
     })
     .join('\n');
@@ -193,12 +200,14 @@ export const ensureInterviewLiveStarted = async (
 export const appendAssistantTurn = async (
   interviewId: string,
   questionText: string,
+  codeSnippet?: InterviewCodeSnippet,
 ): Promise<{
   conversation: InterviewConversationMessage[];
   lastSpeaker: InterviewConversationRole;
   remainingSeconds: number;
   liveElapsedSec: number;
   created: boolean;
+  codeSnippetQuestionsAsked: number;
 }> => {
   const messageText = clampMessage(questionText);
   if (!messageText) {
@@ -222,6 +231,7 @@ export const appendAssistantTurn = async (
     const timer = buildTimerPatch(interview, now);
     const conversation = [...(interview.conversation ?? [])];
     const last = conversation[conversation.length - 1];
+    const priorSnippetCount = interview.codeSnippetQuestionsAsked ?? 0;
 
     if (last?.role === 'assistant' && last.text === messageText) {
       tx.update(ref, {
@@ -236,16 +246,26 @@ export const appendAssistantTurn = async (
         remainingSeconds: timer.remainingSeconds,
         liveElapsedSec: timer.liveElapsedSec,
         created: false,
+        codeSnippetQuestionsAsked: priorSnippetCount,
       };
     }
 
     let nextConversation: InterviewConversationMessage[];
     const created = true;
+    // Only count a NEW snippet if the turn being replaced/appended didn't already carry one —
+    // avoids double-counting when partial transcript updates re-persist the same turn.
+    const isNewSnippet = Boolean(codeSnippet) && !last?.codeSnippet;
+    const nextSnippetCount = isNewSnippet ? priorSnippetCount + 1 : priorSnippetCount;
 
     if (last?.role === 'assistant') {
       nextConversation = [
         ...conversation.slice(0, -1),
-        { ...last, text: messageText, createdAt: now },
+        {
+          ...last,
+          text: messageText,
+          createdAt: now,
+          ...(codeSnippet ? { codeSnippet } : {}),
+        },
       ];
     } else {
       const message: InterviewConversationMessage = {
@@ -253,6 +273,7 @@ export const appendAssistantTurn = async (
         role: 'assistant',
         text: messageText,
         createdAt: now,
+        ...(codeSnippet ? { codeSnippet } : {}),
       };
       nextConversation = [...conversation, message];
     }
@@ -266,6 +287,7 @@ export const appendAssistantTurn = async (
       lastSpeaker: 'assistant',
       remainingSeconds: timer.remainingSeconds,
       liveElapsedSec: timer.liveElapsedSec,
+      ...(isNewSnippet ? { codeSnippetQuestionsAsked: nextSnippetCount } : {}),
     };
 
     tx.update(ref, {
@@ -279,11 +301,13 @@ export const appendAssistantTurn = async (
       remainingSeconds: timer.remainingSeconds,
       liveElapsedSec: timer.liveElapsedSec,
       created,
+      codeSnippetQuestionsAsked: nextSnippetCount,
     };
   });
 
   logger.info(
-    `[v2-live-interview] assistant turn persisted interviewId=${interviewId} created=${result.created} messages=${result.conversation.length}`,
+    `[v2-live-interview] assistant turn persisted interviewId=${interviewId} created=${result.created} messages=${result.conversation.length}` +
+      (result.codeSnippetQuestionsAsked ? ` codeSnippetQuestionsAsked=${result.codeSnippetQuestionsAsked}` : ''),
   );
   return result;
 };

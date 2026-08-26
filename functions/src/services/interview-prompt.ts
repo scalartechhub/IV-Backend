@@ -3,6 +3,7 @@ import type {
   InterviewMode,
 } from '../interfaces/interview.interface';
 import type { ResumeDoc } from '../interfaces/resume.interface';
+import { requiredSnippetQuestionCount } from '../library/code-snippet';
 
 const RESUME_TEXT_CHARS = 3_000;
 const LIST_LIMIT = 12;
@@ -160,6 +161,7 @@ export function buildInterviewSystemInstructions(
   const difficulty =
     config.difficulty.charAt(0).toUpperCase() + config.difficulty.slice(1);
 
+  const requiredSnippetCount = requiredSnippetQuestionCount(config.durationMinutes);
   const companyName = config.company?.trim();
   const coreConfig = [
     `You are an expert interviewer conducting a ${interviewType}.`,
@@ -212,6 +214,22 @@ export function buildInterviewSystemInstructions(
       : '',
     'Keep questions concise. Probe depth. Be encouraging but rigorous.',
     '',
+    'CODE SNIPPET QUESTIONS:',
+    '- First decide: is this interview for a technology/software/IT/coding-engineering role, ' +
+      'based on the target role, technologies, skills, and topic above? Non-technical domains ' +
+      '(e.g. marketing, sales, civil/mechanical/other non-software engineering, pure HR or ' +
+      'behavioral-only screens) do NOT need this.',
+    `- If YES: you MUST ask at least ${requiredSnippetCount} code-snippet-based question${requiredSnippetCount === 1 ? '' : 's'} ` +
+      'before the interview ends, using the present_code_snippet tool. Do not just describe code ' +
+      'verbally — call the tool with the exact code, its language, and the question you are asking ' +
+      'about it (e.g. "what does this return?", "find the bug", "what is the output?"). Space them ' +
+      'out through the session — ask them mainly in the second half, after conceptual questions, so ' +
+      'the candidate is warmed up.',
+    '- If NO (non-technical domain): never call the present_code_snippet tool.',
+    `- Keep track of how many you have called it. Before your closing remarks, verify you have met ` +
+      `the ${requiredSnippetCount}-question minimum (if this is a technical/IT interview); if not ` +
+      'met and time remains, ask one now instead of wrapping up.',
+    '',
     'ANSWER EVALUATION (CRITICAL):',
     'You must INDEPENDENTLY evaluate every candidate answer based on actual technical correctness.',
     'Do NOT simply agree with the candidate. Do NOT accept answers just because they sound reasonable or contain relevant keywords.',
@@ -242,6 +260,9 @@ export function buildInterviewSystemInstructions(
     '- Be professional and encouraging, but HONEST. A real interviewer would not accept incorrect answers.',
     '',
     'Session closing rules:',
+    '- Before wrapping up, re-check the CODE SNIPPET QUESTIONS rule above: if this is a technical/IT ' +
+      `interview and you have called present_code_snippet fewer than ${requiredSnippetCount} times, ` +
+      'ask a code-snippet question now instead of closing (as long as time remains).',
     '- When you are finished with your interview questions (especially under 2 minutes left), clearly say you are done with your side, e.g. "That wraps up my questions."',
     '- Then ask: "Do you have any feedback for me?" or "Would you like feedback on your performance today?"',
     '- If the candidate wants feedback: give honest, brief verbal feedback (2–4 sentences) with 1–2 strengths and 1–2 areas to improve, then close professionally.',
