@@ -32,6 +32,12 @@ import {
 } from '../../library/gemini-client';
 import { buildInterviewSystemInstructions } from '../../services/interview-prompt';
 import {
+  buildCodeSnippetTool,
+  PRESENT_CODE_SNIPPET_TOOL_NAME,
+  requiredSnippetQuestionCount,
+  type CodeSnippetPayload,
+} from '../../library/code-snippet';
+import {
   appendAssistantTurn,
   appendCandidateTurn,
   awaitPersistQueue,
@@ -126,11 +132,17 @@ const getInterviewIdFromRequest = (req: IncomingMessage): string => {
 
 const toClientConversation = (
   conversation: InterviewConversationMessage[],
-): Array<{ id: string; role: 'ai' | 'user'; text: string }> =>
+): Array<{
+  id: string;
+  role: 'ai' | 'user';
+  text: string;
+  codeSnippet?: { code: string; language: string };
+}> =>
   conversation.map((entry) => ({
     id: entry.id,
     role: entry.role === 'assistant' ? 'ai' : 'user',
     text: entry.text,
+    ...(entry.codeSnippet ? { codeSnippet: entry.codeSnippet } : {}),
   }));
 
 export const setupV2LiveInterviewWebSocket = (server: Server): void => {
@@ -193,6 +205,12 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
     let awaitingAiResponse = false;
     let latestInterview: InterviewDoc | null = null;
     let persistQueue: Promise<void> = Promise.resolve();
+    /** Snippet captured via present_code_snippet, attached to the assistant turn once its transcript arrives. */
+    let pendingCodeSnippet: CodeSnippetPayload | null = null;
+    /** Deterministic count of code-snippet questions asked so far, synced from Firestore writes. */
+    let codeSnippetQuestionsAsked = 0;
+    /** Ensures the mid-call snippet reminder nudge is only sent once per connection. */
+    let snippetReminderSent = false;
 
     const clearKickoffRetry = (): void => {
       if (kickoffRetryTimer) {
@@ -317,6 +335,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
         remainingSeconds: computeRemainingSeconds(interview),
       };
       latestInterview = interview;
+      codeSnippetQuestionsAsked = interview.codeSnippetQuestionsAsked ?? 0;
 
       let broadcastTimer = (): number => 0;
       let persistAssistantText = (_aiText: string): void => undefined;
@@ -350,14 +369,18 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       };
 
       persistAssistantText = (aiText: string): void => {
+        const snippetForThisTurn = pendingCodeSnippet ?? undefined;
+        pendingCodeSnippet = null;
         enqueuePersist(async () => {
-          const result = await appendAssistantTurn(interviewId, aiText);
+          const result = await appendAssistantTurn(interviewId, aiText, snippetForThisTurn);
+          codeSnippetQuestionsAsked = result.codeSnippetQuestionsAsked;
           latestInterview = {
             ...(latestInterview ?? interview),
             conversation: result.conversation,
             lastSpeaker: result.lastSpeaker,
             remainingSeconds: result.remainingSeconds,
             liveElapsedSec: result.liveElapsedSec,
+            codeSnippetQuestionsAsked: result.codeSnippetQuestionsAsked,
           };
           sendJson(clientSocket, {
             type: 'conversation_updated',
@@ -420,13 +443,92 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
         const remaining = broadcastTimer();
         if (remaining <= 0) {
           sendJson(clientSocket, { type: 'time_expired' });
+          return;
+        }
+
+        // One-shot safety-net reminder past the session's midpoint if the snippet-question
+        // minimum (see CODE SNIPPET QUESTIONS in interview-prompt.ts) has not yet been met.
+        // Sent as context only (turnComplete: false) so it never interrupts the live turn-taking.
+        if (!snippetReminderSent && geminiSession) {
+          const durationMinutes = latestInterview?.config.durationMinutes ?? interview.config.durationMinutes;
+          const totalSec = Math.max(1, durationMinutes * 60);
+          const required = requiredSnippetQuestionCount(durationMinutes);
+          const pastMidpoint = remaining <= totalSec * 0.45;
+          if (pastMidpoint && codeSnippetQuestionsAsked < required) {
+            snippetReminderSent = true;
+            try {
+              geminiSession.sendClientContent({
+                turns: [
+                  {
+                    role: 'user',
+                    parts: [
+                      {
+                        text:
+                          `(Interviewer reminder — not spoken to candidate) So far you have asked ` +
+                          `${codeSnippetQuestionsAsked} code-snippet question(s) out of the ${required} ` +
+                          'required for technical/IT interviews (see CODE SNIPPET QUESTIONS rule). ' +
+                          'If this is a technology/software/IT-role interview, plan to ask one soon via ' +
+                          'the present_code_snippet tool before you run out of time. Ignore this note ' +
+                          'entirely if this is not a technical/IT interview.',
+                      },
+                    ],
+                  },
+                ],
+                turnComplete: false,
+              });
+            } catch (error) {
+              logger.warn(`[v2-live-interview] snippet reminder failed interviewId=${interviewId}`, error);
+            }
+          }
         }
       }, 15_000);
       broadcastTimer();
 
       let aiTranscriptBuffer = '';
 
+      const handleToolCall = (functionCalls: NonNullable<LiveServerMessage['toolCall']>['functionCalls']): void => {
+        if (!geminiSession || !functionCalls?.length) return;
+
+        const functionResponses = functionCalls.map((call) => {
+          if (call.name === PRESENT_CODE_SNIPPET_TOOL_NAME) {
+            const args = (call.args ?? {}) as Record<string, unknown>;
+            const code = typeof args.code === 'string' ? args.code.trim() : '';
+            const language = typeof args.language === 'string' ? args.language.trim() : 'text';
+            const questionText = typeof args.questionText === 'string' ? args.questionText.trim() : '';
+
+            if (code) {
+              pendingCodeSnippet = { code, language: language || 'text', questionText };
+              sendJson(clientSocket, {
+                type: 'code_snippet',
+                code,
+                language: language || 'text',
+                questionText,
+              });
+              logger.info(`[v2-live-interview] code snippet tool call interviewId=${interviewId} language=${language}`);
+            } else {
+              logger.warn(`[v2-live-interview] present_code_snippet call missing code interviewId=${interviewId}`);
+            }
+          }
+
+          return {
+            id: call.id,
+            name: call.name,
+            response: { success: true },
+          };
+        });
+
+        try {
+          geminiSession.sendToolResponse({ functionResponses });
+        } catch (error) {
+          logger.warn(`[v2-live-interview] sendToolResponse failed interviewId=${interviewId}`, error);
+        }
+      };
+
       const handleGeminiMessage = (message: LiveServerMessage): void => {
+        if (message.toolCall?.functionCalls?.length) {
+          handleToolCall(message.toolCall.functionCalls);
+        }
+
         const serverContent = message.serverContent;
         if (!serverContent) return;
 
@@ -560,7 +662,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
 
       geminiSession = await getClient().live.connect({
         model,
-        config: buildLiveConnectConfig(systemInstructions),
+        config: buildLiveConnectConfig(systemInstructions, [buildCodeSnippetTool()]),
         callbacks: {
           onopen: () => {
             logger.info(`[v2-live-interview] Gemini session open interviewId=${interviewId}`);

@@ -1,4 +1,4 @@
-// Mirrors IV-frontend src/app/shared/interfaces/career-progress.interface.ts — keep in sync
+// Mirrors IV-frontend src/app/shared/interfaces/career-progress.interface.ts ï¿½ keep in sync
 import type { Timestamp } from 'firebase-admin/firestore';
 
 /** Nested salary insights on users/{uid}/careerProgress/current */

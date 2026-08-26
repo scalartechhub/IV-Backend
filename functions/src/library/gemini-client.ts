@@ -3,7 +3,7 @@
  * v2 live-interview WebSocket bridge (modules/v2/live-interview-ws.ts).
  */
 
-import { GoogleGenAI, Modality } from '@google/genai';
+import { GoogleGenAI, Modality, type FunctionDeclaration } from '@google/genai';
 import { firestoreConfigService } from '../config/firestore-config.service';
 
 import { AppError, parseModelJson } from '../shared/utils';
@@ -261,7 +261,10 @@ export function buildGeminiSessionConfig(
  * English pinned for transcription/speech (see INTERVIEW_LANGUAGE_CODES), with live transcripts
  * enabled on both sides so the bridge can relay captions to the browser.
  */
-export function buildLiveConnectConfig(systemInstructions: string) {
+export function buildLiveConnectConfig(
+  systemInstructions: string,
+  functionDeclarations?: FunctionDeclaration[],
+) {
   return {
     responseModalities: [Modality.AUDIO],
     systemInstruction: systemInstructions,
@@ -277,5 +280,6 @@ export function buildLiveConnectConfig(systemInstructions: string) {
     realtimeInputConfig: {
       automaticActivityDetection: { disabled: true },
     },
+    ...(functionDeclarations?.length ? { tools: [{ functionDeclarations }] } : {}),
   };
 }
