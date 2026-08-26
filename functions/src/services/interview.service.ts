@@ -731,6 +731,7 @@ export async function completeInterview(
   if (roadmapActivity) {
     await evaluateWeekInterview(
       uid,
+      roadmapActivity.roadmapId,
       roadmapActivity.week,
       results.overallScore,
       interviewId,

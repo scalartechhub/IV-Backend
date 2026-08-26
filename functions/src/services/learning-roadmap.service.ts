@@ -4,6 +4,7 @@
  * each week's knowledge-check interview.
  */
 
+import type { DocumentReference, Firestore } from 'firebase-admin/firestore';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type {
   LearningRoadmapDoc,
@@ -11,6 +12,7 @@ import type {
   QuizQuestion,
   RoadmapQuiz,
   RoadmapSubtopic,
+  RoadmapSummary,
   RoadmapTopic,
   RoadmapWeek,
   SubtopicNotesDoc,
@@ -19,6 +21,7 @@ import { generateJson } from '../library/gemini-client';
 import { AppError } from '../shared/utils';
 import { ensureAdmin } from '../utils/callable-auth';
 import {
+  learningRoadmapCol,
   learningRoadmapQuizRef,
   learningRoadmapRef,
   learningRoadmapSubtopicNotesRef,
@@ -31,6 +34,8 @@ import {
 } from './learning-roadmap.schema';
 
 const PASS_THRESHOLD = 60;
+const DEFAULT_LEVEL = 'Intermediate';
+const DEFAULT_DURATION = '4w';
 
 function stripWeekNumberFromTitle(title: string): string {
   return title.replace(/^\s*week\s*\d+\s*[:.\-–—]?\s*/i, '').trim() || title.trim();
@@ -68,6 +73,44 @@ function computeWeekState(weeks: RoadmapWeek[]): RoadmapWeek[] {
   });
 }
 
+function countTopics(weeks: RoadmapWeek[]): number {
+  return weeks.reduce((acc, week) => acc + week.topics.length, 0);
+}
+
+/** Mirrors the frontend's computeRoadmapProgress so summaries and full docs never disagree. */
+function computeProgressPercent(weeks: RoadmapWeek[]): number {
+  let total = 0;
+  let completed = 0;
+  for (const week of weeks) {
+    for (const topic of week.topics) {
+      total += topic.subtopics.length + topic.quizzes.length;
+      completed += topic.subtopics.filter((s) => s.isComplete).length;
+      completed += topic.quizzes.filter(
+        (q) => q.isComplete && (q.score ?? 0) >= PASS_THRESHOLD,
+      ).length;
+    }
+  }
+  return total > 0 ? Math.round((completed / total) * 100) : 0;
+}
+
+function toSummary(
+  id: string,
+  doc: Omit<LearningRoadmapDoc, 'id'>,
+  activeId: string | null,
+): RoadmapSummary {
+  return {
+    id,
+    technology: doc.technology,
+    level: doc.level || DEFAULT_LEVEL,
+    duration: doc.duration || DEFAULT_DURATION,
+    weeksCount: doc.weeks.length,
+    topicsCount: countTopics(doc.weeks),
+    progressPercent: computeProgressPercent(doc.weeks),
+    isActive: id === activeId,
+    updatedAt: doc.updatedAt,
+  };
+}
+
 function findSubtopic(
   doc: LearningRoadmapDoc,
   subtopicId: string,
@@ -94,26 +137,51 @@ function findQuiz(
   return null;
 }
 
+/** Fetches a specific roadmap doc owned by `uid`, throwing 404 if missing. */
+async function fetchRoadmapDoc(
+  db: Firestore,
+  uid: string,
+  roadmapId: string,
+): Promise<{ ref: DocumentReference; doc: LearningRoadmapDoc }> {
+  const ref = learningRoadmapRef(db, uid, roadmapId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new AppError(404, 'Learning roadmap not found.');
+  }
+  const data = snap.data() as Omit<LearningRoadmapDoc, 'id'>;
+  return { ref, doc: { id: roadmapId, ...data } };
+}
+
 /**
- * Generates (or returns the existing) 4-week roadmap for a technology.
- * Write-once — re-calling with a different technology after one exists returns the original
- * roadmap, mirroring the resume onboarding plan's write-once rule.
+ * Generates a brand-new 4-week roadmap for a technology and makes it the user's active
+ * roadmap. Users can hold any number of roadmaps at once, but never two for the same
+ * technology (case-insensitive) — if one already exists, it's activated and returned as-is
+ * instead of generating (and paying for) a duplicate.
  */
 export async function generateRoadmap(
   uid: string,
   technology: string,
-): Promise<LearningRoadmapDoc> {
+  level: string = DEFAULT_LEVEL,
+): Promise<{ roadmap: LearningRoadmapDoc; reused: boolean }> {
   const db = ensureAdmin();
-  const ref = learningRoadmapRef(db, uid);
-  const existing = await ref.get();
-  if (existing.exists) {
-    const doc = existing.data() as LearningRoadmapDoc;
-    return { ...doc, weeks: computeWeekState(doc.weeks) };
-  }
 
   const trimmedTechnology = technology.trim();
   if (!trimmedTechnology) {
     throw new AppError(400, 'technology is required.');
+  }
+
+  const existingSnapshot = await learningRoadmapCol(db, uid).get();
+  const existingDoc = existingSnapshot.docs.find((docSnap) => {
+    const existingTechnology = (docSnap.data() as { technology?: string }).technology;
+    return existingTechnology?.trim().toLowerCase() === trimmedTechnology.toLowerCase();
+  });
+  if (existingDoc) {
+    await userRef(db, uid).update({ activeLearningRoadmapId: existingDoc.id });
+    const data = existingDoc.data() as Omit<LearningRoadmapDoc, 'id'>;
+    return {
+      roadmap: { id: existingDoc.id, ...data, weeks: computeWeekState(data.weeks) },
+      reused: true,
+    };
   }
 
   const raw = await generateJson<{ weeks: unknown }>({
@@ -185,25 +253,93 @@ export async function generateRoadmap(
     };
   });
 
+  const ref = learningRoadmapCol(db, uid).doc();
   await ref.set({
     technology: trimmedTechnology,
+    level: level.trim() || DEFAULT_LEVEL,
+    duration: DEFAULT_DURATION,
     weeks,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   } as never);
 
+  await userRef(db, uid).update({ activeLearningRoadmapId: ref.id });
+
   const saved = await ref.get();
-  const doc = saved.data() as LearningRoadmapDoc;
+  const data = saved.data() as Omit<LearningRoadmapDoc, 'id'>;
+  return {
+    roadmap: { id: ref.id, ...data, weeks: computeWeekState(data.weeks) },
+    reused: false,
+  };
+}
+
+/** Lists every roadmap the user owns (lightweight summaries) for the "YOUR ROADMAPS" list. */
+export async function listRoadmaps(uid: string): Promise<RoadmapSummary[]> {
+  const db = ensureAdmin();
+  const [snapshot, userSnap] = await Promise.all([
+    learningRoadmapCol(db, uid).orderBy('updatedAt', 'desc').get(),
+    userRef(db, uid).get(),
+  ]);
+  const activeId = userSnap.data()?.activeLearningRoadmapId ?? null;
+  return snapshot.docs.map((docSnap) => {
+    const data = docSnap.data() as Omit<LearningRoadmapDoc, 'id'>;
+    return toSummary(docSnap.id, data, activeId);
+  });
+}
+
+/**
+ * Returns the user's active roadmap (by `activeLearningRoadmapId`). If the pointer is missing
+ * or stale, falls back to the most recently updated roadmap and self-heals the pointer. Throws
+ * 404 only when the user has no roadmaps at all.
+ */
+export async function getActiveRoadmap(uid: string): Promise<LearningRoadmapDoc> {
+  const db = ensureAdmin();
+  const userSnap = await userRef(db, uid).get();
+  const activeId = userSnap.data()?.activeLearningRoadmapId;
+
+  if (activeId) {
+    const snap = await learningRoadmapRef(db, uid, activeId).get();
+    if (snap.exists) {
+      const data = snap.data() as Omit<LearningRoadmapDoc, 'id'>;
+      return { id: activeId, ...data, weeks: computeWeekState(data.weeks) };
+    }
+  }
+
+  const fallbackSnapshot = await learningRoadmapCol(db, uid)
+    .orderBy('updatedAt', 'desc')
+    .limit(1)
+    .get();
+  const fallbackDoc = fallbackSnapshot.docs[0];
+  if (!fallbackDoc) {
+    throw new AppError(404, 'No learning roadmap found for this account.');
+  }
+
+  await userRef(db, uid)
+    .update({ activeLearningRoadmapId: fallbackDoc.id })
+    .catch(() => undefined);
+
+  const data = fallbackDoc.data() as Omit<LearningRoadmapDoc, 'id'>;
+  return { id: fallbackDoc.id, ...data, weeks: computeWeekState(data.weeks) };
+}
+
+/** Fetches one specific roadmap by id, 404s if it doesn't exist for this user. */
+export async function getRoadmapById(
+  uid: string,
+  roadmapId: string,
+): Promise<LearningRoadmapDoc> {
+  const db = ensureAdmin();
+  const { doc } = await fetchRoadmapDoc(db, uid, roadmapId);
   return { ...doc, weeks: computeWeekState(doc.weeks) };
 }
 
-export async function getActiveRoadmap(uid: string): Promise<LearningRoadmapDoc> {
+/** Switches which roadmap is "active" / "current skill" for the user. */
+export async function activateRoadmap(
+  uid: string,
+  roadmapId: string,
+): Promise<LearningRoadmapDoc> {
   const db = ensureAdmin();
-  const snap = await learningRoadmapRef(db, uid).get();
-  if (!snap.exists) {
-    throw new AppError(404, 'No learning roadmap found for this account.');
-  }
-  const doc = snap.data() as LearningRoadmapDoc;
+  const { doc } = await fetchRoadmapDoc(db, uid, roadmapId);
+  await userRef(db, uid).update({ activeLearningRoadmapId: roadmapId });
   return { ...doc, weeks: computeWeekState(doc.weeks) };
 }
 
@@ -215,20 +351,17 @@ export async function getActiveRoadmap(uid: string): Promise<LearningRoadmapDoc>
  */
 export async function getOrGenerateSubtopicNotes(
   uid: string,
+  roadmapId: string,
   subtopicId: string,
 ): Promise<SubtopicNotesDoc> {
   const db = ensureAdmin();
-  const roadmapSnap = await learningRoadmapRef(db, uid).get();
-  if (!roadmapSnap.exists) {
-    throw new AppError(404, 'No learning roadmap found for this account.');
-  }
-  const roadmap = roadmapSnap.data() as LearningRoadmapDoc;
+  const { doc: roadmap } = await fetchRoadmapDoc(db, uid, roadmapId);
   const found = findSubtopic(roadmap, subtopicId);
   if (!found) {
     throw new AppError(404, 'Subtopic not found in your learning roadmap.');
   }
 
-  const notesRef = learningRoadmapSubtopicNotesRef(db, uid, subtopicId);
+  const notesRef = learningRoadmapSubtopicNotesRef(db, uid, roadmapId, subtopicId);
   const cached = await notesRef.get();
   if (cached.exists) {
     return cached.data() as SubtopicNotesDoc;
@@ -280,15 +413,11 @@ export async function getOrGenerateSubtopicNotes(
  */
 export async function markSubtopicComplete(
   uid: string,
+  roadmapId: string,
   subtopicId: string,
 ): Promise<LearningRoadmapDoc> {
   const db = ensureAdmin();
-  const ref = learningRoadmapRef(db, uid);
-  const snap = await ref.get();
-  if (!snap.exists) {
-    throw new AppError(404, 'No learning roadmap found for this account.');
-  }
-  const doc = snap.data() as LearningRoadmapDoc;
+  const { ref, doc } = await fetchRoadmapDoc(db, uid, roadmapId);
   const found = findSubtopic(doc, subtopicId);
   if (!found) {
     throw new AppError(404, 'Subtopic not found in your learning roadmap.');
@@ -324,20 +453,17 @@ export async function markSubtopicComplete(
  */
 export async function getOrGenerateQuiz(
   uid: string,
+  roadmapId: string,
   quizId: string,
 ): Promise<QuizDoc> {
   const db = ensureAdmin();
-  const roadmapSnap = await learningRoadmapRef(db, uid).get();
-  if (!roadmapSnap.exists) {
-    throw new AppError(404, 'No learning roadmap found for this account.');
-  }
-  const roadmap = roadmapSnap.data() as LearningRoadmapDoc;
+  const { doc: roadmap } = await fetchRoadmapDoc(db, uid, roadmapId);
   const found = findQuiz(roadmap, quizId);
   if (!found) {
     throw new AppError(404, 'Quiz not found in your learning roadmap.');
   }
 
-  const quizRef = learningRoadmapQuizRef(db, uid, quizId);
+  const quizRef = learningRoadmapQuizRef(db, uid, roadmapId, quizId);
   const cached = await quizRef.get();
   if (cached.exists) {
     return cached.data() as QuizDoc;
@@ -351,6 +477,7 @@ export async function getOrGenerateQuiz(
       `Write a multiple-choice quiz titled "${quiz.title}" for the topic "${topic.name}", part of ` +
       `learning "${technology}". Generate exactly ${quiz.questionCount} questions. Each question ` +
       'needs 4 distinct answer options and one correctAnswer that matches one of the options exactly. ' +
+      'Generate a fresh set of questions; vary difficulty and wording so retries do not feel identical. ' +
       'Respond ONLY with JSON: { "questions": [ { "question": string, "options": string[4], ' +
       '"correctAnswer": string } ] }.',
     userPrompt: JSON.stringify({
@@ -388,15 +515,18 @@ export async function getOrGenerateQuiz(
 
 /**
  * Grades a quiz attempt against the cached questions, marks it complete, and rolls the score
- * into the owning topic's completion state.
+ * into the owning topic's completion state. On fail (< PASS_THRESHOLD), the cached quiz doc is
+ * deleted so the next open regenerates a fresh question set via Gemini.
  */
 export async function submitQuiz(
   uid: string,
+  roadmapId: string,
   quizId: string,
   answers: Record<string, string>,
 ): Promise<{ score: number; roadmap: LearningRoadmapDoc }> {
   const db = ensureAdmin();
-  const quizSnap = await learningRoadmapQuizRef(db, uid, quizId).get();
+  const quizRef = learningRoadmapQuizRef(db, uid, roadmapId, quizId);
+  const quizSnap = await quizRef.get();
   if (!quizSnap.exists) {
     throw new AppError(404, 'Quiz not found. Open the quiz before submitting.');
   }
@@ -407,12 +537,7 @@ export async function submitQuiz(
   ).length;
   const score = total > 0 ? Math.round((correct / total) * 100) : 0;
 
-  const ref = learningRoadmapRef(db, uid);
-  const snap = await ref.get();
-  if (!snap.exists) {
-    throw new AppError(404, 'No learning roadmap found for this account.');
-  }
-  const doc = snap.data() as LearningRoadmapDoc;
+  const { ref, doc } = await fetchRoadmapDoc(db, uid, roadmapId);
   const found = findQuiz(doc, quizId);
   if (!found) {
     throw new AppError(404, 'Quiz not found in your learning roadmap.');
@@ -433,17 +558,24 @@ export async function submitQuiz(
   });
 
   await ref.update({ weeks, updatedAt: FieldValue.serverTimestamp() });
+
+  // Failed attempts clear the question cache so retakes get a new Gemini-generated set.
+  // Passed quizzes keep their cache so reopen still shows the same questions / results.
+  if (score < PASS_THRESHOLD) {
+    await quizRef.delete();
+  }
+
   return { score, roadmap: { ...doc, weeks: computeWeekState(weeks) } };
 }
 
-/** Parses `learning-roadmap:week{W}` — the tag interviews use to link back here. */
+/** Parses `learning-roadmap:{roadmapId}:week{W}` — the tag interviews use to link back here. */
 export function parseLearningRoadmapActivityId(
   sourceRoadmapActivityId: string | undefined,
-): { week: number } | null {
+): { roadmapId: string; week: number } | null {
   if (!sourceRoadmapActivityId) return null;
-  const match = /^learning-roadmap:week(\d+)$/.exec(sourceRoadmapActivityId);
+  const match = /^learning-roadmap:([^:]+):week(\d+)$/.exec(sourceRoadmapActivityId);
   if (!match) return null;
-  return { week: Number(match[1]) };
+  return { roadmapId: match[1], week: Number(match[2]) };
 }
 
 /**
@@ -457,22 +589,23 @@ export function parseLearningRoadmapActivityId(
  */
 export async function evaluateWeekInterview(
   uid: string,
+  roadmapId: string,
   week: number,
   overallScore: number,
   interviewId: string,
 ): Promise<void> {
   const db = ensureAdmin();
-  const ref = learningRoadmapRef(db, uid);
+  const ref = learningRoadmapRef(db, uid, roadmapId);
   const snap = await ref.get();
   if (!snap.exists) return;
 
-  const doc = snap.data() as LearningRoadmapDoc;
-  const weekIndex = doc.weeks.findIndex((w) => w.weekNumber === week);
+  const data = snap.data() as Omit<LearningRoadmapDoc, 'id'>;
+  const weekIndex = data.weeks.findIndex((w) => w.weekNumber === week);
   if (weekIndex === -1) return;
 
-  const wasAlreadyPassed = doc.weeks[weekIndex].interview?.passed === true;
+  const wasAlreadyPassed = data.weeks[weekIndex].interview?.passed === true;
   const passed = overallScore >= PASS_THRESHOLD;
-  const weeks = doc.weeks.map((w, index) => {
+  const weeks = data.weeks.map((w, index) => {
     if (index !== weekIndex) return w;
     return {
       ...w,

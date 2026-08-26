@@ -1,4 +1,4 @@
-// Path: users/{uid}/learningRoadmap/current
+// Path: users/{uid}/learningRoadmap/{roadmapId}
 // Subcollections: subtopicNotes/{subtopicId}, quizzes/{quizId}
 import type { Timestamp } from 'firebase-admin/firestore';
 
@@ -45,11 +45,29 @@ export interface RoadmapWeek {
   topics: RoadmapTopic[];
 }
 
-/** Path: users/{uid}/learningRoadmap/current */
+/** Path: users/{uid}/learningRoadmap/{roadmapId} */
 export interface LearningRoadmapDoc {
+  id: string;
   technology: string;
+  /** Display-only metadata chosen at creation time — does not change the generated content. */
+  level: string;
+  /** Display-only metadata chosen at creation time (e.g. "4w") — roadmap is always 4 weeks. */
+  duration: string;
   weeks: RoadmapWeek[];
   createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+/** Lightweight roadmap summary for the "YOUR ROADMAPS" list — avoids shipping full week content. */
+export interface RoadmapSummary {
+  id: string;
+  technology: string;
+  level: string;
+  duration: string;
+  weeksCount: number;
+  topicsCount: number;
+  progressPercent: number;
+  isActive: boolean;
   updatedAt: Timestamp;
 }
 
@@ -61,7 +79,7 @@ export interface LearningTopicNotesSection {
 }
 
 /**
- * Path: users/{uid}/learningRoadmap/current/subtopicNotes/{subtopicId}
+ * Path: users/{uid}/learningRoadmap/{roadmapId}/subtopicNotes/{subtopicId}
  * Detailed AI-generated notes for a single subtopic, generated on demand the first time the
  * user opens that subtopic (one Gemini call per subtopic, not batched per topic).
  */
@@ -84,7 +102,7 @@ export interface QuizQuestion {
   correctAnswer: string;
 }
 
-/** Path: users/{uid}/learningRoadmap/current/quizzes/{quizId} */
+/** Path: users/{uid}/learningRoadmap/{roadmapId}/quizzes/{quizId} */
 export interface QuizDoc {
   quizId: string;
   topicId: string;
