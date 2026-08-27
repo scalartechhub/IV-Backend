@@ -40,7 +40,7 @@ workingWell (exactly 3):
   "resumeId": "res_auto_generated",
   "fileName": "${fileName}",
   "targetRole": "Inferred Role",
-  "experience": "X+ yrs",
+  "experience": "X+ yrs (total professional years from resume dates, e.g. \"3+ yrs\")",
   "aiReviewed": true,
   "overallScore": 0,
   "peerPercentile": 0,

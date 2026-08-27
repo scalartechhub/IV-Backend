@@ -47,6 +47,10 @@ import {
   resumeOnboardingPlanSchema,
   type ResumeOnboardingPlanParsed,
 } from './resume-onboarding.schema';
+import {
+  normalizeExperienceYearsLabel,
+  parseYearsExperience,
+} from '../utils/experience-years';
 
 /** Resume text sent to Gemini — keeps prompts fast without losing signal. */
 const RESUME_PROMPT_CHARS = 12_000;
@@ -457,9 +461,9 @@ export function normalizeRawOnboarding(raw: unknown): unknown {
     jobRoleRecommendation: String(
       data.jobRoleRecommendation ?? 'Professional',
     ).trim(),
-    experienceLevelPrediction: String(
-      data.experienceLevelPrediction ?? 'Mid-level',
-    ).trim(),
+    experienceLevelPrediction: normalizeExperienceYearsLabel(
+      String(data.experienceLevelPrediction ?? '').trim() || undefined,
+    ),
     resumeCompleteness: clampScore(data.resumeCompleteness, 60),
     marketReadinessScore: {
       overallScore: clampScore(marketRaw.overallScore, 60),
@@ -678,14 +682,6 @@ function mergeStringArrays(
   return typeof limit === 'number' ? merged.slice(0, limit) : merged;
 }
 
-function parseYearsExperience(raw: string | undefined): number | undefined {
-  if (!raw) return undefined;
-  const match = raw.match(/(\d+(?:\.\d+)?)/);
-  if (!match) return undefined;
-  const n = Number(match[1]);
-  return Number.isFinite(n) ? Math.round(n) : undefined;
-}
-
 function normalizeSingleRole(raw: string | undefined, fallback = 'Professional'): string {
   const value = raw?.trim();
   if (!value) return fallback;
@@ -730,10 +726,15 @@ export async function mergeUserOnboardingFromPlan(
       existingOnboarding?.selectedRole,
       normalizeSingleRole(plan.jobRoleRecommendation || targetRole, ''),
     ),
-    experience: preferExistingText(
-      existingOnboarding?.experience,
-      plan.experienceLevelPrediction,
-    ),
+    experience: (() => {
+      const fromResume = plan.experienceLevelPrediction?.trim();
+      const existing = existingOnboarding?.experience?.trim();
+      if (!existing) return fromResume || undefined;
+      // Prefer resume year-buckets over vague seniority labels left from older analyses.
+      const existingHasYears = /\d/.test(existing) || /\bstudent\b/i.test(existing);
+      if (existingHasYears) return normalizeExperienceYearsLabel(existing);
+      return fromResume || normalizeExperienceYearsLabel(existing);
+    })(),
     primarySkills: mergeStringArrays(
       existingOnboarding?.primarySkills,
       primarySkills,
