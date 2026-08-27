@@ -31,6 +31,8 @@ Counts (concise text, max 90 chars per description/reason):
   candidate's Week 1 study roadmap
 - priorityPreparationAreas: 4-6
 - jobRoleRecommendation: exactly one role title only, based on the candidate's most likely current/professional role from the resume; no commas, slashes, "and", "or", or multi-role lists
+- experienceLevelPrediction: total professional work experience from the resume ONLY. Compute from employment dates (earliest start → latest end/Present, or sum of non-overlapping roles). Prefer an explicit "X years" line on the resume when it matches the dates. MUST be exactly one of: "Student", "0-1 years", "1-3 years", "3-5 years", "5-10 years", "10+ years". NEVER use vague labels like "Mid-level", "Senior", or "Mid-Senior Level". Internships/education-only → "Student" or "0-1 years".
+- analysis.experienceLevel: same year-bucket format and resume-date rules as experienceLevelPrediction (keep both aligned)
 All content must be grounded in the resume — no generic filler.`.trim();
 }
 

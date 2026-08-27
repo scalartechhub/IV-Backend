@@ -143,7 +143,8 @@ HARD CONSTRAINTS:
 - resource type MUST be one of: Official Docs | Course | Book | YouTube | Practice Platform | GitHub
 - skill levels MUST be one of: Beginner | Intermediate | Advanced | Expert
 - jobRoleRecommendation MUST be exactly one role title only, based on the candidate's most likely current/professional role from the resume
-- jobRoleRecommendation MUST NOT contain commas, slashes, "and", "or", multiple roles, examples, or a list`.trim();
+- jobRoleRecommendation MUST NOT contain commas, slashes, "and", "or", multiple roles, examples, or a list
+- experienceLevelPrediction MUST be total professional work experience from the resume employment dates (earliest start → latest end/Present, or non-overlapping roles). Prefer an explicit "X years" line when consistent with dates. MUST be exactly one of: "Student", "0-1 years", "1-3 years", "3-5 years", "5-10 years", "10+ years". NEVER use vague labels like "Mid-level", "Senior", or "Mid-Senior Level". Internships/education-only → "Student" or "0-1 years"`.trim();
 }
 
 export function buildResumeOnboardingUserPrompt(input: {

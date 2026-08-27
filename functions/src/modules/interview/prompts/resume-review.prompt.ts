@@ -6,7 +6,7 @@
 
 const RESUME_REVIEW_SHAPE = `{
   "isCoder": boolean,
-  "experienceLevel": string (e.g. "Mid-Senior Level"),
+  "experienceLevel": string (exactly one of: "Student"|"0-1 years"|"1-3 years"|"3-5 years"|"5-10 years"|"10+ years" — total professional years from resume employment dates; NEVER vague labels like "Mid-level" or "Senior"),
   "scores": { "overall": 0-100, "overallMessage": string (max 4 words), "impact": 0-100, "content": 0-100, "structure": 0-100, "ats": 0-100, "relevance": 0-100, "peerPercentile": 0-100 },
   "scoreLabels": { "impact": string, "content": string, "structure": string, "ats": string, "relevance": string },
   "strengths": [ { "id": "s1", "text": string } ] (4-5 items),
@@ -55,7 +55,15 @@ UI brevity (hard limits — do not exceed):
 
 Ground every strength, suggestion, section feedback, and aiFeedback line in real content from the
 resume text — cite concrete phrases/sections when possible, never generic filler. suggestions must
-be actionable rewrites, not vague advice. Output ONLY raw JSON (no markdown fences, no commentary).`;
+be actionable rewrites, not vague advice.
+
+experienceLevel rules:
+- Compute total professional work experience from resume employment dates (earliest start → latest
+  end/Present, or non-overlapping role durations). Prefer an explicit "X years" line when consistent.
+- Output exactly one of: "Student", "0-1 years", "1-3 years", "3-5 years", "5-10 years", "10+ years".
+- Do NOT output "Mid-level", "Mid-Senior Level", "Senior", or similar seniority-only labels.
+
+Output ONLY raw JSON (no markdown fences, no commentary).`;
 
 /** The JSON shape + scoring rules, reusable as-is inside a larger combined prompt. */
 export function buildResumeReviewShapeAndRules(): string {

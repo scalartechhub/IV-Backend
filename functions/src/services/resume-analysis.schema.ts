@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod';
+import { normalizeExperienceYearsLabel } from '../utils/experience-years';
 
 const scoreWithDeltaSchema = z.object({ score: z.number(), delta: z.number() });
 
@@ -533,7 +534,9 @@ export function normalizeRawResumeReview(raw: unknown, targetRole?: string): unk
 
   return {
     isCoder: typeof data.isCoder === 'boolean' ? data.isCoder : inferredIsCoder,
-    experienceLevel: String(data.experienceLevel ?? 'Mid-Level').trim() || 'Mid-Level',
+    experienceLevel: normalizeExperienceYearsLabel(
+      String(data.experienceLevel ?? '').trim() || undefined,
+    ),
     scores,
     ...(scoreLabels ? { scoreLabels } : {}),
     strengths: normalizeListItems(data.strengths, 'strength'),
