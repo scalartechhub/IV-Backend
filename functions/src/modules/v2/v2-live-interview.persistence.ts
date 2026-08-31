@@ -14,6 +14,7 @@ import { AppError } from '../../shared/utils';
 import { logger } from '../../shared/logger';
 import { ensureAdmin } from '../../utils/callable-auth';
 import { interviewRef } from '../../utils/firestore-refs';
+import { sanitizeLiveTranscript } from '../../shared/utils/live-transcript';
 
 export type V2LiveResumeMode = 'fresh' | 'await_candidate' | 'generate_next';
 
@@ -21,7 +22,7 @@ const MAX_CONVERSATION_MESSAGES = 200;
 const MAX_MESSAGE_CHARS = 4000;
 
 const clampMessage = (text: string): string =>
-  text.trim().slice(0, MAX_MESSAGE_CHARS);
+  sanitizeLiveTranscript(text).slice(0, MAX_MESSAGE_CHARS);
 
 const timestampMs = (value?: Timestamp | null): number | null => {
   if (!value) return null;

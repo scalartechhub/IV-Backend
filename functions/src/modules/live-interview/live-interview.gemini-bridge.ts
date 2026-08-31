@@ -15,6 +15,10 @@ import type {
 } from "./live-interview.types";
 import { compressConversation, getReplayTurns } from "./context-manager";
 import { getDefaultLiveModel } from "../../library/gemini-client";
+import {
+  resolveAssistantTranscript,
+  sanitizeLiveTranscript,
+} from "../../shared/utils/live-transcript";
 
 export interface GeminiLiveBridgeOptions {
   interview: Interview;
@@ -44,15 +48,6 @@ export interface GeminiLiveBridge {
 }
 
 const USER_TRANSCRIPT_HOLD_TIMEOUT_MS = 8_000;
-
-/** Strip Gemini STT artifacts like <noise> that should never appear in chat. */
-const sanitizeUserTranscript = (text: string): string =>
-  text
-    .replace(/<\/?(?:noise|inaudible|unk|unknown|silence|other)\s*\/?>/gi, " ")
-    .replace(/\[(?:noise|inaudible|unk|unknown|silence|other)\]/gi, " ")
-    .replace(/\((?:noise|inaudible|unk|unknown|silence|other)\)/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
 
 const sendJson = (socket: BrowserWebSocket, payload: Record<string, unknown>): void => {
   if (socket.readyState === socket.OPEN) {
@@ -183,7 +178,7 @@ export const createGeminiLiveBridge = async (
   };
 
   const markUserTranscriptVisible = (finalize: boolean): void => {
-    const userText = sanitizeUserTranscript(userTranscriptBuffer);
+    const userText = sanitizeLiveTranscript(userTranscriptBuffer);
     if (!userText) return;
 
     // Live captions only — do not persist partials.
@@ -213,7 +208,7 @@ export const createGeminiLiveBridge = async (
       logger.warn(
         `[live-interview] User transcript hold timed out interviewId=${interview.id} — releasing AI output`
       );
-      if (sanitizeUserTranscript(userTranscriptBuffer)) {
+      if (sanitizeLiveTranscript(userTranscriptBuffer)) {
         markUserTranscriptVisible(true);
       } else {
         userTranscriptVisible = true;
@@ -267,7 +262,7 @@ export const createGeminiLiveBridge = async (
 
     if (serverContent.outputTranscription?.text) {
       aiTranscriptBuffer += serverContent.outputTranscription.text;
-      const aiLiveText = aiTranscriptBuffer.trim();
+      const aiLiveText = sanitizeLiveTranscript(aiTranscriptBuffer);
       if (aiLiveText) {
         enqueueOrSendAi({ type: "aiQuestionLive", text: aiLiveText });
       }
@@ -286,8 +281,15 @@ export const createGeminiLiveBridge = async (
     }
 
     if (serverContent.turnComplete) {
-      const aiText = aiTranscriptBuffer.trim();
-      const userText = sanitizeUserTranscript(userTranscriptBuffer);
+      const aiText = resolveAssistantTranscript({
+        outputTranscription: aiTranscriptBuffer,
+        modelTurnText: parts
+          .map((part) => part.text?.trim() ?? "")
+          .filter(Boolean)
+          .join(" ")
+          .trim(),
+      });
+      const userText = sanitizeLiveTranscript(userTranscriptBuffer);
 
       if (userText) {
         appendTranscript(transcript, "user", userText, onTranscript);
