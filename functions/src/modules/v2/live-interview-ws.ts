@@ -51,6 +51,11 @@ import {
   buildResumeSystemInstruction,
 } from './v2-live-interview.prompt';
 import { compressConversation, getReplayTurns } from '../live-interview/context-manager';
+import {
+  containsLiveTranscriptArtifacts,
+  resolveAssistantTranscript,
+  sanitizeLiveTranscript,
+} from '../../shared/utils/live-transcript';
 
 const V2_LIVE_WS_PATHS = new Set([
   '/ws/v2/interview',
@@ -543,7 +548,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
             firstAiSignalReceived = true;
             clearKickoffRetry();
             aiTranscriptBuffer += serverContent.outputTranscription.text;
-            const text = aiTranscriptBuffer.trim();
+            const text = sanitizeLiveTranscript(aiTranscriptBuffer);
             if (text) {
               sendJson(clientSocket, { type: 'transcript', role: 'ai', text, final: false });
             }
@@ -573,14 +578,19 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
             aiTranscriptBuffer = '';
             return;
           }
-          let aiText = aiTranscriptBuffer.trim();
-          // Fallback only when audio transcription produced no text.
-          if (!aiText) {
-            aiText = parts
+          let aiText = resolveAssistantTranscript({
+            outputTranscription: aiTranscriptBuffer,
+            modelTurnText: parts
               .map((part) => part.text?.trim() ?? '')
               .filter(Boolean)
               .join(' ')
-              .trim();
+              .trim(),
+            snippetQuestionText: pendingCodeSnippet?.questionText,
+          });
+          if (containsLiveTranscriptArtifacts(aiTranscriptBuffer) && aiText) {
+            logger.warn(
+              `[v2-live-interview] stripped ctrl artifacts from AI transcript interviewId=${interviewId}`,
+            );
           }
           if (aiText) {
             sendJson(clientSocket, { type: 'transcript', role: 'ai', text: aiText, final: true });
