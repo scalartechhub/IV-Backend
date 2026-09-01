@@ -125,6 +125,348 @@ function asStringArray(raw: unknown): string[] {
     .filter(Boolean);
 }
 
+function normalizeRoleTitle(raw: string | undefined, fallback = ''): string {
+  const value = raw?.trim();
+  if (!value) return fallback;
+  const first = value
+    .split(/\s*(?:,|\/|\||\band\b|\bor\b)\s*/i)
+    .map((part) => part.trim())
+    .find(Boolean);
+  return first || fallback;
+}
+
+const TARGETED_ROLES_COUNT = 5;
+
+const JOB_ROLE_SUFFIX_PATTERN =
+  /\b(developer|engineer|architect|analyst|manager|specialist|consultant|administrator|designer|scientist|tester|lead|intern|admin|programmer|coder|lawyer|attorney|counsel|paralegal|associate|advisor|officer|representative|coordinator|director|executive)\b/i;
+
+type RoleDomain = 'tech' | 'legal' | 'healthcare' | 'finance' | 'general';
+
+function detectRoleDomain(...sources: Array<string | undefined>): RoleDomain {
+  const blob = sources
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (
+    /\blegal\b|\blawyer\b|\battorney\b|\blaw firm\b|\blitigation\b|\bparalegal\b|\bjuris\b|\bcorporate counsel\b|\bin[- ]?house counsel\b/.test(
+      blob,
+    )
+  ) {
+    return 'legal';
+  }
+  if (
+    /\b(doctor|physician|nurse|clinical|medical|healthcare|hospital|pharma|patient care)\b/.test(
+      blob,
+    )
+  ) {
+    return 'healthcare';
+  }
+  if (
+    /\b(finance|financial|banking|investment|accountant|accounting|audit|tax|cfa|cpa)\b/.test(
+      blob,
+    )
+  ) {
+    return 'finance';
+  }
+  if (
+    /\b(software|developer|engineer|programmer|coding|devops|frontend|backend|fullstack|full stack|web developer|data scientist|cloud engineer|saas|javascript|typescript|react|node\.?js|python|java\b)/.test(
+      blob,
+    )
+  ) {
+    return 'tech';
+  }
+  return 'general';
+}
+
+function roleDomainOf(title: string): RoleDomain {
+  return detectRoleDomain(title);
+}
+
+/** Reject cross-industry padding (e.g. Software Developer on a legal resume). */
+function isSameRoleDomain(title: string, domain: RoleDomain): boolean {
+  if (domain === 'general') return true;
+  const titleDomain = roleDomainOf(title);
+  if (titleDomain === 'general') return true;
+  return titleDomain === domain;
+}
+
+/** True when the string reads as a job title, not a skill/topic/module name. */
+function looksLikeJobRoleTitle(raw: string): boolean {
+  const title = normalizeRoleTitle(raw, '');
+  if (!title || title.length < 4) return false;
+  if (!JOB_ROLE_SUFFIX_PATTERN.test(title)) return false;
+
+  // Reject skill/module phrasing even if it accidentally contains a role word.
+  if (
+    /\b(hooks|generics|performance|containerization|fundamentals|patterns|syntax|basics|advanced|modern|introduction|unit testing|testing)\b/i.test(
+      title,
+    )
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function uniqueRoleTitles(
+  values: string[],
+  limit = TARGETED_ROLES_COUNT,
+  domain: RoleDomain = 'general',
+): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of values) {
+    const title = normalizeRoleTitle(raw, '');
+    if (!title || !looksLikeJobRoleTitle(title)) continue;
+    if (!isSameRoleDomain(title, domain)) continue;
+    const key = title.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(title);
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
+function deriveProfessionalRoleVariants(primaryRole: string): string[] {
+  const role = normalizeRoleTitle(primaryRole, '');
+  if (!role) return [];
+
+  const match = role.match(
+    /^(.+?)\s+(Manager|Analyst|Consultant|Specialist|Advisor|Officer|Coordinator|Director|Associate|Executive|Administrator|Representative|Lawyer|Attorney|Counsel)$/i,
+  );
+  if (match) {
+    const field = match[1].trim();
+    const suffixes = [
+      'Analyst',
+      'Consultant',
+      'Specialist',
+      'Advisor',
+      'Associate',
+      'Manager',
+      'Coordinator',
+      'Officer',
+      'Representative',
+    ];
+    return [
+      role,
+      ...suffixes
+        .map((suffix) => `${field} ${suffix}`)
+        .filter((candidate) => candidate.toLowerCase() !== role.toLowerCase()),
+    ];
+  }
+
+  return [role];
+}
+
+function deriveRelatedRoleVariants(
+  primaryRole: string,
+  industry?: string,
+  domain?: RoleDomain,
+): string[] {
+  const role = normalizeRoleTitle(primaryRole, '');
+  if (!role) return [];
+
+  const resolvedDomain =
+    domain ?? detectRoleDomain(role, industry ?? '');
+
+  if (resolvedDomain === 'legal') {
+    return [
+      role,
+      'Legal Analyst',
+      'Legal Consultant',
+      'Corporate Lawyer',
+      'Legal Associate',
+      'Compliance Officer',
+      'Legal Advisor',
+      'Litigation Associate',
+      'In-House Counsel',
+      'Paralegal',
+    ];
+  }
+
+  if (resolvedDomain === 'healthcare') {
+    return [
+      role,
+      'Clinical Analyst',
+      'Healthcare Consultant',
+      'Medical Specialist',
+      'Healthcare Administrator',
+      'Patient Care Coordinator',
+      'Clinical Research Associate',
+    ];
+  }
+
+  if (resolvedDomain === 'finance') {
+    return [
+      role,
+      'Financial Analyst',
+      'Finance Consultant',
+      'Investment Analyst',
+      'Accounting Specialist',
+      'Compliance Analyst',
+      'Risk Analyst',
+    ];
+  }
+
+  const lower = role.toLowerCase();
+
+  if (resolvedDomain === 'tech') {
+    if (/\bfull[- ]?stack\b/.test(lower)) {
+      return [
+        role,
+        'Frontend Developer',
+        'Backend Developer',
+        'Web Developer',
+        'Software Engineer',
+        'JavaScript Developer',
+      ];
+    }
+    if (/\bfront[- ]?end\b/.test(lower)) {
+      return [
+        role,
+        'React JS Developer',
+        'JavaScript Developer',
+        'UI Developer',
+        'Web Developer',
+        'Software Engineer',
+      ];
+    }
+    if (/\bback[- ]?end\b/.test(lower)) {
+      return [
+        role,
+        'Node.js Developer',
+        'API Developer',
+        'Software Engineer',
+        'Web Developer',
+        'Application Developer',
+      ];
+    }
+    if (/\bmobile\b/.test(lower)) {
+      return [
+        role,
+        'Android Developer',
+        'iOS Developer',
+        'React Native Developer',
+        'Mobile Application Developer',
+        'Software Engineer',
+      ];
+    }
+
+    return [
+      role,
+      'Software Developer',
+      'Software Engineer',
+      'Web Developer',
+      'Application Developer',
+      'Technical Specialist',
+    ];
+  }
+
+  return deriveProfessionalRoleVariants(role);
+}
+
+function buildTargetedRoles(input: {
+  targetedRoles?: string[];
+  jobRoleRecommendation?: string;
+  industryRecommendation?: string;
+  recommendedInterviewTracks?: string[];
+  roleMatchTitles?: string[];
+}): string[] {
+  const jobRole =
+    normalizeRoleTitle(input.jobRoleRecommendation, '') ||
+    normalizeRoleTitle(input.targetedRoles?.[0], '') ||
+    normalizeRoleTitle(input.roleMatchTitles?.[0], '') ||
+    'Professional';
+
+  const domain = detectRoleDomain(
+    jobRole,
+    input.industryRecommendation ?? '',
+    ...(input.targetedRoles ?? []),
+    ...(input.roleMatchTitles ?? []),
+  );
+
+  const trackCandidates = (input.recommendedInterviewTracks ?? []).filter(
+    (track) => looksLikeJobRoleTitle(track) && isSameRoleDomain(track, domain),
+  );
+
+  const roleMatchCandidates = (input.roleMatchTitles ?? []).filter((title) =>
+    isSameRoleDomain(title, domain),
+  );
+
+  const variants = deriveRelatedRoleVariants(
+    jobRole,
+    input.industryRecommendation,
+    domain,
+  );
+
+  const merged = uniqueRoleTitles(
+    [
+      ...(input.targetedRoles ?? []),
+      ...roleMatchCandidates,
+      jobRole,
+      ...trackCandidates,
+      ...variants,
+    ],
+    TARGETED_ROLES_COUNT,
+    domain,
+  );
+
+  if (merged.length >= TARGETED_ROLES_COUNT) {
+    return merged.slice(0, TARGETED_ROLES_COUNT);
+  }
+
+  return uniqueRoleTitles(
+    [...merged, ...deriveProfessionalRoleVariants(jobRole), ...variants],
+    TARGETED_ROLES_COUNT,
+    domain,
+  ).slice(0, TARGETED_ROLES_COUNT);
+}
+
+function needsTargetedRolesBackfill(
+  roles: string[] | undefined,
+  domainHint?: string,
+): boolean {
+  if (!roles?.length) return true;
+  if (roles.length !== TARGETED_ROLES_COUNT) return true;
+  if (roles.some((item) => !looksLikeJobRoleTitle(item))) return true;
+
+  const domain = detectRoleDomain(...roles, domainHint ?? '');
+  if (domain !== 'general' && roles.some((item) => !isSameRoleDomain(item, domain))) {
+    return true;
+  }
+
+  return false;
+}
+
+function buildTargetedRolesFromPlan(
+  plan: Pick<
+    ResumeOnboardingPlan,
+    | 'targetedRoles'
+    | 'jobRoleRecommendation'
+    | 'industryRecommendation'
+    | 'recommendedInterviewTracks'
+  >,
+  roleMatchTitles: string[] = [],
+): string[] {
+  return buildTargetedRoles({
+    targetedRoles: plan.targetedRoles,
+    jobRoleRecommendation: plan.jobRoleRecommendation,
+    industryRecommendation: plan.industryRecommendation,
+    recommendedInterviewTracks: plan.recommendedInterviewTracks,
+    roleMatchTitles,
+  });
+}
+
+/** Omit targetedRoles before persisting onboarding plan to users/{uid}/onboarding/analysis. */
+function stripTargetedRolesForPersist(
+  plan: ResumeOnboardingPlan,
+): Omit<ResumeOnboardingPlan, 'targetedRoles'> {
+  const { targetedRoles: _removed, ...rest } = plan;
+  return rest;
+}
+
 const PRIORITIES = new Set(['High', 'Medium', 'Low']);
 const SKILL_LEVELS = new Set(['Beginner', 'Intermediate', 'Advanced', 'Expert']);
 const RESOURCE_TYPES = new Set([
@@ -435,6 +777,22 @@ export function normalizeRawOnboarding(raw: unknown): unknown {
     },
   );
 
+  const jobRoleRecommendation = String(
+    data.jobRoleRecommendation ?? 'Professional',
+  ).trim();
+  const recommendedInterviewTracks = asStringArray(data.recommendedInterviewTracks).length
+    ? asStringArray(data.recommendedInterviewTracks)
+    : recommendedSessions.map((s) => s.name).slice(0, 6);
+  const industryRecommendation = String(
+    data.industryRecommendation ?? 'Technology',
+  ).trim();
+  const targetedRoles = buildTargetedRoles({
+    targetedRoles: asStringArray(data.targetedRoles ?? data.relatedDomains),
+    jobRoleRecommendation,
+    industryRecommendation,
+    recommendedInterviewTracks,
+  });
+
   return {
     careerPath: careerPath.slice(0, 30),
     recommendedCompanies: recommendedCompanies.slice(0, 10),
@@ -442,9 +800,7 @@ export function normalizeRawOnboarding(raw: unknown): unknown {
     skillGapAnalysis,
     learningRoadmap: learningRoadmap.slice(0, 8),
     interviewPreparation,
-    recommendedInterviewTracks: asStringArray(data.recommendedInterviewTracks).length
-      ? asStringArray(data.recommendedInterviewTracks)
-      : recommendedSessions.map((s) => s.name).slice(0, 6),
+    recommendedInterviewTracks,
     recommendedLearningTechnologies,
     resumeStrengthSummary: String(
       data.resumeStrengthSummary ?? 'Resume shows solid foundational experience.',
@@ -455,12 +811,9 @@ export function normalizeRawOnboarding(raw: unknown): unknown {
         ? data.estimatedPreparationWeeks
         : 6,
     confidencePrediction: clampScore(data.confidencePrediction, 60),
-    industryRecommendation: String(
-      data.industryRecommendation ?? 'Technology',
-    ).trim(),
-    jobRoleRecommendation: String(
-      data.jobRoleRecommendation ?? 'Professional',
-    ).trim(),
+    industryRecommendation,
+    jobRoleRecommendation,
+    targetedRoles,
     experienceLevelPrediction: normalizeExperienceYearsLabel(
       String(data.experienceLevelPrediction ?? '').trim() || undefined,
     ),
@@ -830,6 +1183,7 @@ export async function mergeUserOnboardingFromPlan(
   await ref.set(
     {
       onboarding: nextOnboarding,
+      targetedRoles: plan.targetedRoles,
       resumeAnalysisCompleted: true,
       onboardingAnalysisCompleted: true,
       isCoder,
@@ -986,6 +1340,38 @@ export async function analyzeResume(
     atsAnalysis = await runAtsAnalysis(extractedText, input.targetRole);
   }
 
+  const roleMatchTitles = atsAnalysis.roleMatches?.map((match) => match.role) ?? [];
+  let activeOnboarding: ResumeOnboardingPlan | undefined =
+    onboardingPlan ?? existingOnboarding;
+  let targetedRolesBackfill: string[] | undefined;
+
+  const userDocSnap = await userRef(db, uid).get();
+  const existingUserTargetedRoles = userDocSnap.data()?.targetedRoles as string[] | undefined;
+
+  if (activeOnboarding) {
+    const rolesForBackfillCheck = onboardingPlan?.targetedRoles ?? existingUserTargetedRoles;
+    if (
+      needsTargetedRolesBackfill(
+        rolesForBackfillCheck,
+        activeOnboarding.industryRecommendation ?? activeOnboarding.jobRoleRecommendation,
+      )
+    ) {
+      targetedRolesBackfill = buildTargetedRolesFromPlan(activeOnboarding, roleMatchTitles);
+      logger.info('[resume.service] backfilled targetedRoles on user doc', {
+        uid,
+        count: targetedRolesBackfill.length,
+      });
+    }
+    activeOnboarding = {
+      ...activeOnboarding,
+      targetedRoles:
+        onboardingPlan?.targetedRoles ??
+        targetedRolesBackfill ??
+        existingUserTargetedRoles ??
+        buildTargetedRolesFromPlan(activeOnboarding, roleMatchTitles),
+    };
+  }
+
   const existingData = existing.exists ? existing.data() : undefined;
   const version = existing.exists ? ((existingData?.version ?? 0) as number) + 1 : 1;
 
@@ -1034,14 +1420,20 @@ export async function analyzeResume(
 
     // First-time onboarding only — never replace an existing plan
     if (onboardingPlan) {
-      updates['analysis.onboarding'] = onboardingPlan;
+      updates['analysis.onboarding'] = stripTargetedRolesForPersist(onboardingPlan);
     }
 
     await ref.update(updates);
   } else {
     const analysis: ResumeAnalysis = {
       ...atsAnalysis,
-      ...(onboardingPlan ? { onboarding: onboardingPlan } : {}),
+      ...(onboardingPlan
+        ? {
+            onboarding: stripTargetedRolesForPersist(
+              onboardingPlan,
+            ) as ResumeOnboardingPlan,
+          }
+        : {}),
     };
     await ref.set(
       { ...meta, ...sourceMeta, analysis } satisfies ResumeDoc,
@@ -1057,7 +1449,18 @@ export async function analyzeResume(
         Boolean(atsAnalysis.isCoder),
         storedTargetRole,
       )
-    : userRef(db, uid).set(
+    : targetedRolesBackfill
+      ? userRef(db, uid).set(
+          {
+            targetedRoles: targetedRolesBackfill,
+            resumeAnalysisCompleted: true,
+            onboardingAnalysisCompleted: true,
+            isCoder: Boolean(atsAnalysis.isCoder),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        )
+      : userRef(db, uid).set(
         {
           resumeAnalysisCompleted: true,
           onboardingAnalysisCompleted: true,
@@ -1076,11 +1479,7 @@ export async function analyzeResume(
 
   const analysis: ResumeAnalysis = {
     ...atsAnalysis,
-    ...(existingOnboarding
-      ? { onboarding: existingOnboarding }
-      : onboardingPlan
-        ? { onboarding: onboardingPlan }
-        : {}),
+    ...(activeOnboarding ? { onboarding: activeOnboarding } : {}),
   };
 
   const uploadedAtIso = existing.exists

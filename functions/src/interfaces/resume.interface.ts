@@ -307,6 +307,7 @@ export interface ResumeOnboardingPlan {
   confidencePrediction: number;
   industryRecommendation: string;
   jobRoleRecommendation: string;
+  targetedRoles: string[];
   experienceLevelPrediction: string;
   resumeCompleteness: number;
   marketReadinessScore: MarketReadinessScore;
