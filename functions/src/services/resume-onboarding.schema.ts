@@ -117,6 +117,7 @@ export const resumeOnboardingPlanSchema = z.object({
   confidencePrediction: z.number().min(0).max(100),
   industryRecommendation: z.string().min(1),
   jobRoleRecommendation: z.string().min(1),
+  targetedRoles: z.array(z.string().min(1)).length(5),
   experienceLevelPrediction: z.string().min(1),
   resumeCompleteness: z.number().min(0).max(100),
   marketReadinessScore: marketReadinessScoreSchema,

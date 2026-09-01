@@ -71,6 +71,7 @@ Required JSON shape (exact keys):
     }
   ],
   "recommendedInterviewTracks": ["string"],
+  "targetedRoles": ["Frontend Developer", "React JS Developer", "JavaScript Developer", "Web Developer", "Software Engineer"],
   "recommendedLearningTechnologies": ["React", "Node.js", "TypeScript"],
   "resumeStrengthSummary": "string",
   "priorityPreparationAreas": ["string"],
@@ -136,6 +137,7 @@ HARD CONSTRAINTS:
 - confidencePrediction and resumeCompleteness and marketReadinessScore.overallScore: integers 0-100
 - estimatedPreparationWeeks: integer 4-16
 - recommendedInterviewTracks: 3 to 6 track names (may mirror recommendedSessions names)
+- targetedRoles: exactly 5 resume-grounded job-role titles in the SAME industry as the resume (e.g. tech: "Frontend Developer", "React JS Developer"; legal: "Legal Consultant", "Corporate Lawyer", "Legal Analyst", "Litigation Associate", "Compliance Officer") — NEVER mix industries; NEVER skills, topics, modules, or technologies; each MUST be a single role title only — no commas, slashes, "and", "or", or multi-role lists; must differ from each other
 - recommendedLearningTechnologies: 4 to 10 concrete, learnable technology/skill names (e.g. "React", "Node.js",
   "System Design", "AWS") ordered from most to least relevant to the candidate's resume and target role —
   these become the technology choices the candidate picks from to generate their Week 1 study roadmap

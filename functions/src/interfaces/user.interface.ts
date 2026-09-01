@@ -150,6 +150,7 @@ export interface UserDoc {
    * Path: users/{uid}/onboarding/analysis
    */
   onboardingAnalysisCompleted?: boolean;
+  targetedRoles?: string[];
   isCoder?: boolean;
   /**
    * Average of each skill across the candidate's last 5 completed interviews,
