@@ -461,6 +461,22 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
           const pastMidpoint = remaining <= totalSec * 0.45;
           if (pastMidpoint && codeSnippetQuestionsAsked < required) {
             snippetReminderSent = true;
+            const isJdInterview = Boolean(
+              latestInterview?.config.jobDescriptionText?.trim() ??
+                interview.config.jobDescriptionText?.trim(),
+            );
+            const reminderText = isJdInterview
+              ? `(Interviewer reminder — not spoken to candidate) So far you have asked ` +
+                `${codeSnippetQuestionsAsked} code-snippet question(s) out of the ${required} ` +
+                'required for this JD-based technical interview. Use present_code_snippet to show ' +
+                'code on screen — NEVER ask the candidate to write or type code (no code editor). ' +
+                'Ask them to explain, debug, or reason about the snippet verbally.'
+              : `(Interviewer reminder — not spoken to candidate) So far you have asked ` +
+                `${codeSnippetQuestionsAsked} code-snippet question(s) out of the ${required} ` +
+                'required for technical/IT interviews (see CODE SNIPPET QUESTIONS rule). ' +
+                'If this is a technology/software/IT-role interview, plan to ask one soon via ' +
+                'the present_code_snippet tool before you run out of time. Ignore this note ' +
+                'entirely if this is not a technical/IT interview.';
             try {
               geminiSession.sendClientContent({
                 turns: [
@@ -468,13 +484,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
                     role: 'user',
                     parts: [
                       {
-                        text:
-                          `(Interviewer reminder — not spoken to candidate) So far you have asked ` +
-                          `${codeSnippetQuestionsAsked} code-snippet question(s) out of the ${required} ` +
-                          'required for technical/IT interviews (see CODE SNIPPET QUESTIONS rule). ' +
-                          'If this is a technology/software/IT-role interview, plan to ask one soon via ' +
-                          'the present_code_snippet tool before you run out of time. Ignore this note ' +
-                          'entirely if this is not a technical/IT interview.',
+                        text: reminderText,
                       },
                     ],
                   },

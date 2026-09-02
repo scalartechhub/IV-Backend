@@ -148,12 +148,21 @@ export function buildResumeContextFromAnalysis(resume: ResumeDoc): string {
   return sections.join('\n\n');
 }
 
-function buildFocusAreasInstructions(focus?: InterviewFocusAreas): string[] {
+function buildFocusAreasInstructions(
+  focus?: InterviewFocusAreas,
+  opts?: { jdBased?: boolean },
+): string[] {
   if (!focus) return [];
 
   const areas: string[] = [];
   if (focus.technical) areas.push('technical knowledge and domain depth');
-  if (focus.coding) areas.push('coding problems, algorithms, and implementation');
+  if (focus.coding) {
+    areas.push(
+      opts?.jdBased
+        ? 'code comprehension, debugging, and reasoning about provided code snippets'
+        : 'coding problems, algorithms, and implementation',
+    );
+  }
   if (focus.behavioral) areas.push('behavioral and situational judgment (STAR-style)');
   if (focus.problemSolving) areas.push('applied problem solving and analytical thinking');
   if (focus.communication) areas.push('communication clarity and structured explanations');
@@ -168,6 +177,22 @@ function buildFocusAreasInstructions(focus?: InterviewFocusAreas): string[] {
   ];
 }
 
+function buildJdCodingInstructions(requiredSnippetCount: number): string[] {
+  return [
+    'JD INTERVIEW — CODE QUESTION RULES (CRITICAL):',
+    '- This is a voice-only interview. There is NO code editor and the candidate CANNOT write or type code.',
+    '- NEVER ask the candidate to write, implement, code, or type a solution (e.g. "write a function", "implement this in Python", "code this up").',
+    '- For algorithm, debugging, or implementation topics: you MUST call present_code_snippet FIRST with the code on screen, then ask the candidate to explain, predict output, find bugs, analyze complexity, or describe how they would fix it verbally.',
+    '- Treat coding assessment as "think through given code" — comprehension, reasoning, and trade-off discussion only.',
+    '- For technology/software/IT roles: ask at least ' +
+      `${requiredSnippetCount} code-snippet question${requiredSnippetCount === 1 ? '' : 's'} ` +
+      'using present_code_snippet before the interview ends.',
+    '- For non-technical domains: never call present_code_snippet.',
+    '- Do not describe code only in speech — always use the tool so the snippet appears in the UI.',
+    '- Space snippet questions through the session, mainly in the second half after conceptual JD questions.',
+  ];
+}
+
 export function buildInterviewSystemInstructions(
   mode: InterviewMode,
   config: InterviewConfig,
@@ -177,17 +202,20 @@ export function buildInterviewSystemInstructions(
     topicProfile?: { strong: string[]; weak: string[] };
   } = {},
 ): string {
-  const interviewType = interviewModeLabel(mode);
+  const effectiveMode: InterviewMode =
+    config.jobDescriptionText?.trim() && mode === 'coding' ? 'conversational' : mode;
+  const interviewType = interviewModeLabel(effectiveMode);
   const technology = primaryTechnology(config);
   const difficulty =
     config.difficulty.charAt(0).toUpperCase() + config.difficulty.slice(1);
 
   const requiredSnippetCount = requiredSnippetQuestionCount(config.durationMinutes);
   const companyName = config.company?.trim();
+  const jdText = config.jobDescriptionText?.trim();
   const coreConfig = [
     `You are an expert interviewer conducting a ${interviewType}.`,
     `Interview type: ${interviewType}.`,
-    MODE_FOCUS[mode],
+    MODE_FOCUS[effectiveMode],
     `Primary technology / focus: ${technology}.`,
     `Difficulty level: ${difficulty}.`,
     `Session duration: ${config.durationMinutes} minutes — pace questions accordingly.`,
@@ -208,7 +236,6 @@ export function buildInterviewSystemInstructions(
       : '',
   ];
 
-  const jdText = config.jobDescriptionText?.trim();
   const jdContext = jdText
     ? [
         'This interview was created from a specific Job Description (JD).',
@@ -241,7 +268,7 @@ export function buildInterviewSystemInstructions(
   return [
     ...coreConfig,
     ...jdContext,
-    ...buildFocusAreasInstructions(config.focusAreas),
+    ...buildFocusAreasInstructions(config.focusAreas, { jdBased: Boolean(jdText) }),
     ...questioningStrategy,
     opts.previousWeaknesses?.length
       ? `Bias follow-ups toward prior weaknesses: ${opts.previousWeaknesses.slice(0, 9).join('; ')}`
@@ -254,21 +281,25 @@ export function buildInterviewSystemInstructions(
       : '',
     'Keep questions concise. Probe depth. Be encouraging but rigorous.',
     '',
-    'CODE SNIPPET QUESTIONS:',
-    '- First decide: is this interview for a technology/software/IT/coding-engineering role, ' +
-      'based on the target role, technologies, skills, and topic above? Non-technical domains ' +
-      '(e.g. marketing, sales, civil/mechanical/other non-software engineering, pure HR or ' +
-      'behavioral-only screens) do NOT need this.',
-    `- If YES: you MUST ask at least ${requiredSnippetCount} code-snippet-based question${requiredSnippetCount === 1 ? '' : 's'} ` +
-      'before the interview ends, using the present_code_snippet tool. Do not just describe code ' +
-      'verbally — call the tool with the exact code, its language, and the question you are asking ' +
-      'about it (e.g. "what does this return?", "find the bug", "what is the output?"). Space them ' +
-      'out through the session — ask them mainly in the second half, after conceptual questions, so ' +
-      'the candidate is warmed up.',
-    '- If NO (non-technical domain): never call the present_code_snippet tool.',
-    `- Keep track of how many you have called it. Before your closing remarks, verify you have met ` +
-      `the ${requiredSnippetCount}-question minimum (if this is a technical/IT interview); if not ` +
-      'met and time remains, ask one now instead of wrapping up.',
+    ...(jdText
+      ? buildJdCodingInstructions(requiredSnippetCount)
+      : [
+          'CODE SNIPPET QUESTIONS:',
+          '- First decide: is this interview for a technology/software/IT/coding-engineering role, ' +
+            'based on the target role, technologies, skills, and topic above? Non-technical domains ' +
+            '(e.g. marketing, sales, civil/mechanical/other non-software engineering, pure HR or ' +
+            'behavioral-only screens) do NOT need this.',
+          `- If YES: you MUST ask at least ${requiredSnippetCount} code-snippet-based question${requiredSnippetCount === 1 ? '' : 's'} ` +
+            'before the interview ends, using the present_code_snippet tool. Do not just describe code ' +
+            'verbally — call the tool with the exact code, its language, and the question you are asking ' +
+            'about it (e.g. "what does this return?", "find the bug", "what is the output?"). Space them ' +
+            'out through the session — ask them mainly in the second half, after conceptual questions, so ' +
+            'the candidate is warmed up.',
+          '- If NO (non-technical domain): never call the present_code_snippet tool.',
+          `- Keep track of how many you have called it. Before your closing remarks, verify you have met ` +
+            `the ${requiredSnippetCount}-question minimum (if this is a technical/IT interview); if not ` +
+            'met and time remains, ask one now instead of wrapping up.',
+        ]),
     '',
     'ANSWER EVALUATION (CRITICAL):',
     'You must INDEPENDENTLY evaluate every candidate answer based on actual technical correctness.',
@@ -300,9 +331,11 @@ export function buildInterviewSystemInstructions(
     '- Be professional and encouraging, but HONEST. A real interviewer would not accept incorrect answers.',
     '',
     'Session closing rules:',
-    '- Before wrapping up, re-check the CODE SNIPPET QUESTIONS rule above: if this is a technical/IT ' +
-      `interview and you have called present_code_snippet fewer than ${requiredSnippetCount} times, ` +
-      'ask a code-snippet question now instead of closing (as long as time remains).',
+    jdText
+      ? '- Before wrapping up, re-check the JD CODE QUESTION RULES: for tech roles, use present_code_snippet (never ask the candidate to write code). If snippet minimum is not met and time remains, show a snippet question now instead of closing.'
+      : '- Before wrapping up, re-check the CODE SNIPPET QUESTIONS rule above: if this is a technical/IT ' +
+        `interview and you have called present_code_snippet fewer than ${requiredSnippetCount} times, ` +
+        'ask a code-snippet question now instead of closing (as long as time remains).',
     '- When you are finished with your interview questions (especially under 2 minutes left), clearly say you are done with your side, e.g. "That wraps up my questions."',
     '- Then ask: "Do you have any feedback for me?" or "Would you like feedback on your performance today?"',
     '- If the candidate wants feedback: give honest, brief verbal feedback (2–4 sentences) with 1–2 strengths and 1–2 areas to improve, then close professionally.',

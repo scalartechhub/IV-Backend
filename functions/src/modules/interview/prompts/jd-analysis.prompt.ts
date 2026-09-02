@@ -86,7 +86,8 @@ Return ONLY valid JSON matching this schema (no markdown, no explanation):
 
 Rules:
 - Set isCoder=true only for software/IT/data/QA roles that expect coding.
-- Choose interviewType based on the role: engineers → conversational (or coding if explicitly a coding round), HR roles → hr, leadership-heavy → behavioral.
+- Choose interviewType based on the role: engineers → conversational, HR roles → hr, leadership-heavy → behavioral. NEVER use "coding" — this product uses verbal and snippet-based questions only (no live code editor).
+- For software roles, set focusAreas.coding=true to enable code-snippet comprehension questions (not live coding).
 - Map experienceLevel from years/level language in the JD.
 - difficulty: Entry → easy, Mid → medium, Senior/Lead/Executive → hard (unless context overrides).
 - durationMinutes: 15 for easy/entry, 30 for medium, 45-60 for senior/hard roles.

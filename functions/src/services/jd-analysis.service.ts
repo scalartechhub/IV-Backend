@@ -122,6 +122,11 @@ export async function analyzeJobDescription(
 
   const result = normalizeResult(raw);
 
+  // JD interviews are voice-only with read-only code snippets — never live coding mode.
+  if (result.interviewType === 'coding') {
+    result.interviewType = 'conversational';
+  }
+
   if (context?.company?.trim() && !result.company) {
     result.company = context.company.trim();
   }
