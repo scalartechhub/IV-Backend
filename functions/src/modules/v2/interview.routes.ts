@@ -9,6 +9,7 @@ import { asyncHandler } from '../../middleware/async.middleware';
 import { validate } from '../../middleware/validation.middleware';
 import { sendCreated, sendSuccess } from '../../shared/responses';
 import * as interviewService from '../../services/interview.service';
+import * as jdAnalysisService from '../../services/jd-analysis.service';
 
 const router = Router();
 
@@ -21,6 +22,14 @@ const interviewModeSchema = z.enum([
 ]);
 
 const difficultySchema = z.enum(['easy', 'medium', 'hard']);
+
+const focusAreasSchema = z.object({
+  technical: z.boolean(),
+  coding: z.boolean(),
+  behavioral: z.boolean(),
+  problemSolving: z.boolean(),
+  communication: z.boolean(),
+});
 
 const startBodySchema = z
   .object({
@@ -38,6 +47,8 @@ const startBodySchema = z
     templateId: z.string().min(1).optional(),
     companyId: z.string().min(1).optional(),
     quickStart: z.boolean().optional(),
+    jobDescriptionText: z.string().max(25000).optional(),
+    focusAreas: focusAreasSchema.optional(),
   })
   .superRefine((data, ctx) => {
     const hasShortcut =
@@ -103,6 +114,41 @@ const environmentBodySchema = z.object({
   os: z.string().optional(),
   internetQualityMbps: z.number().nonnegative().optional(),
 });
+
+const analyzeJdBodySchema = z.object({
+  jdText: z.string().min(30).max(25000),
+  company: z.string().optional(),
+  targetRole: z.string().optional(),
+  experienceLevel: z.string().optional(),
+  interviewType: interviewModeSchema.optional(),
+  difficulty: difficultySchema.optional(),
+  durationMinutes: z.number().positive().optional(),
+});
+
+const ocrJdBodySchema = z.object({
+  fileBase64: z.string().min(1),
+  fileName: z.string().optional(),
+  mimeType: z.string().optional(),
+});
+
+router.post(
+  '/analyze-jd',
+  validate(analyzeJdBodySchema),
+  asyncHandler(async (req, res) => {
+    const { jdText, ...context } = req.body as z.infer<typeof analyzeJdBodySchema>;
+    const result = await jdAnalysisService.analyzeJobDescription(jdText, context);
+    sendSuccess(res, result, 'Job description analyzed');
+  }),
+);
+
+router.post(
+  '/ocr-jd',
+  validate(ocrJdBodySchema),
+  asyncHandler(async (req, res) => {
+    const result = await jdAnalysisService.ocrJobDescriptionImage(req.body);
+    sendSuccess(res, result, 'Job description text extracted');
+  }),
+);
 
 router.post(
   '/start',

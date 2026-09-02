@@ -64,14 +64,15 @@ app.set("trust proxy", 1);
 app.use(helmet());
 app.use(cors({ origin: parseCorsOrigin(), credentials: true }));
 app.use(morgan("combined"));
-app.use(
+app.use((req, res, next) => {
+  const limit = req.path.includes("/ocr-jd") ? "15mb" : "1mb";
   express.json({
-    limit: "1mb",
-    verify: (req, _res, buf) => {
-      (req as Request).rawBody = buf;
+    limit,
+    verify: (innerReq, _res, buf) => {
+      (innerReq as Request).rawBody = buf;
     },
-  })
-);
+  })(req, res, next);
+});
 
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
@@ -99,6 +100,8 @@ const aiLimiter = rateLimit({
 
 app.use(apiPath("") || "/", globalLimiter);
 app.use(apiPath("/v2/interviews/start"), aiLimiter);
+app.use(apiPath("/v2/interviews/analyze-jd"), aiLimiter);
+app.use(apiPath("/v2/interviews/ocr-jd"), aiLimiter);
 app.use(apiPath("/v2/interviews/:id/complete"), aiLimiter);
 app.use(apiPath("/v2/resumes/analyze"), aiLimiter);
 app.use(apiPath("/v2/onboarding/analyze-from-answers"), aiLimiter);
