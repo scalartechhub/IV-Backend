@@ -1,5 +1,6 @@
 import type {
   InterviewConfig,
+  InterviewFocusAreas,
   InterviewMode,
 } from '../interfaces/interview.interface';
 import type { ResumeDoc } from '../interfaces/resume.interface';
@@ -147,6 +148,26 @@ export function buildResumeContextFromAnalysis(resume: ResumeDoc): string {
   return sections.join('\n\n');
 }
 
+function buildFocusAreasInstructions(focus?: InterviewFocusAreas): string[] {
+  if (!focus) return [];
+
+  const areas: string[] = [];
+  if (focus.technical) areas.push('technical knowledge and domain depth');
+  if (focus.coding) areas.push('coding problems, algorithms, and implementation');
+  if (focus.behavioral) areas.push('behavioral and situational judgment (STAR-style)');
+  if (focus.problemSolving) areas.push('applied problem solving and analytical thinking');
+  if (focus.communication) areas.push('communication clarity and structured explanations');
+
+  if (!areas.length) return [];
+
+  return [
+    'Evaluation focus areas for this session:',
+    `- Prioritize questions that assess: ${areas.join('; ')}.`,
+    '- Weight follow-ups and scoring toward these focus areas.',
+    '- Avoid spending significant time on areas not listed above unless needed for context.',
+  ];
+}
+
 export function buildInterviewSystemInstructions(
   mode: InterviewMode,
   config: InterviewConfig,
@@ -187,6 +208,17 @@ export function buildInterviewSystemInstructions(
       : '',
   ];
 
+  const jdText = config.jobDescriptionText?.trim();
+  const jdContext = jdText
+    ? [
+        'This interview was created from a specific Job Description (JD).',
+        'Base your questions on the responsibilities, skills, tools, and qualifications in the JD below.',
+        "Ask about real scenarios implied by the JD, validate claimed competencies, and adapt follow-ups to the candidate's answers.",
+        'Do not ask generic questions unrelated to this JD when specific JD topics remain unexplored.',
+        `Job Description:\n${jdText.slice(0, 8_000)}`,
+      ]
+    : [];
+
   const questioningStrategy = opts.resumeContext
     ? [
         'The candidate opted in to resume-based questioning.',
@@ -194,14 +226,22 @@ export function buildInterviewSystemInstructions(
         'Reference specific experiences when possible and validate claimed skills with concrete follow-ups.',
         `Resume signals:\n${opts.resumeContext}`,
       ]
-    : [
-        'Resume context was NOT provided for this session.',
-        'Generate questions using ONLY the interview type, technology, difficulty, and duration above.',
-        'Do not assume specific employers, projects, degrees, or resume details.',
-      ];
+    : jdText
+      ? [
+          'Resume context was NOT provided for this session.',
+          'Generate questions using the interview type, technology, difficulty, duration, and the Job Description above.',
+          'Do not assume specific employers, projects, degrees, or resume details beyond what the JD states.',
+        ]
+      : [
+          'Resume context was NOT provided for this session.',
+          'Generate questions using ONLY the interview type, technology, difficulty, and duration above.',
+          'Do not assume specific employers, projects, degrees, or resume details.',
+        ];
 
   return [
     ...coreConfig,
+    ...jdContext,
+    ...buildFocusAreasInstructions(config.focusAreas),
     ...questioningStrategy,
     opts.previousWeaknesses?.length
       ? `Bias follow-ups toward prior weaknesses: ${opts.previousWeaknesses.slice(0, 9).join('; ')}`

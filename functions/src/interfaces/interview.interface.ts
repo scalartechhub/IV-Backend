@@ -23,6 +23,15 @@ export type EndReason =
   | 'connection_lost'
   | 'max_questions_signal';
 
+/** Evaluation focus areas for JD-customized interviews */
+export interface InterviewFocusAreas {
+  technical: boolean;
+  coding: boolean;
+  behavioral: boolean;
+  problemSolving: boolean;
+  communication: boolean;
+}
+
 /** Nested config block on interviews/{interviewId} */
 export interface InterviewConfig {
   topic?: string;
@@ -40,6 +49,10 @@ export interface InterviewConfig {
   sourceTemplateId?: string;
   /** Company prep card that spawned this interview */
   sourceCompanyId?: string;
+  /** Full job description text when interview was created from a JD */
+  jobDescriptionText?: string;
+  /** Evaluation focus areas for JD-based interviews */
+  focusAreas?: InterviewFocusAreas;
 }
 
 /** Nested Gemini Live session metadata on interviews/{interviewId} */

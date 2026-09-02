@@ -10,6 +10,7 @@ import type {
   InterviewDifficulty,
   InterviewDoc,
   InterviewEnvironment,
+  InterviewFocusAreas,
   InterviewMode,
   InterviewStatus,
 } from '../interfaces/interview.interface';
@@ -80,6 +81,10 @@ export interface StartInterviewInput {
   companyId?: string;
   /** Practice page — Quick start with profile defaults */
   quickStart?: boolean;
+  /** Job description text when interview is created from a JD */
+  jobDescriptionText?: string;
+  /** Evaluation focus areas for JD-based interviews */
+  focusAreas?: InterviewFocusAreas;
 }
 
 export interface StartInterviewResult {
@@ -179,6 +184,8 @@ async function resolveStartConfig(
         targetRole: input.targetRole ?? profileTarget,
         sourceRoadmapActivityId: input.sourceRoadmapActivityId,
         sourceTemplateId: template.id,
+        jobDescriptionText: input.jobDescriptionText,
+        focusAreas: input.focusAreas,
       },
     };
   }
@@ -206,6 +213,8 @@ async function resolveStartConfig(
         targetRole: input.targetRole ?? profileTarget,
         sourceRoadmapActivityId: input.sourceRoadmapActivityId,
         sourceCompanyId: company.id,
+        jobDescriptionText: input.jobDescriptionText,
+        focusAreas: input.focusAreas,
       },
     };
   }
@@ -225,6 +234,8 @@ async function resolveStartConfig(
         currentRole: input.currentRole ?? profileCurrent,
         targetRole: input.targetRole ?? profileTarget,
         sourceRoadmapActivityId: input.sourceRoadmapActivityId,
+        jobDescriptionText: input.jobDescriptionText,
+        focusAreas: input.focusAreas,
       },
     };
   }
@@ -248,6 +259,8 @@ async function resolveStartConfig(
         currentRole: input.currentRole ?? profileCurrent,
         targetRole: input.targetRole ?? profileTarget,
         sourceRoadmapActivityId: input.sourceRoadmapActivityId,
+        jobDescriptionText: input.jobDescriptionText,
+        focusAreas: input.focusAreas,
       },
     };
   }
