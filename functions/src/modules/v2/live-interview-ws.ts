@@ -7,7 +7,8 @@
  *
  * Turn-taking is client-controlled (automatic VAD disabled): the browser sends activityStart /
  * activityEnd so long answers are not cut off mid-pause. User captions for the UI come from
- * browser speech recognition; Gemini inputTranscription is not forwarded to the client.
+ * browser speech recognition plus Gemini inputTranscription (Latin/English only — Indic-script
+ * misdetections are dropped so Telugu/Hindi never replaces English on screen).
  */
 
 import { URL } from 'url';
@@ -53,6 +54,7 @@ import {
 import { compressConversation, getReplayTurns } from '../live-interview/context-manager';
 import {
   containsLiveTranscriptArtifacts,
+  isLatinEnglishCaption,
   resolveAssistantTranscript,
   sanitizeLiveTranscript,
 } from '../../shared/utils/live-transcript';
@@ -500,6 +502,8 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       broadcastTimer();
 
       let aiTranscriptBuffer = '';
+      /** Accumulated Gemini inputTranscription for the open candidate turn (live UI captions). */
+      let userTranscriptBuffer = '';
 
       const handleToolCall = (functionCalls: NonNullable<LiveServerMessage['toolCall']>['functionCalls']): void => {
         if (!geminiSession || !functionCalls?.length) return;
@@ -549,8 +553,19 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
 
         if (serverContent.interrupted) {
           aiTranscriptBuffer = '';
+          userTranscriptBuffer = '';
           sendJson(clientSocket, { type: 'interrupted' });
           return;
+        }
+
+        // Live candidate captions from Gemini (complements browser Web Speech for long answers).
+        // Drop Telugu/Hindi phonetic misdetections — only relay Latin English to the UI.
+        if (serverContent.inputTranscription?.text && userTurnOpen) {
+          userTranscriptBuffer += serverContent.inputTranscription.text;
+          const text = sanitizeLiveTranscript(userTranscriptBuffer);
+          if (text && isLatinEnglishCaption(text)) {
+            sendJson(clientSocket, { type: 'transcript', role: 'user', text, final: false });
+          }
         }
 
         if (serverContent.outputTranscription?.text) {
@@ -742,6 +757,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
           receivedUserAudioThisTurn = false;
           userTurnOpen = true;
           aiTranscriptBuffer = '';
+          userTranscriptBuffer = '';
           try {
             geminiSession.sendRealtimeInput({ activityStart: {} });
           } catch (error) {
@@ -752,6 +768,17 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
 
         if (message.type === 'activityEnd') {
           userTurnOpen = false;
+          // Flush remaining Gemini caption only when it is Latin English (not Telugu/Hindi).
+          const geminiCaption = sanitizeLiveTranscript(userTranscriptBuffer);
+          userTranscriptBuffer = '';
+          if (geminiCaption && isLatinEnglishCaption(geminiCaption)) {
+            sendJson(clientSocket, {
+              type: 'transcript',
+              role: 'user',
+              text: geminiCaption,
+              final: false,
+            });
+          }
           const captionText = pendingCandidateText;
           pendingCandidateText = '';
           awaitingAiResponse = true;

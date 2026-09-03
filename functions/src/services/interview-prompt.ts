@@ -346,8 +346,9 @@ export function buildInterviewSystemInstructions(
       'The candidate speaks English (possibly with an accent) — interpret their answers as ' +
       'English even if they sound unusual, and never switch to another language. ' +
       'When transcribing or repeating back anything the candidate said, always write it in ' +
-      'English using the Latin alphabet only — never output Hindi, Marathi, or any other ' +
-      'non-Latin script, even if their accent sounds like a regional Indian language.',
+      'English using the Latin alphabet only — never output Telugu, Hindi, Marathi, Tamil, ' +
+      'Kannada, Malayalam, Bengali, or any other non-Latin / Indic script, even if their accent ' +
+      'sounds like a regional Indian language.',
   ]
     .filter(Boolean)
     .join('\n');

@@ -222,10 +222,10 @@ export const DEFAULT_LIVE_MODEL = 'DEFAULT_LIVE_MODEL';
 
 /**
  * Without an explicit language, Gemini Live auto-detects language per utterance and can
- * mis-transcribe accented English as Hindi/Marathi, confusing the interviewer model. Pin both
- * transcription and speech synthesis to English so answers are recognized/replied to consistently.
+ * mis-transcribe accented English as Hindi/Marathi/Telugu, confusing the interviewer model. Pin
+ * transcription and speech synthesis to English (en-US only) so answers stay Latin-script English.
  */
-export const INTERVIEW_LANGUAGE_CODES = ['en-US', 'en-IN'];
+export const INTERVIEW_LANGUAGE_CODES = ['en-US'];
 
 /**
  * Gemini Live otherwise waits silently for the candidate to speak first. With automatic VAD
@@ -268,12 +268,12 @@ export function buildLiveConnectConfig(
   return {
     responseModalities: [Modality.AUDIO],
     systemInstruction: systemInstructions,
-    speechConfig: { languageCode: INTERVIEW_LANGUAGE_CODES[0] },
+    speechConfig: { languageCode: 'en-US' },
     inputAudioTranscription: {
-      languageHints: { languageCodes: INTERVIEW_LANGUAGE_CODES },
+      languageHints: { languageCodes: ['en-US'] },
     },
     outputAudioTranscription: {
-      languageHints: { languageCodes: INTERVIEW_LANGUAGE_CODES },
+      languageHints: { languageCodes: ['en-US'] },
     },
     // Client controls turn boundaries via activityStart/activityEnd so long answers with
     // thinking pauses are not cut off by Gemini's default automatic VAD.
