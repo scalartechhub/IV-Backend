@@ -19,7 +19,8 @@ import { sanitizeLiveTranscript } from '../../shared/utils/live-transcript';
 export type V2LiveResumeMode = 'fresh' | 'await_candidate' | 'generate_next';
 
 const MAX_CONVERSATION_MESSAGES = 200;
-const MAX_MESSAGE_CHARS = 4000;
+/** Soft cap for Firestore docs; large enough that long spoken answers are not truncated in practice. */
+const MAX_MESSAGE_CHARS = 20_000;
 
 const clampMessage = (text: string): string =>
   sanitizeLiveTranscript(text).slice(0, MAX_MESSAGE_CHARS);
