@@ -229,10 +229,11 @@ export function buildInterviewSystemInstructions(
     companyName
       ? [
           `Target company: ${companyName}.`,
-          `This is a ${companyName}-style interview. Ask questions that ${companyName} is known to ask for this role/type when possible.`,
-          `Reflect ${companyName}'s interview culture, common rounds, and expectations (without inventing confidential/internal processes).`,
+          config.targetRole ? `Candidate role: ${config.targetRole}.` : '',
+          `This is a ${companyName}-style interview tailored for ${config.targetRole || 'this position'}. Ask questions that ${companyName} is known to ask for this role/type when possible.`,
+          `Reflect ${companyName}'s interview culture, common rounds, and evaluation expectations (without inventing confidential/internal processes).`,
           `Prefer scenarios, follow-ups, and evaluation criteria that would realistically appear in a ${companyName} hiring process.`,
-        ].join(' ')
+        ].filter(Boolean).join(' ')
       : '',
   ];
 

@@ -108,6 +108,7 @@ app.use(apiPath("/v2/onboarding/analyze-from-answers"), aiLimiter);
 app.use(apiPath("/v2/roadmap/regenerate"), aiLimiter);
 app.use(apiPath("/v2/coding/run"), aiLimiter);
 app.use(apiPath("/v2/coding/submit"), aiLimiter);
+app.use(apiPath("/v2/companies/:id/prep"), aiLimiter);
 
 app.use((req, _res, next) => {
   logger.info(`→ ${req.method} ${req.path}`);

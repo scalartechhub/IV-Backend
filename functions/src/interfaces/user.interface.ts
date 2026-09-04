@@ -128,6 +128,7 @@ export interface UserDoc {
   displayName: string;
   photoURL?: string;
   provider: AuthProvider;
+  currentRole?: string;
   createdAt: Timestamp;
   lastLoginAt: Timestamp;
   profile: UserProfile;

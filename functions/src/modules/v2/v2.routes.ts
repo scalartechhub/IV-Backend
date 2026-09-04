@@ -18,12 +18,14 @@ import profileRoutes from './profile.routes';
 import achievementsRoutes from './achievements.routes';
 import practiceRoutes from './practice.routes';
 import reportsRoutes from './reports.routes';
+import companiesRoutes from '../companies/companies.routes';
 
 const router = Router();
 
 router.use(verifyToken);
 
 router.use('/interviews', interviewRoutes);
+router.use('/companies', companiesRoutes);
 router.use('/practice', practiceRoutes);
 router.use('/reports', reportsRoutes);
 router.use('/resumes', resumeRoutes);

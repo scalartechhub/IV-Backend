@@ -27,6 +27,8 @@ const appConfigSchema = z.object({
     .transform((v) => (v && v.trim() ? v.trim() : undefined)),
   /** Set to "true" to enable Teams alerts in non-production environments */
   TEAMS_ALERT_IN_DEV: z.string().default("false"),
+  /** Geoapify Places API key for nearby company recommendations */
+  GEOAPIFY_API_KEY: z.string().optional(),
 });
 
 const parsed = appConfigSchema.safeParse(process.env);
@@ -54,6 +56,7 @@ export const appConfig = {
   judge0Url: data.JUDGE0_URL,
   teamsWebhookUrl: data.DISCORD_WEBHOOK_URL,
   teamsAlertInDev: data.TEAMS_ALERT_IN_DEV === "true",
+  geoapifyApiKey: (data.GEOAPIFY_API_KEY || process.env.GEOAPIFY_API_KEY || "").trim(),
 } as const;
 
 export type AppConfig = typeof appConfig;

@@ -198,13 +198,32 @@ async function resolveStartConfig(
       Medium: 'medium',
       Hard: 'hard',
     };
+    const effectiveRole =
+      input.targetRole || profileTarget || input.currentRole || profileCurrent || '';
+    const companySkills = company.tags?.filter((t) => t !== company.slug && !t.startsWith('geo-')) ?? [];
+    const derivedSkills = input.skills?.length
+      ? input.skills
+      : companySkills.length
+        ? companySkills
+        : effectiveRole
+          ? [effectiveRole, 'interview-prep']
+          : [company.name.toLowerCase(), 'interview-prep'];
+
+    const derivedTechnologies = input.technologies?.length
+      ? input.technologies
+      : effectiveRole
+        ? [effectiveRole]
+        : [];
+
     return {
       mode: input.mode ?? 'conversational',
       config: {
-        topic: input.topic ?? `${company.name} interview prep`,
+        topic:
+          input.topic ??
+          (effectiveRole ? `${company.name} ${effectiveRole} interview prep` : `${company.name} interview prep`),
         company: company.name,
-        skills: input.skills ?? [company.name.toLowerCase(), 'interview-prep'],
-        technologies: input.technologies ?? [],
+        skills: derivedSkills,
+        technologies: derivedTechnologies,
         difficulty:
           input.difficulty ?? difficultyMap[company.difficulty] ?? 'medium',
         durationMinutes: input.durationMinutes ?? 30,
