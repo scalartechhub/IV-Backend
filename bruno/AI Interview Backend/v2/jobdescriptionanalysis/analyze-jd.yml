@@ -1,0 +1,30 @@
+info:
+  name: Analyze Job Description
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/jobdescriptionanalysis"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "jdText": "We are looking for a Senior Frontend Developer with strong TypeScript, React, and Angular experience. The candidate should have 5+ years of experience and be ready to lead a team. Salary is $100k - $150k. Remote."
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 120000
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Send raw job description text to be parsed by AI.
+  It returns a structured JobDescription object and saves it as a draft in Firestore.

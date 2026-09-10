@@ -10,6 +10,7 @@
 import { Router } from 'express';
 import verifyToken from '../../middleware/auth.middleware';
 import interviewRoutes from './interview.routes';
+import jobDescriptionAnalysisRoutes from './job-description-analysis.routes';
 import resumeRoutes from './resume.routes';
 import onboardingRoutes from './onboarding.routes';
 import codingRoutes from './coding.routes';
@@ -24,6 +25,7 @@ const router = Router();
 router.use(verifyToken);
 
 router.use('/interviews', interviewRoutes);
+router.use('/jobdescriptionanalysis', jobDescriptionAnalysisRoutes);
 router.use('/practice', practiceRoutes);
 router.use('/reports', reportsRoutes);
 router.use('/resumes', resumeRoutes);
