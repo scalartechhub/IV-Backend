@@ -5,10 +5,14 @@
  * Practice / Interviews support the new dashboard UI:
  *   GET  /v2/practice/catalog
  *   POST /v2/interviews/start  (templateId | companyId | quickStart | full config)
+ *
+ * Subscription routes (plans, webhooks) are mounted BEFORE verifyToken
+ * since some of them don't require Firebase auth.
  */
 
 import { Router } from 'express';
 import verifyToken from '../../middleware/auth.middleware';
+import subscriptionRoutes from './subscription.routes';
 import interviewRoutes from './interview.routes';
 import jobDescriptionAnalysisRoutes from './job-description-analysis.routes';
 import resumeRoutes from './resume.routes';
@@ -22,6 +26,11 @@ import reportsRoutes from './reports.routes';
 
 const router = Router();
 
+// Subscription routes handle their own auth — some endpoints are public
+// (GET /plans, POST /webhooks/razorpay), others require verifyToken internally.
+router.use('/', subscriptionRoutes);
+
+// All remaining v2 routes require Firebase authentication
 router.use(verifyToken);
 
 router.use('/interviews', interviewRoutes);

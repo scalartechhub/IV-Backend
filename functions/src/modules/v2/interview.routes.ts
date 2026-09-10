@@ -10,6 +10,7 @@ import { validate } from '../../middleware/validation.middleware';
 import { sendCreated, sendSuccess } from '../../shared/responses';
 import * as interviewService from '../../services/interview.service';
 import * as jdAnalysisService from '../../services/jd-analysis.service';
+import { assertInterviewQuota, recordInterviewUsage } from '../subscription/feature-access.service';
 
 const router = Router();
 
@@ -154,7 +155,11 @@ router.post(
   '/start',
   validate(startBodySchema),
   asyncHandler(async (req, res) => {
+    // Enforce monthly interview quota based on user's plan
+    await assertInterviewQuota(req.user!.uid);
     const result = await interviewService.startInterview(req.user!.uid, req.body);
+    // Record usage after successful creation
+    await recordInterviewUsage(req.user!.uid);
     sendCreated(res, result, 'Interview started');
   }),
 );

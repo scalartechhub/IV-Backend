@@ -1,0 +1,54 @@
+info:
+  name: Razorpay Webhook
+  type: http
+  seq: 9
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/webhooks/razorpay"
+  headers:
+    - name: Content-Type
+      value: application/json
+    - name: x-razorpay-signature
+      value: "{{webhookSignature}}"
+  body:
+    type: json
+    data: |-
+      {
+        "event": "subscription.activated",
+        "payload": {
+          "subscription": {
+            "entity": {
+              "id": "{{razorpaySubscriptionId}}",
+              "plan_id": "plan_test123",
+              "customer_id": "cust_test123",
+              "status": "active",
+              "current_start": 1741584000,
+              "current_end": 1744262400,
+              "notes": {
+                "userId": "{{webhookUserId}}",
+                "planId": "pro_monthly"
+              }
+            }
+          },
+          "payment": {
+            "entity": {
+              "id": "{{razorpayPaymentId}}",
+              "amount": 79900,
+              "currency": "INR",
+              "status": "captured",
+              "method": "card"
+            }
+          }
+        }
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Test Razorpay Webhook handler.
+  Requires raw body and a valid HMAC-SHA256 signature passed in `x-razorpay-signature` header generated using `RAZORPAY_WEBHOOK_SECRET`.

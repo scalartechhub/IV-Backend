@@ -1,0 +1,20 @@
+info:
+  name: Cancel Subscription
+  type: http
+  seq: 7
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/subscriptions/cancel"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Cancel active subscription at period end. The user keeps access until the end of the current billing cycle.

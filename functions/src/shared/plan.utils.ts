@@ -23,8 +23,8 @@ const isSubscriptionActive = (user: User): boolean => {
 export const resolveBillingPlan = (user: User): BillingPlanId => {
   const rawPlan = user.subscription?.plan?.toLowerCase().trim();
 
-  if (rawPlan === PLAN_IDS.ENTERPRISE && isSubscriptionActive(user)) {
-    return PLAN_IDS.ENTERPRISE;
+  if ((rawPlan === PLAN_IDS.ENTERPRISE || rawPlan === PLAN_IDS.ELITE) && isSubscriptionActive(user)) {
+    return PLAN_IDS.ELITE;
   }
 
   if (rawPlan === PLAN_IDS.PRO && isSubscriptionActive(user)) {

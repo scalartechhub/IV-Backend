@@ -97,6 +97,7 @@ export const initializeFirebase = (): void => {
   }
 
   db = getFirestore(adminApp);
+  db.settings({ ignoreUndefinedProperties: true });
   auth = getAuth(adminApp);
 
   _initialized = true;

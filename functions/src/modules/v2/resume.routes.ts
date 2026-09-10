@@ -24,6 +24,8 @@ import { sendCreated } from "../../shared/responses";
 
 import * as resumeService from "../../services/resume.service";
 
+import { assertResumeAnalysisQuota, recordResumeAnalysisUsage } from "../subscription/feature-access.service";
+
 const router = Router();
 
 /** Parse multipart/query boolean flags like "true" / "1" / true. */
@@ -78,6 +80,9 @@ router.post(
 
       onboarding,
     });
+
+    // Record usage after successful analysis
+    await recordResumeAnalysisUsage(req.user!.uid);
 
     sendCreated(
       res,
