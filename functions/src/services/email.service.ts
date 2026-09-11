@@ -5,6 +5,7 @@
 
 import nodemailer, { Transporter } from 'nodemailer';
 import { logger } from '../shared/logger';
+import { firestoreConfigService } from '../config/firestore-config.service';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -31,6 +32,7 @@ interface EmailPayload {
 
 let transporter: Transporter | null = null;
 let cachedFromEmail: string = 'noreply@interviewup.ai';
+let activeConfigKey: string = '';
 
 function parseSender(fromStr: string, defaultName = 'InterviewUp'): { name: string; address: string } {
   const match = fromStr.match(/^(.*?)\s*<([^>]+)>$/);
@@ -44,12 +46,13 @@ function parseSender(fromStr: string, defaultName = 'InterviewUp'): { name: stri
 }
 
 function getTransporter(): { transport: Transporter | null; fromEmail: string } {
-  const user = (process.env.SMTP_USER || process.env.EMAIL_USER || '').trim();
-  const pass = (process.env.SMTP_PASS || process.env.EMAIL_PASS || '').trim();
-  const host = (process.env.SMTP_HOST || (user.endsWith('@gmail.com') ? 'smtp.gmail.com' : '')).trim();
-  const port = Number(process.env.SMTP_PORT) || 465;
-  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
-  const from = (process.env.SMTP_FROM || process.env.EMAIL_FROM || user || 'noreply@interviewup.ai').trim();
+  const fsSmtp = firestoreConfigService.getSMTPConfig();
+  const user = (fsSmtp.user || process.env.SMTP_USER || process.env.EMAIL_USER || '').trim();
+  const pass = (fsSmtp.pass || process.env.SMTP_PASS || process.env.EMAIL_PASS || '').trim();
+  const host = (fsSmtp.host || process.env.SMTP_HOST || (user.endsWith('@gmail.com') ? 'smtp.gmail.com' : '')).trim();
+  const port = Number(fsSmtp.port || process.env.SMTP_PORT) || 465;
+  const secure = fsSmtp.secure !== undefined ? fsSmtp.secure : (process.env.SMTP_SECURE === 'true' || port === 465);
+  const from = (fsSmtp.from || process.env.SMTP_FROM || process.env.EMAIL_FROM || user || 'noreply@interviewup.ai').trim();
 
   cachedFromEmail = from;
 
@@ -57,10 +60,16 @@ function getTransporter(): { transport: Transporter | null; fromEmail: string } 
     return { transport: null, fromEmail: cachedFromEmail };
   }
 
+  const currentConfigKey = `${user}:${pass}:${host}:${port}:${secure}`;
+  if (transporter && activeConfigKey !== currentConfigKey) {
+    logger.info(`[EmailService] SMTP credentials updated in Firestore/env. Re-initializing transporter for ${user}...`);
+    transporter = null;
+  }
+
   if (!transporter) {
     const isGmail = host === 'smtp.gmail.com' || user.endsWith('@gmail.com');
     transporter = nodemailer.createTransport(
-      isGmail && !process.env.SMTP_HOST
+      isGmail && !process.env.SMTP_HOST && !fsSmtp.host
         ? {
             service: 'gmail',
             auth: { user, pass },
@@ -72,7 +81,9 @@ function getTransporter(): { transport: Transporter | null; fromEmail: string } 
             auth: { user, pass },
           }
     );
-    logger.info(`[EmailService] Nodemailer transporter initialized for ${user} (host: ${host || 'gmail'})`);
+    activeConfigKey = currentConfigKey;
+    const source = fsSmtp.user ? 'Firestore (config/smtp)' : 'process.env';
+    logger.info(`[EmailService] Nodemailer transporter initialized for ${user} (host: ${host || 'gmail'}, source: ${source})`);
   }
 
   return { transport: transporter, fromEmail: cachedFromEmail };
