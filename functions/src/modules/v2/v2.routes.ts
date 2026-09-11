@@ -19,6 +19,7 @@ import profileRoutes from './profile.routes';
 import achievementsRoutes from './achievements.routes';
 import practiceRoutes from './practice.routes';
 import reportsRoutes from './reports.routes';
+import inviteRoutes from './invite.routes';
 
 const router = Router();
 
@@ -34,5 +35,6 @@ router.use('/coding', codingRoutes);
 router.use('/learning-roadmap', learningRoadmapRoutes);
 router.use('/profile', profileRoutes);
 router.use('/achievements', achievementsRoutes);
+router.use('/invites', inviteRoutes);
 
 export default router;

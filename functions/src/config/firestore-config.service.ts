@@ -11,10 +11,13 @@ export interface GenAIConfig {
   resumeModel?: string;
 }
 
-export interface SendGridConfig {
-  apiKey?: string;
-  fromEmail?: string;
-  ownerEmail?: string;
+export interface SMTPConfig {
+  host?: string;
+  port?: number;
+  secure?: boolean;
+  user?: string;
+  pass?: string;
+  from?: string;
 }
 
 export interface RazorpayConfig {
@@ -43,7 +46,7 @@ export interface DiscordConfig {
 
 export interface FirestoreConfigMap {
   genai: GenAIConfig;
-  sendgrid: SendGridConfig;
+  smtp: SMTPConfig;
   razorpay: RazorpayConfig;
   groq: GroqConfig;
   judge0: Judge0Config;
@@ -116,14 +119,6 @@ class FirestoreConfigService {
         resumeModel: genaiDoc.resumeModel || genaiDoc.RESUME_GEMINI_MODEL || process.env.RESUME_GEMINI_MODEL,
       };
 
-      // Parse SendGrid Config
-      const sendgridDoc = docsData["sendgrid"] || {};
-      const sendgridConfig: SendGridConfig = {
-        apiKey: sendgridDoc.apiKey || sendgridDoc.SENDGRID_API_KEY || process.env.SENDGRID_API_KEY,
-        fromEmail: sendgridDoc.fromEmail || sendgridDoc.SENDGRID_FROM_EMAIL || process.env.SENDGRID_FROM_EMAIL,
-        ownerEmail: sendgridDoc.ownerEmail || process.env.OWNER_EMAIL || "ashishgupta95652@gmail.com",
-      };
-
       // Parse Razorpay Config
       const razorpayDoc = docsData["razorpay"] || {};
       const razorpayConfig: RazorpayConfig = {
@@ -163,9 +158,20 @@ class FirestoreConfigService {
           process.env.DISCORD_WEBHOOK_URL,
       };
 
+      // Parse SMTP Config
+      const smtpDoc = docsData["smtp"] || {};
+      const smtpConfig: SMTPConfig = {
+        host: smtpDoc.host || smtpDoc.SMTP_HOST || process.env.SMTP_HOST,
+        port: smtpDoc.port ? Number(smtpDoc.port) : (process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined),
+        secure: smtpDoc.secure !== undefined ? Boolean(smtpDoc.secure) : (process.env.SMTP_SECURE === 'true'),
+        user: smtpDoc.user || smtpDoc.SMTP_USER || process.env.SMTP_USER,
+        pass: smtpDoc.pass || smtpDoc.SMTP_PASS || process.env.SMTP_PASS,
+        from: smtpDoc.from || smtpDoc.SMTP_FROM || process.env.SMTP_FROM,
+      };
+
       this.configCache = {
         genai: genaiConfig,
-        sendgrid: sendgridConfig,
+        smtp: smtpConfig,
         razorpay: razorpayConfig,
         groq: groqConfig,
         judge0: judge0Config,
@@ -205,10 +211,13 @@ class FirestoreConfigService {
         timeoutMs: process.env.GEMINI_TIMEOUT_MS ? Number(process.env.GEMINI_TIMEOUT_MS) : 120000,
         resumeModel: process.env.RESUME_GEMINI_MODEL,
       },
-      sendgrid: {
-        apiKey: process.env.SENDGRID_API_KEY,
-        fromEmail: process.env.SENDGRID_FROM_EMAIL,
-        ownerEmail: process.env.OWNER_EMAIL || "ashishgupta95652@gmail.com",
+      smtp: {
+        host: process.env.SMTP_HOST,
+        port: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined,
+        secure: process.env.SMTP_SECURE === 'true',
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+        from: process.env.SMTP_FROM,
       },
       razorpay: {
         keyId: process.env.RAZORPAY_KEY_ID,
@@ -233,7 +242,7 @@ class FirestoreConfigService {
   }
 
   private syncToProcessEnv(): void {
-    const { genai, sendgrid, razorpay, groq, judge0, firebase, discord } = this.configCache;
+    const { genai, smtp, razorpay, groq, judge0, firebase, discord } = this.configCache;
 
     if (genai?.apiKey) process.env.GEMINI_API_KEY = genai.apiKey;
     if (genai?.model) process.env.GEMINI_MODEL = genai.model;
@@ -243,8 +252,12 @@ class FirestoreConfigService {
     if (genai?.timeoutMs) process.env.GEMINI_TIMEOUT_MS = String(genai.timeoutMs);
     if (genai?.resumeModel) process.env.RESUME_GEMINI_MODEL = genai.resumeModel;
 
-    if (sendgrid?.apiKey) process.env.SENDGRID_API_KEY = sendgrid.apiKey;
-    if (sendgrid?.fromEmail) process.env.SENDGRID_FROM_EMAIL = sendgrid.fromEmail;
+    if (smtp?.host) process.env.SMTP_HOST = smtp.host;
+    if (smtp?.port) process.env.SMTP_PORT = String(smtp.port);
+    if (smtp?.secure !== undefined) process.env.SMTP_SECURE = String(smtp.secure);
+    if (smtp?.user) process.env.SMTP_USER = smtp.user;
+    if (smtp?.pass) process.env.SMTP_PASS = smtp.pass;
+    if (smtp?.from) process.env.SMTP_FROM = smtp.from;
 
     if (razorpay?.keyId) process.env.RAZORPAY_KEY_ID = razorpay.keyId;
     if (razorpay?.keySecret) process.env.RAZORPAY_KEY_SECRET = razorpay.keySecret;
@@ -273,9 +286,9 @@ class FirestoreConfigService {
     return this.configCache.genai || {};
   }
 
-  getSendGridConfig(): SendGridConfig {
+  getSMTPConfig(): SMTPConfig {
     if (!this.loaded) this.populateFromEnv();
-    return this.configCache.sendgrid || {};
+    return this.configCache.smtp || {};
   }
 
   getRazorpayConfig(): RazorpayConfig {
