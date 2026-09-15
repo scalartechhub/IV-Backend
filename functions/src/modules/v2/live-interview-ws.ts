@@ -663,7 +663,11 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
           const lastAssistantQuestion = [...(interview.conversation ?? [])]
             .reverse()
             .find((entry) => entry.role === 'assistant')?.text;
-          const kickoffText = buildResumeKickoffText(resumeMode, lastAssistantQuestion);
+          const kickoffText = buildResumeKickoffText(
+            resumeMode,
+            lastAssistantQuestion,
+            latestInterview || interview,
+          );
           if (!kickoffText) return;
 
           geminiSession.sendClientContent({
