@@ -26,8 +26,14 @@ export const buildResumeSystemInstruction = (
   const compressed = compressConversation(interview.conversation);
   const conversationContext = formatCompressedContextForPrompt(compressed);
 
-  let resumeBehavior =
-    '- When the session begins, immediately greet the candidate, introduce yourself as their AI interviewer, briefly explain how the interview will work, and ask the first question in your opening turn.';
+  const isJdInterview = Boolean(interview.config?.jobDescriptionText?.trim());
+  const roleName = interview.config?.targetRole || interview.config?.topic || 'the position';
+  const company = interview.config?.company?.trim();
+  const companyContext = company ? ` at ${company}` : '';
+
+  let resumeBehavior = isJdInterview
+    ? `- When the session begins, immediately greet the candidate in ONE short sentence welcoming them to the ${roleName}${companyContext} interview, and immediately ask your first technical or problem-solving question derived directly from the Job Description. Do NOT ask for a resume walkthrough, personal introduction, or career history.`
+    : '- When the session begins, immediately greet the candidate, introduce yourself as their AI interviewer, briefly explain how the interview will work, and ask the first question in your opening turn.';
 
   if (resumeMode === 'await_candidate') {
     resumeBehavior = `- This session is being RESUMED. Prior conversation is provided below.
@@ -55,8 +61,22 @@ ${resumeBehavior}`;
 export const buildResumeKickoffText = (
   resumeMode: V2LiveResumeMode,
   lastAssistantQuestion?: string,
+  interview?: InterviewDoc,
 ): string | null => {
   if (resumeMode === 'fresh') {
+    const isJdInterview = Boolean(interview?.config?.jobDescriptionText?.trim());
+    if (isJdInterview) {
+      const roleName = interview?.config?.targetRole || interview?.config?.topic || 'the position';
+      const company = interview?.config?.company?.trim();
+      const companyContext = company ? ` at ${company}` : '';
+      return [
+        `The candidate has just joined the call for the ${roleName}${companyContext} interview based on the Job Description.`,
+        `Greet them warmly in ONE brief sentence welcoming them to the ${roleName} interview.`,
+        `Then IMMEDIATELY ask your FIRST interview question derived directly from the key responsibilities or technical qualifications in the Job Description.`,
+        'Do NOT ask them to introduce themselves or walk through their resume. Start directly with the first JD question now.',
+      ].join(' ');
+    }
+
     return 'The candidate has just joined the call and is ready to begin. Greet them briefly and ask your first interview question now — do not wait for them to speak first.';
   }
 

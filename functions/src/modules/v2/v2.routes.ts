@@ -20,9 +20,17 @@ import achievementsRoutes from './achievements.routes';
 import practiceRoutes from './practice.routes';
 import reportsRoutes from './reports.routes';
 import inviteRoutes from './invite.routes';
+import interviewInvitesRoutes from './interview-invites.routes';
 
 const router = Router();
 
+// ── Public routes (no auth required / individual route auth) ─────────────────
+// interview-invites: GET /:token and POST /:token/start are public (candidate-facing).
+// The admin POST / endpoint inside the router applies verifyToken per-route.
+router.use('/interview-invites', interviewInvitesRoutes);
+router.use('/invites', inviteRoutes);
+
+// ── Authenticated routes ──────────────────────────────────────────────────────
 router.use(verifyToken);
 
 router.use('/interviews', interviewRoutes);
@@ -35,6 +43,5 @@ router.use('/coding', codingRoutes);
 router.use('/learning-roadmap', learningRoadmapRoutes);
 router.use('/profile', profileRoutes);
 router.use('/achievements', achievementsRoutes);
-router.use('/invites', inviteRoutes);
 
 export default router;

@@ -12,6 +12,7 @@ import type {
   InterviewEnvironment,
   InterviewFocusAreas,
   InterviewMode,
+  InterviewResults,
   InterviewStatus,
 } from '../interfaces/interview.interface';
 import type { GoalDoc } from '../interfaces/user.interface';
@@ -285,8 +286,14 @@ export async function startInterview(
   const mode = resolved.mode;
   const config = omitUndefinedDeep(resolved.config);
 
-  // resumeVersionUsed is only set when Setup explicitly opts in ("Using resume").
-  const useResume = Boolean(config.resumeVersionUsed);
+  // When an interview is created from a Job Description, the JD is the sole assessment basis.
+  const isJdInterview = Boolean(config.jobDescriptionText?.trim());
+  if (isJdInterview) {
+    delete config.resumeVersionUsed;
+  }
+
+  // resumeVersionUsed is only set when Setup explicitly opts in ("Using resume") for non-JD sessions.
+  const useResume = !isJdInterview && Boolean(config.resumeVersionUsed);
   const resumeSnap = useResume ? await onboardingAnalysisRef(db, uid).get() : null;
   if (useResume && !resumeSnap?.exists) {
     throw new AppError(404, 'No resume analysis found for this account.');
@@ -359,6 +366,9 @@ export async function startInterview(
     createdAt: now,
     updatedAt: now,
   } as never);
+
+  // Asynchronously update any candidate invitations matching this user to STARTED
+  void syncCandidateInvitesOnInterviewStart(db, uid, interviewDocRef.id);
 
   return {
     interviewId: interviewDocRef.id,
@@ -753,6 +763,9 @@ export async function completeInterview(
     });
   }
 
+  // Asynchronously update candidateInvites to COMPLETED with score
+  void syncCandidateInvitesOnInterviewComplete(db, uid, interviewId, results);
+
   return txResult;
 }
 
@@ -802,4 +815,92 @@ export async function listInterviews(
 
   const snap = await query.get();
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+/** Sync candidateInvites collection when an interview starts. */
+async function syncCandidateInvitesOnInterviewStart(
+  db: FirebaseFirestore.Firestore,
+  uid: string,
+  interviewId: string,
+): Promise<void> {
+  try {
+    const userDoc = await db.collection('users').doc(uid).get();
+    const email = userDoc.data()?.email?.toLowerCase()?.trim();
+    if (!email) return;
+
+    const snap = await db
+      .collection('candidateInvites')
+      .where('email', '==', email)
+      .where('status', 'in', ['SENT', 'DELIVERED', 'OPENED'])
+      .get();
+
+    if (!snap.empty) {
+      const batch = db.batch();
+      for (const doc of snap.docs) {
+        batch.update(doc.ref, {
+          status: 'STARTED',
+          startedAt: FieldValue.serverTimestamp(),
+          interviewSessionId: interviewId,
+        });
+      }
+      await batch.commit();
+    }
+  } catch (err) {
+    console.warn('[syncCandidateInvitesOnInterviewStart] Failed to sync candidate invites:', err);
+  }
+}
+
+/** Sync candidateInvites collection when an interview completes. */
+async function syncCandidateInvitesOnInterviewComplete(
+  db: FirebaseFirestore.Firestore,
+  uid: string,
+  interviewId: string,
+  results: InterviewResults,
+): Promise<void> {
+  try {
+    const userDoc = await db.collection('users').doc(uid).get();
+    const email = userDoc.data()?.email?.toLowerCase()?.trim();
+
+    const queries = [];
+    if (email) {
+      queries.push(
+        db
+          .collection('candidateInvites')
+          .where('email', '==', email)
+          .where('status', 'in', ['SENT', 'DELIVERED', 'OPENED', 'STARTED'])
+          .get(),
+      );
+    }
+    queries.push(
+      db
+        .collection('candidateInvites')
+        .where('interviewSessionId', '==', interviewId)
+        .get(),
+    );
+
+    const snapshots = await Promise.all(queries);
+    const batch = db.batch();
+    const seenIds = new Set<string>();
+    let count = 0;
+
+    for (const snap of snapshots) {
+      for (const doc of snap.docs) {
+        if (seenIds.has(doc.id)) continue;
+        seenIds.add(doc.id);
+        batch.update(doc.ref, {
+          status: 'COMPLETED',
+          score: results.overallScore,
+          completedAt: FieldValue.serverTimestamp(),
+          interviewSessionId: interviewId,
+        });
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      await batch.commit();
+    }
+  } catch (err) {
+    console.warn('[syncCandidateInvitesOnInterviewComplete] Failed to sync candidate invites:', err);
+  }
 }

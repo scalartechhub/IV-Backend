@@ -12,6 +12,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../middleware/async.middleware';
 import { validate } from '../../middleware/validation.middleware';
+import verifyToken from '../../middleware/auth.middleware';
 import { sendSuccess, sendCreated, sendError } from '../../shared/responses';
 import { sendCandidateInviteEmail } from '../../services/email.service';
 import { db } from '../../config/firebase';
@@ -31,9 +32,13 @@ const JOB_DESCRIPTION_COLLECTION = 'jobDescription';
 function getFrontendUrl(): string {
   const configured = process.env.IV_FRONTEND_URL?.trim();
   if (configured && !configured.includes('localhost')) {
-    return configured.replace(/\/+$/, '');
+    const clean = configured.replace(/\/+$/, '');
+    if (clean.includes('app.interviewup.ai') && !clean.includes('www.')) {
+      return clean.replace('app.interviewup.ai', 'www.app.interviewup.ai');
+    }
+    return clean;
   }
-  return 'https://app.interviewup.ai';
+  return 'https://www.app.interviewup.ai';
 }
 
 // ─── Schemas ───────────────────────────────────────────────────────────────────
@@ -56,10 +61,86 @@ const inviteIdParamSchema = z.object({
   inviteId: z.string().min(1),
 });
 
-// ─── POST /send — Send Invitations ─────────────────────────────────────────────
+const checkStatusQuerySchema = z.object({
+  email: z.string().email('Invalid email address'),
+  jdId: z.string().min(1, 'jdId is required'),
+});
+
+// ─── GET /status/:inviteId — Public: Check candidate invitation status ─────────
+
+router.get(
+  '/status/:inviteId',
+  validate(inviteIdParamSchema, 'params'),
+  asyncHandler(async (req, res) => {
+    const { inviteId } = req.params as unknown as z.infer<typeof inviteIdParamSchema>;
+    const inviteRef = db.collection(INVITES_COLLECTION).doc(inviteId);
+    const inviteDoc = await inviteRef.get();
+
+    if (!inviteDoc.exists) {
+      sendError(res, 'Invitation not found', 404);
+      return;
+    }
+
+    const data = inviteDoc.data()!;
+
+    // Track 'OPENED' if currently in sent/delivered state
+    if (['SENT', 'DELIVERED'].includes(data.status)) {
+      void inviteRef.update({
+        status: 'OPENED',
+        openedAt: FieldValue.serverTimestamp(),
+      }).catch(() => {});
+    }
+
+    sendSuccess(res, {
+      inviteId: data.id || inviteDoc.id,
+      email: data.email,
+      name: data.name || null,
+      status: data.status,
+      revokedAt: data.revokedAt?.toDate?.() || null,
+      score: typeof data.score === 'number' ? data.score : null,
+      jobTitle: data.jobTitle || null,
+      companyName: data.companyName || null,
+      jdId: data.jdId || null,
+      interviewLinkId: data.interviewLinkId || null,
+    }, 'Invite status retrieved');
+  }),
+);
+
+// ─── GET /check-email — Public: Check if email has revoked/active invite for JD ─
+
+router.get(
+  '/check-email',
+  validate(checkStatusQuerySchema, 'query'),
+  asyncHandler(async (req, res) => {
+    const { email, jdId } = req.query as unknown as z.infer<typeof checkStatusQuerySchema>;
+
+    const invitesSnap = await db.collection(INVITES_COLLECTION)
+      .where('jdId', '==', jdId)
+      .where('email', '==', email.toLowerCase().trim())
+      .get();
+
+    if (invitesSnap.empty) {
+      sendSuccess(res, { isRevoked: false, status: null, invite: null });
+      return;
+    }
+
+    const invites = invitesSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+    const isRevoked = invites.some(i => i.status === 'REVOKED');
+    const activeOrLatest = invites.find(i => i.status === 'REVOKED') || invites[0];
+
+    sendSuccess(res, {
+      isRevoked,
+      status: isRevoked ? 'REVOKED' : activeOrLatest.status,
+      inviteId: activeOrLatest.id,
+    }, 'Invite check completed');
+  }),
+);
+
+// ─── POST /send — Admin: Send Invitations ──────────────────────────────────────
 
 router.post(
   '/send',
+  verifyToken,
   validate(sendInvitesBodySchema),
   asyncHandler(async (req, res) => {
     const { interviewLinkId, candidates } = req.body as z.infer<typeof sendInvitesBodySchema>;
@@ -101,7 +182,8 @@ router.post(
 
     for (let i = 0; i < candidates.length; i++) {
       const candidate = candidates[i];
-      const inviteUrl = `${frontendUrl}/jd-view/${linkData.jdId}`;
+      const inviteRef = db.collection(INVITES_COLLECTION).doc();
+      const inviteUrl = `${frontendUrl}/jd-view/${linkData.jdId}?inviteId=${inviteRef.id}`;
 
       try {
         // Check for existing non-revoked invite to same email for same link
@@ -130,7 +212,6 @@ router.post(
         });
 
         // Store invite record in Firestore
-        const inviteRef = db.collection(INVITES_COLLECTION).doc();
         const inviteDoc = {
           id: inviteRef.id,
           interviewLinkId,
@@ -177,6 +258,7 @@ router.post(
 
 router.get(
   ['/list', '/list/:linkId'],
+  verifyToken,
   asyncHandler(async (req, res) => {
     const linkId = req.params?.['linkId'] || (req.query?.['linkId'] as string | undefined);
     const status = req.query?.['status'] as string | undefined;
@@ -191,7 +273,7 @@ router.get(
 
     const snap = await queryRef.limit(200).get();
 
-    const invites = snap.docs.map(doc => {
+    const rawInvites = snap.docs.map(doc => {
       const data = doc.data();
       return {
         ...data,
@@ -204,8 +286,100 @@ router.get(
       };
     });
 
+    // Cross-reference completed or active interviews for non-revoked candidates
+    const invites = await Promise.all(
+      rawInvites.map(async (inv: any) => {
+        if (inv.status === 'REVOKED' || (inv.status === 'COMPLETED' && inv.score != null)) {
+          return inv;
+        }
+
+        try {
+          const email = (inv.email || '').toLowerCase().trim();
+          if (!email) return inv;
+
+          // 1. Look up user account
+          const userSnap = await db
+            .collection('users')
+            .where('email', '==', email)
+            .limit(1)
+            .get();
+
+          if (!userSnap.empty) {
+            const userDoc = userSnap.docs[0];
+            const userData = userDoc.data();
+            const uid = userDoc.id;
+
+            // 2. Query recent interviews
+            const ivSnap = await db
+              .collection('interviews')
+              .where('userId', '==', uid)
+              .limit(10)
+              .get();
+
+            const completedIv = ivSnap.docs
+              .map(d => ({ id: d.id, ...(d.data() as any) }))
+              .filter(d => !d.isDeleted && d.status === 'completed')
+              .sort((a, b) => {
+                const aTime = a.completedAt?.toMillis?.() || a.createdAt?.toMillis?.() || 0;
+                const bTime = b.completedAt?.toMillis?.() || b.createdAt?.toMillis?.() || 0;
+                return bTime - aTime;
+              })[0];
+
+            if (completedIv) {
+              const rawScore =
+                completedIv.results?.overallScore ??
+                userData.readinessScore ??
+                userData.readiness?.score;
+              const score = typeof rawScore === 'number' ? Math.round(rawScore) : null;
+              const completedAt = completedIv.completedAt?.toDate?.() || new Date();
+
+              // Update candidateInvites in background
+              void db.collection(INVITES_COLLECTION).doc(inv.id).update({
+                status: 'COMPLETED',
+                score,
+                completedAt: completedIv.completedAt || FieldValue.serverTimestamp(),
+                interviewSessionId: completedIv.id,
+              }).catch(() => {});
+
+              return {
+                ...inv,
+                status: 'COMPLETED',
+                score,
+                completedAt,
+                interviewSessionId: completedIv.id,
+              };
+            }
+
+            const inProgressIv = ivSnap.docs
+              .map(d => ({ id: d.id, ...(d.data() as any) }))
+              .find(d => !d.isDeleted && (d.status === 'in_progress' || d.status === 'created' || d.status === 'device_check'));
+
+            if (inProgressIv && inv.status !== 'COMPLETED') {
+              const startedAt = inProgressIv.createdAt?.toDate?.() || new Date();
+              void db.collection(INVITES_COLLECTION).doc(inv.id).update({
+                status: 'STARTED',
+                startedAt: inProgressIv.createdAt || FieldValue.serverTimestamp(),
+                interviewSessionId: inProgressIv.id,
+              }).catch(() => {});
+
+              return {
+                ...inv,
+                status: 'STARTED',
+                startedAt,
+                interviewSessionId: inProgressIv.id,
+              };
+            }
+          }
+        } catch (err) {
+          logger.warn(`[InviteRoutes] Error enriching invite status for ${inv.email}:`, err);
+        }
+
+        return inv;
+      })
+    );
+
     // Sort newest first in memory to avoid requiring a composite Firestore index
-    invites.sort((a, b) => {
+    invites.sort((a: any, b: any) => {
       const aTime = a.sentAt ? new Date(a.sentAt).getTime() : 0;
       const bTime = b.sentAt ? new Date(b.sentAt).getTime() : 0;
       return bTime - aTime;
@@ -219,6 +393,7 @@ router.get(
 
 router.post(
   '/resend/:inviteId',
+  verifyToken,
   validate(inviteIdParamSchema, 'params'),
   asyncHandler(async (req, res) => {
     const { inviteId } = req.params as unknown as z.infer<typeof inviteIdParamSchema>;
@@ -244,12 +419,18 @@ router.post(
     const jdDoc = await db.collection(JOB_DESCRIPTION_COLLECTION).doc(inviteData.jdId).get();
     const jdData = jdDoc.exists ? jdDoc.data()! : {};
 
+    const rawInviteUrl = inviteData.inviteUrl || `${getFrontendUrl()}/jd-view/${inviteData.jdId}?inviteId=${inviteData.id}`;
+    const cleanInviteUrl =
+      rawInviteUrl.includes('app.interviewup.ai') && !rawInviteUrl.includes('www.')
+        ? rawInviteUrl.replace('app.interviewup.ai', 'www.app.interviewup.ai')
+        : rawInviteUrl;
+
     const messageId = await sendCandidateInviteEmail({
       candidateEmail: inviteData.email,
       candidateName: inviteData.name,
       companyName: jdData.companyName || inviteData.companyName || 'InterviewUp',
       jobTitle: jdData.title || inviteData.jobTitle || 'Interview Assessment',
-      interviewLinkUrl: inviteData.inviteUrl,
+      interviewLinkUrl: cleanInviteUrl,
       interviewType: linkData.interviewType || 'AI',
       durationMinutes: linkData.durationMinutes || 30,
     });
@@ -269,6 +450,7 @@ router.post(
 
 router.post(
   '/revoke/:inviteId',
+  verifyToken,
   validate(inviteIdParamSchema, 'params'),
   asyncHandler(async (req, res) => {
     const { inviteId } = req.params as unknown as z.infer<typeof inviteIdParamSchema>;

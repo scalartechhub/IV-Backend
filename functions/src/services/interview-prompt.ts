@@ -238,26 +238,31 @@ export function buildInterviewSystemInstructions(
 
   const jdContext = jdText
     ? [
-        'This interview was created from a specific Job Description (JD).',
-        'Base your questions on the responsibilities, skills, tools, and qualifications in the JD below.',
+        'CRITICAL: THIS IS A DIRECT JOB DESCRIPTION (JD) INTERVIEW.',
+        'This interview is tailored strictly to evaluate the candidate against the Job Description below.',
+        'Your questions MUST START FROM AND REVOLVE AROUND THIS JOB DESCRIPTION.',
+        'Do NOT begin the interview by asking the candidate to introduce themselves or walk through their resume/CV.',
+        'Your very first question must test or evaluate a key technical requirement, scenario, or responsibility specified directly in the JD.',
+        'Base your questions on the responsibilities, required qualifications, skills, and tools in the JD below.',
         "Ask about real scenarios implied by the JD, validate claimed competencies, and adapt follow-ups to the candidate's answers.",
         'Do not ask generic questions unrelated to this JD when specific JD topics remain unexplored.',
         `Job Description:\n${jdText.slice(0, 8_000)}`,
       ]
     : [];
 
-  const questioningStrategy = opts.resumeContext
+  const questioningStrategy = jdText
     ? [
-        'The candidate opted in to resume-based questioning.',
-        'Use the resume signals below to tailor questions to their real projects, employers, skills, and gaps.',
-        'Reference specific experiences when possible and validate claimed skills with concrete follow-ups.',
-        `Resume signals:\n${opts.resumeContext}`,
+        'QUESTIONING STRATEGY (JOB DESCRIPTION PRIORITY):',
+        '1. START DIRECTLY FROM JD: Immediately open the interview by assessing a core responsibility or technical qualification from the JD.',
+        '2. NO RESUME PROBING AT START: Do NOT ask the candidate about their resume, previous company details, or an open-ended career background speech.',
+        '3. REAL ROLE COMPETENCY: Verify practical competence and problem-solving ability for the responsibilities stated in this Job Description.',
       ]
-    : jdText
+    : opts.resumeContext
       ? [
-          'Resume context was NOT provided for this session.',
-          'Generate questions using the interview type, technology, difficulty, duration, and the Job Description above.',
-          'Do not assume specific employers, projects, degrees, or resume details beyond what the JD states.',
+          'The candidate opted in to resume-based questioning.',
+          'Use the resume signals below to tailor questions to their real projects, employers, skills, and gaps.',
+          'Reference specific experiences when possible and validate claimed skills with concrete follow-ups.',
+          `Resume signals:\n${opts.resumeContext}`,
         ]
       : [
           'Resume context was NOT provided for this session.',
