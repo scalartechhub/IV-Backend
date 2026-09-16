@@ -84,6 +84,12 @@ export interface StartInterviewInput {
   quickStart?: boolean;
   /** Job description text when interview is created from a JD */
   jobDescriptionText?: string;
+  /** Job Description document ID if launched from a JD */
+  jdId?: string;
+  /** Interview link ID if launched from an invitation link */
+  interviewLinkId?: string;
+  /** Candidate invite ID if launched from an invitation */
+  inviteId?: string;
   /** Evaluation focus areas for JD-based interviews */
   focusAreas?: InterviewFocusAreas;
 }
@@ -186,6 +192,9 @@ async function resolveStartConfig(
         sourceRoadmapActivityId: input.sourceRoadmapActivityId,
         sourceTemplateId: template.id,
         jobDescriptionText: input.jobDescriptionText,
+        jdId: input.jdId,
+        interviewLinkId: input.interviewLinkId,
+        inviteId: input.inviteId,
         focusAreas: input.focusAreas,
       },
     };
@@ -215,6 +224,9 @@ async function resolveStartConfig(
         sourceRoadmapActivityId: input.sourceRoadmapActivityId,
         sourceCompanyId: company.id,
         jobDescriptionText: input.jobDescriptionText,
+        jdId: input.jdId,
+        interviewLinkId: input.interviewLinkId,
+        inviteId: input.inviteId,
         focusAreas: input.focusAreas,
       },
     };
@@ -236,6 +248,9 @@ async function resolveStartConfig(
         targetRole: input.targetRole ?? profileTarget,
         sourceRoadmapActivityId: input.sourceRoadmapActivityId,
         jobDescriptionText: input.jobDescriptionText,
+        jdId: input.jdId,
+        interviewLinkId: input.interviewLinkId,
+        inviteId: input.inviteId,
         focusAreas: input.focusAreas,
       },
     };
@@ -261,6 +276,9 @@ async function resolveStartConfig(
         targetRole: input.targetRole ?? profileTarget,
         sourceRoadmapActivityId: input.sourceRoadmapActivityId,
         jobDescriptionText: input.jobDescriptionText,
+        jdId: input.jdId,
+        interviewLinkId: input.interviewLinkId,
+        inviteId: input.inviteId,
         focusAreas: input.focusAreas,
       },
     };
@@ -302,6 +320,43 @@ export async function startInterview(
     delete config.resumeVersionUsed;
   }
 
+  // Guard: Prevent retaking if candidate already completed this JD assessment or invite
+  const targetJdId = config.jdId || input.jdId;
+  const targetInviteId = config.inviteId || input.inviteId;
+
+  if (targetInviteId) {
+    const inviteDoc = await db.collection('candidateInvites').doc(targetInviteId).get();
+    if (inviteDoc.exists) {
+      const invData = inviteDoc.data()!;
+      if (invData.status === 'COMPLETED') {
+        throw new AppError(400, 'You have already completed this interview assessment.');
+      }
+      if (invData.status === 'REVOKED') {
+        throw new AppError(403, 'This interview invitation was revoked.');
+      }
+    }
+  }
+
+  if (targetJdId) {
+    const existingJdIv = await db
+      .collection('interviews')
+      .where('userId', '==', uid)
+      .where('status', '==', 'completed')
+      .limit(20)
+      .get();
+
+    const isAlreadyDone = existingJdIv.docs.some((d) => {
+      const dData = d.data();
+      if (dData.isDeleted) return false;
+      const dJdId = dData.config?.jdId || dData.jdId || dData.config?.sourceJdId;
+      return dJdId === targetJdId;
+    });
+
+    if (isAlreadyDone) {
+      throw new AppError(400, 'You have already completed the interview for this position.');
+    }
+  }
+
   const recent = await db
     .collection('interviews')
     .where('userId', '==', uid)
@@ -334,15 +389,36 @@ export async function startInterview(
     topicProfile,
   });
 
+  const userSnap = await userRef(db, uid).get();
+  const geminiSessionConfig = buildGeminiSessionConfig(systemInstructions);
+
   const interviewDocRef = interviewRef(db, db.collection('interviews').doc().id);
   const now = FieldValue.serverTimestamp();
-  const geminiSessionConfig = buildGeminiSessionConfig(systemInstructions);
+  const isInterviewInvite = Boolean(
+    config.interviewLinkId ||
+    input.interviewLinkId ||
+    config.inviteId ||
+    input.inviteId ||
+    config.jdId ||
+    input.jdId ||
+    isJdInterview
+  );
+
+  const candidateEmail = userSnap.data()?.email || null;
+  const candidateName = userSnap.data()?.displayName || (userSnap.data()?.profile as any)?.fullName || null;
 
   await interviewDocRef.set({
     userId: uid,
     mode,
     status: 'created',
     config,
+    isInterviewInvite,
+    interviewInvite: isInterviewInvite,
+    interviewLinkId: config.interviewLinkId || input.interviewLinkId || null,
+    inviteId: config.inviteId || input.inviteId || null,
+    jdId: config.jdId || input.jdId || null,
+    candidateEmail,
+    candidateName,
     autoEnded: false,
     transcriptArchived: false,
     isDeleted: false,
@@ -367,8 +443,14 @@ export async function startInterview(
     updatedAt: now,
   } as never);
 
-  // Asynchronously update any candidate invitations matching this user to STARTED
-  void syncCandidateInvitesOnInterviewStart(db, uid, interviewDocRef.id);
+  // Asynchronously update candidate invitations matching this session/JD to STARTED
+  void syncCandidateInvitesOnInterviewStart(
+    db,
+    uid,
+    interviewDocRef.id,
+    (config as any).jdId || input.jdId,
+    (config as any).inviteId || input.inviteId,
+  );
 
   return {
     interviewId: interviewDocRef.id,
@@ -763,8 +845,19 @@ export async function completeInterview(
     });
   }
 
-  // Asynchronously update candidateInvites to COMPLETED with score
-  void syncCandidateInvitesOnInterviewComplete(db, uid, interviewId, results);
+  // Asynchronously update candidateInvites to COMPLETED with score (matching JD / session)
+  const interviewJdId = (interview.config as any)?.jdId || (interview as any).jdId;
+  const interviewLinkId = (interview.config as any)?.interviewLinkId || (interview as any).interviewLinkId;
+  const inviteId = (interview.config as any)?.inviteId || (interview as any).inviteId;
+  void syncCandidateInvitesOnInterviewComplete(
+    db,
+    uid,
+    interviewId,
+    results,
+    interviewJdId,
+    interviewLinkId,
+    inviteId,
+  );
 
   return txResult;
 }
@@ -822,61 +915,229 @@ async function syncCandidateInvitesOnInterviewStart(
   db: FirebaseFirestore.Firestore,
   uid: string,
   interviewId: string,
+  jdId?: string,
+  inviteId?: string,
+  interviewLinkId?: string,
 ): Promise<void> {
   try {
     const userDoc = await db.collection('users').doc(uid).get();
     const email = userDoc.data()?.email?.toLowerCase()?.trim();
     if (!email) return;
 
-    const snap = await db
-      .collection('candidateInvites')
-      .where('email', '==', email)
-      .where('status', 'in', ['SENT', 'DELIVERED', 'OPENED'])
-      .get();
-
-    if (!snap.empty) {
-      const batch = db.batch();
-      for (const doc of snap.docs) {
-        batch.update(doc.ref, {
+    if (inviteId) {
+      const directDoc = await db.collection('candidateInvites').doc(inviteId).get();
+      if (directDoc.exists && directDoc.data()?.status !== 'REVOKED') {
+        await directDoc.ref.update({
           status: 'STARTED',
           startedAt: FieldValue.serverTimestamp(),
           interviewSessionId: interviewId,
+          interviewId,
         });
+        return;
       }
-      await batch.commit();
+      const tokenDoc = await db.collection('interviewInvites').doc(inviteId).get();
+      if (tokenDoc.exists && tokenDoc.data()?.status !== 'cancelled') {
+        await tokenDoc.ref.update({
+          status: 'started',
+          attemptCount: 1,
+          startedAt: FieldValue.serverTimestamp(),
+          interviewId,
+        });
+        return;
+      }
+    }
+
+    let query: FirebaseFirestore.Query = db
+      .collection('candidateInvites')
+      .where('email', '==', email)
+      .where('status', 'in', ['SENT', 'DELIVERED', 'OPENED']);
+
+    if (interviewLinkId) {
+      query = query.where('interviewLinkId', '==', interviewLinkId);
+    } else if (jdId) {
+      query = query.where('jdId', '==', jdId);
+    }
+
+    const snap = await query.get();
+
+    if (!snap.empty) {
+      // Pick the most recent invitation for this candidate & JD
+      const docs = snap.docs.sort((a, b) => {
+        const aTime = a.data().sentAt?.toMillis?.() || 0;
+        const bTime = b.data().sentAt?.toMillis?.() || 0;
+        return bTime - aTime;
+      });
+      const targetDoc = docs[0];
+      await targetDoc.ref.update({
+        status: 'STARTED',
+        startedAt: FieldValue.serverTimestamp(),
+        interviewSessionId: interviewId,
+        interviewId,
+      });
+    } else if (interviewLinkId || jdId) {
+      // Auto-create candidateInvites entry for direct copied link attempts
+      const candidateName = userDoc.data()?.displayName || (userDoc.data()?.profile as any)?.fullName || email.split('@')[0];
+      const targetId = interviewLinkId || jdId!;
+      let jobTitle = 'AI Assessment';
+      let companyName = 'InterviewUp';
+      let interviewLinkName = 'Candidate Assessment';
+
+      try {
+        if (interviewLinkId) {
+          const linkSnap = await db.collection('InterviewLinks').doc(interviewLinkId).get();
+          if (linkSnap.exists) {
+            const lData = linkSnap.data()!;
+            interviewLinkName = lData.name || interviewLinkName;
+            jobTitle = lData.name || jobTitle;
+          }
+        }
+        if (jdId) {
+          const jdSnap = await db.collection('jobDescription').doc(jdId).get();
+          if (jdSnap.exists) {
+            const jData = jdSnap.data()!;
+            jobTitle = jData.title || jobTitle;
+            companyName = jData.companyName || companyName;
+          }
+        }
+      } catch {
+        // non-fatal
+      }
+
+      const newInviteRef = db.collection('candidateInvites').doc();
+      await newInviteRef.set({
+        interviewLinkId: interviewLinkId || targetId,
+        jdId: jdId || targetId,
+        email,
+        name: candidateName,
+        inviteUrl: `https://www.app.interviewup.ai/jd-view/${targetId}`,
+        status: 'STARTED',
+        sentAt: FieldValue.serverTimestamp(),
+        sentBy: 'direct_link',
+        startedAt: FieldValue.serverTimestamp(),
+        interviewSessionId: interviewId,
+        interviewId,
+        jobTitle,
+        companyName,
+        interviewLinkName,
+      });
     }
   } catch (err) {
     console.warn('[syncCandidateInvitesOnInterviewStart] Failed to sync candidate invites:', err);
   }
 }
 
-/** Sync candidateInvites collection when an interview completes. */
+/** Sync candidateInvites and interviewInvites collections when an interview completes. */
 async function syncCandidateInvitesOnInterviewComplete(
   db: FirebaseFirestore.Firestore,
   uid: string,
   interviewId: string,
   results: InterviewResults,
+  jdId?: string,
+  interviewLinkId?: string,
+  inviteId?: string,
 ): Promise<void> {
   try {
     const userDoc = await db.collection('users').doc(uid).get();
     const email = userDoc.data()?.email?.toLowerCase()?.trim();
+    const score = typeof results.overallScore === 'number' ? Math.round(results.overallScore) : null;
 
-    const queries = [];
-    if (email) {
-      queries.push(
-        db
-          .collection('candidateInvites')
-          .where('email', '==', email)
-          .where('status', 'in', ['SENT', 'DELIVERED', 'OPENED', 'STARTED'])
-          .get(),
-      );
+    // 1. If explicit inviteId passed, try updating candidateInvites and interviewInvites
+    if (inviteId) {
+      const inviteSnap = await db.collection('candidateInvites').doc(inviteId).get();
+      if (inviteSnap.exists && inviteSnap.data()?.status !== 'REVOKED') {
+        await inviteSnap.ref.update({
+          status: 'COMPLETED',
+          score,
+          completedAt: FieldValue.serverTimestamp(),
+          interviewSessionId: interviewId,
+          interviewId,
+        });
+      }
+
+      const tokenInviteSnap = await db.collection('interviewInvites').doc(inviteId).get();
+      if (tokenInviteSnap.exists && tokenInviteSnap.data()?.status !== 'cancelled') {
+        await tokenInviteSnap.ref.update({
+          status: 'completed',
+          score,
+          attemptCount: 1,
+          completedAt: FieldValue.serverTimestamp(),
+          interviewId,
+        });
+      }
     }
+
+    // 2. Also sync token-based interviewInvites matching this interviewId
+    const tokenInvitesByIvSnap = await db
+      .collection('interviewInvites')
+      .where('interviewId', '==', interviewId)
+      .get();
+    for (const doc of tokenInvitesByIvSnap.docs) {
+      if (doc.data()?.status !== 'cancelled') {
+        await doc.ref.update({
+          status: 'completed',
+          score,
+          attemptCount: 1,
+          completedAt: FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
+    // 3. Sync candidateInvites collection
+    const queries: Array<Promise<FirebaseFirestore.QuerySnapshot>> = [];
     queries.push(
       db
         .collection('candidateInvites')
         .where('interviewSessionId', '==', interviewId)
         .get(),
     );
+    queries.push(
+      db
+        .collection('candidateInvites')
+        .where('interviewId', '==', interviewId)
+        .get(),
+    );
+
+    let resolvedJdId = jdId;
+    let resolvedLinkId = interviewLinkId;
+
+    if (interviewLinkId && !resolvedJdId) {
+      try {
+        const linkSnap = await db.collection('InterviewLinks').doc(interviewLinkId).get();
+        if (linkSnap.exists) {
+          resolvedJdId = linkSnap.data()?.jdId || resolvedJdId;
+        }
+      } catch {}
+    }
+
+    if (jdId && !resolvedLinkId) {
+      try {
+        const linkSnap = await db.collection('InterviewLinks').where('jdId', '==', jdId).limit(1).get();
+        if (!linkSnap.empty) {
+          resolvedLinkId = linkSnap.docs[0].id;
+        }
+      } catch {}
+    }
+
+    if (email) {
+      if (resolvedLinkId) {
+        queries.push(
+          db
+            .collection('candidateInvites')
+            .where('email', '==', email)
+            .where('interviewLinkId', '==', resolvedLinkId)
+            .get(),
+        );
+      }
+      if (resolvedJdId) {
+        queries.push(
+          db
+            .collection('candidateInvites')
+            .where('email', '==', email)
+            .where('jdId', '==', resolvedJdId)
+            .get(),
+        );
+      }
+    }
 
     const snapshots = await Promise.all(queries);
     const batch = db.batch();
@@ -886,12 +1147,17 @@ async function syncCandidateInvitesOnInterviewComplete(
     for (const snap of snapshots) {
       for (const doc of snap.docs) {
         if (seenIds.has(doc.id)) continue;
+        const data = doc.data();
+        if (data.status === 'REVOKED') continue;
         seenIds.add(doc.id);
         batch.update(doc.ref, {
           status: 'COMPLETED',
-          score: results.overallScore,
+          score,
           completedAt: FieldValue.serverTimestamp(),
           interviewSessionId: interviewId,
+          interviewId,
+          ...(resolvedLinkId ? { interviewLinkId: resolvedLinkId } : {}),
+          ...(resolvedJdId ? { jdId: resolvedJdId } : {}),
         });
         count++;
       }
@@ -899,6 +1165,54 @@ async function syncCandidateInvitesOnInterviewComplete(
 
     if (count > 0) {
       await batch.commit();
+    } else if (count === 0 && (resolvedLinkId || resolvedJdId)) {
+      // Direct copied link attempt: create completed candidateInvites record
+      const candidateName = userDoc.data()?.displayName || (userDoc.data()?.profile as any)?.fullName || email?.split('@')[0] || 'Candidate';
+      const targetId = resolvedLinkId || resolvedJdId!;
+      let jobTitle = 'AI Assessment';
+      let companyName = 'InterviewUp';
+      let interviewLinkName = 'Candidate Assessment';
+
+      try {
+        if (resolvedLinkId) {
+          const linkSnap = await db.collection('InterviewLinks').doc(resolvedLinkId).get();
+          if (linkSnap.exists) {
+            const lData = linkSnap.data()!;
+            interviewLinkName = lData.name || interviewLinkName;
+            jobTitle = lData.name || jobTitle;
+          }
+        }
+        if (resolvedJdId) {
+          const jdSnap = await db.collection('jobDescription').doc(resolvedJdId).get();
+          if (jdSnap.exists) {
+            const jData = jdSnap.data()!;
+            jobTitle = jData.title || jobTitle;
+            companyName = jData.companyName || companyName;
+          }
+        }
+      } catch {
+        // non-fatal
+      }
+
+      const newInviteRef = db.collection('candidateInvites').doc();
+      await newInviteRef.set({
+        interviewLinkId: resolvedLinkId || targetId,
+        jdId: resolvedJdId || targetId,
+        email: email || '',
+        name: candidateName,
+        inviteUrl: `https://www.app.interviewup.ai/jd-view/${targetId}`,
+        status: 'COMPLETED',
+        score,
+        sentAt: FieldValue.serverTimestamp(),
+        sentBy: 'direct_link',
+        startedAt: FieldValue.serverTimestamp(),
+        completedAt: FieldValue.serverTimestamp(),
+        interviewSessionId: interviewId,
+        interviewId,
+        jobTitle,
+        companyName,
+        interviewLinkName,
+      });
     }
   } catch (err) {
     console.warn('[syncCandidateInvitesOnInterviewComplete] Failed to sync candidate invites:', err);

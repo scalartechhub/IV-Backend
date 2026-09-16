@@ -51,6 +51,8 @@ const candidateSchema = z.object({
 const sendInvitesBodySchema = z.object({
   interviewLinkId: z.string().min(1, 'interviewLinkId is required'),
   candidates: z.array(candidateSchema).min(1, 'At least one candidate is required').max(50, 'Maximum 50 candidates per batch'),
+  validityDays: z.number().nullable().optional(),
+  expiresAt: z.string().nullable().optional(),
 });
 
 const linkIdParamSchema = z.object({
@@ -97,6 +99,7 @@ router.get(
       name: data.name || null,
       status: data.status,
       revokedAt: data.revokedAt?.toDate?.() || null,
+      expiresAt: data.expiresAt?.toDate?.() || null,
       score: typeof data.score === 'number' ? data.score : null,
       jobTitle: data.jobTitle || null,
       companyName: data.companyName || null,
@@ -126,11 +129,15 @@ router.get(
 
     const invites = invitesSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
     const isRevoked = invites.some(i => i.status === 'REVOKED');
-    const activeOrLatest = invites.find(i => i.status === 'REVOKED') || invites[0];
+    const completedInvite = invites.find(i => i.status === 'COMPLETED');
+    const isCompleted = Boolean(completedInvite);
+    const activeOrLatest = invites.find(i => i.status === 'REVOKED') || completedInvite || invites[0];
 
     sendSuccess(res, {
       isRevoked,
-      status: isRevoked ? 'REVOKED' : activeOrLatest.status,
+      isCompleted,
+      score: typeof completedInvite?.score === 'number' ? completedInvite.score : null,
+      status: isRevoked ? 'REVOKED' : (isCompleted ? 'COMPLETED' : activeOrLatest.status),
       inviteId: activeOrLatest.id,
     }, 'Invite check completed');
   }),
@@ -160,6 +167,15 @@ router.post(
       return;
     }
 
+    // Check link has not expired
+    if (linkData.expiresAt) {
+      const linkExpiresDate = linkData.expiresAt.toDate ? linkData.expiresAt.toDate() : new Date(linkData.expiresAt);
+      if (linkExpiresDate.getTime() < Date.now()) {
+        sendError(res, 'Cannot send invites for an expired interview link. Please update or renew the interview link expiration first.', 400);
+        return;
+      }
+    }
+
     // 2. Fetch job description for email content
     const jdDoc = await db.collection(JOB_DESCRIPTION_COLLECTION).doc(linkData.jdId).get();
     const jdData = jdDoc.exists ? jdDoc.data()! : {};
@@ -170,11 +186,21 @@ router.post(
     const durationMinutes = linkData.durationMinutes || 30;
     const frontendUrl = getFrontendUrl();
 
-    // 3. Determine expiry text
+    // 3. Determine dynamic expiry for candidates
+    const { validityDays, expiresAt: customExpiresAt } = req.body as z.infer<typeof sendInvitesBodySchema>;
+    let calculatedExpiresAt: Date | null = null;
+
+    if (typeof validityDays === 'number' && validityDays > 0) {
+      calculatedExpiresAt = new Date(Date.now() + validityDays * 24 * 60 * 60 * 1000);
+    } else if (customExpiresAt) {
+      calculatedExpiresAt = new Date(customExpiresAt);
+    } else if (linkData.expiresAt) {
+      calculatedExpiresAt = linkData.expiresAt.toDate ? linkData.expiresAt.toDate() : new Date(linkData.expiresAt);
+    }
+
     let expiresAtText: string | undefined;
-    if (linkData.expiresAt) {
-      const expiresDate = linkData.expiresAt.toDate ? linkData.expiresAt.toDate() : new Date(linkData.expiresAt);
-      expiresAtText = expiresDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    if (calculatedExpiresAt && !isNaN(calculatedExpiresAt.getTime())) {
+      expiresAtText = calculatedExpiresAt.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     }
 
     // 4. Send emails sequentially with a polite delay between sends to prevent Gmail rate-burst spam flagging
@@ -222,6 +248,7 @@ router.post(
           status: 'SENT',
           sentAt: FieldValue.serverTimestamp(),
           sentBy: adminUid,
+          expiresAt: calculatedExpiresAt && !isNaN(calculatedExpiresAt.getTime()) ? Timestamp.fromDate(calculatedExpiresAt) : null,
           emailMessageId: messageId || null,
           deliveryStatus: 'pending',
           failureReason: null,
@@ -260,11 +287,15 @@ router.get(
   ['/list', '/list/:linkId'],
   verifyToken,
   asyncHandler(async (req, res) => {
-    const linkId = req.params?.['linkId'] || (req.query?.['linkId'] as string | undefined);
-    const status = req.query?.['status'] as string | undefined;
+    const rawParam = req.params?.['linkId'];
+    const rawQuery = req.query?.['linkId'];
+    const rawLinkId = typeof rawParam === 'string' ? rawParam : (typeof rawQuery === 'string' ? rawQuery : undefined);
+    const linkId = rawLinkId && rawLinkId !== 'all' ? rawLinkId : undefined;
+    const status = typeof req.query?.['status'] === 'string' ? req.query['status'] : undefined;
 
     let queryRef: FirebaseFirestore.Query = db.collection(INVITES_COLLECTION);
-    if (linkId && linkId !== 'all') {
+
+    if (linkId) {
       queryRef = queryRef.where('interviewLinkId', '==', linkId);
     }
     if (status) {
@@ -272,8 +303,7 @@ router.get(
     }
 
     const snap = await queryRef.limit(200).get();
-
-    const rawInvites = snap.docs.map(doc => {
+    const invites = snap.docs.map(doc => {
       const data = doc.data();
       return {
         ...data,
@@ -283,106 +313,8 @@ router.get(
         startedAt: data.startedAt?.toDate?.() || null,
         completedAt: data.completedAt?.toDate?.() || null,
         revokedAt: data.revokedAt?.toDate?.() || null,
+        expiresAt: data.expiresAt?.toDate?.() || null,
       };
-    });
-
-    // Cross-reference completed or active interviews for non-revoked candidates
-    const invites = await Promise.all(
-      rawInvites.map(async (inv: any) => {
-        if (inv.status === 'REVOKED' || (inv.status === 'COMPLETED' && inv.score != null)) {
-          return inv;
-        }
-
-        try {
-          const email = (inv.email || '').toLowerCase().trim();
-          if (!email) return inv;
-
-          // 1. Look up user account
-          const userSnap = await db
-            .collection('users')
-            .where('email', '==', email)
-            .limit(1)
-            .get();
-
-          if (!userSnap.empty) {
-            const userDoc = userSnap.docs[0];
-            const userData = userDoc.data();
-            const uid = userDoc.id;
-
-            // 2. Query recent interviews
-            const ivSnap = await db
-              .collection('interviews')
-              .where('userId', '==', uid)
-              .limit(10)
-              .get();
-
-            const completedIv = ivSnap.docs
-              .map(d => ({ id: d.id, ...(d.data() as any) }))
-              .filter(d => !d.isDeleted && d.status === 'completed')
-              .sort((a, b) => {
-                const aTime = a.completedAt?.toMillis?.() || a.createdAt?.toMillis?.() || 0;
-                const bTime = b.completedAt?.toMillis?.() || b.createdAt?.toMillis?.() || 0;
-                return bTime - aTime;
-              })[0];
-
-            if (completedIv) {
-              const rawScore =
-                completedIv.results?.overallScore ??
-                userData.readinessScore ??
-                userData.readiness?.score;
-              const score = typeof rawScore === 'number' ? Math.round(rawScore) : null;
-              const completedAt = completedIv.completedAt?.toDate?.() || new Date();
-
-              // Update candidateInvites in background
-              void db.collection(INVITES_COLLECTION).doc(inv.id).update({
-                status: 'COMPLETED',
-                score,
-                completedAt: completedIv.completedAt || FieldValue.serverTimestamp(),
-                interviewSessionId: completedIv.id,
-              }).catch(() => {});
-
-              return {
-                ...inv,
-                status: 'COMPLETED',
-                score,
-                completedAt,
-                interviewSessionId: completedIv.id,
-              };
-            }
-
-            const inProgressIv = ivSnap.docs
-              .map(d => ({ id: d.id, ...(d.data() as any) }))
-              .find(d => !d.isDeleted && (d.status === 'in_progress' || d.status === 'created' || d.status === 'device_check'));
-
-            if (inProgressIv && inv.status !== 'COMPLETED') {
-              const startedAt = inProgressIv.createdAt?.toDate?.() || new Date();
-              void db.collection(INVITES_COLLECTION).doc(inv.id).update({
-                status: 'STARTED',
-                startedAt: inProgressIv.createdAt || FieldValue.serverTimestamp(),
-                interviewSessionId: inProgressIv.id,
-              }).catch(() => {});
-
-              return {
-                ...inv,
-                status: 'STARTED',
-                startedAt,
-                interviewSessionId: inProgressIv.id,
-              };
-            }
-          }
-        } catch (err) {
-          logger.warn(`[InviteRoutes] Error enriching invite status for ${inv.email}:`, err);
-        }
-
-        return inv;
-      })
-    );
-
-    // Sort newest first in memory to avoid requiring a composite Firestore index
-    invites.sort((a: any, b: any) => {
-      const aTime = a.sentAt ? new Date(a.sentAt).getTime() : 0;
-      const bTime = b.sentAt ? new Date(b.sentAt).getTime() : 0;
-      return bTime - aTime;
     });
 
     sendSuccess(res, invites, `Fetched ${invites.length} invite(s)`);

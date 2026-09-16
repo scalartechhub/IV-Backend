@@ -374,7 +374,28 @@ router.post(
     // 5. Build jobDescriptionText from stored snapshot (so JD edits don't affect in-progress interviews)
     const jobDescriptionText = buildJdText(invite.jdSnapshot);
 
-    // 6. Create interview using the EXISTING interview service
+    // 6. Concurrency-safe double check before creating interview session
+    const freshInviteSnap = await inviteDocRef.ref.get();
+    const freshData = freshInviteSnap.data() as InterviewInviteDoc;
+    if (freshData?.status === 'completed') {
+      sendError(res, 'This interview has already been completed.', 409);
+      return;
+    }
+    if (freshData?.status === 'started' && freshData.interviewId && freshData.candidateUid) {
+      const customToken = await firebaseAuth.createCustomToken(freshData.candidateUid, {
+        inviteId: invite.id,
+        role: 'candidate',
+      });
+      sendSuccess(res, {
+        interviewId: freshData.interviewId,
+        customToken,
+        status: 'started',
+        resumeExisting: true,
+      });
+      return;
+    }
+
+    // 7. Create interview using the EXISTING interview service
     const startResult = await startInterview(candidateUid, {
       mode: invite.interviewType as 'conversational' | 'behavioral' | 'system_design' | 'hr' | 'coding',
       topic: `${invite.jdSnapshot.title} at ${invite.jdSnapshot.companyName}`,
@@ -384,6 +405,8 @@ router.post(
       difficulty: invite.difficulty,
       durationMinutes: invite.durationMinutes,
       jobDescriptionText,
+      jdId: invite.jdId,
+      inviteId: invite.id,
       focusAreas: {
         technical: true,
         coding: invite.interviewType === 'conversational' || invite.interviewType === 'coding',
@@ -393,15 +416,16 @@ router.post(
       },
     });
 
-    // 7. Update invite document — status, interviewId, candidateUid, startedAt
+    // 8. Update invite document — status, attemptCount, interviewId, candidateUid, startedAt
     await inviteDocRef.ref.update({
       status: 'started',
+      attemptCount: 1,
       startedAt: FieldValue.serverTimestamp(),
       interviewId: startResult.interviewId,
       candidateUid,
     });
 
-    // 8. Mint Firebase custom token so candidate can authenticate with WS
+    // 9. Mint Firebase custom token so candidate can authenticate with WS
     const customToken = await firebaseAuth.createCustomToken(candidateUid, {
       inviteId: invite.id,
       role: 'candidate',
