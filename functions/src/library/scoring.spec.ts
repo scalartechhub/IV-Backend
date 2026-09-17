@@ -23,7 +23,9 @@ const baseScores = (): ScoreInterviewResult => ({
     { topic: 'useEffect cleanup', status: 'strong' },
     { topic: 'closures', status: 'weak' },
   ],
+  isTechDomainInterview: true,
 });
+
 
 describe('expectedQuestionCount', () => {
   it('targets ~1 question per 3 minutes within bounds', () => {
