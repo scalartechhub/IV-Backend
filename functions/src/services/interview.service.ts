@@ -4,6 +4,7 @@
  */
 
 import { FieldValue } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
 import type {
   EndReason,
   InterviewConfig,
@@ -291,6 +292,64 @@ async function resolveStartConfig(
 }
 
 /**
+ * Resolves candidate's real display name and email address from Firestore or Firebase Auth.
+ * Never defaults to a generic placeholder like "Candidate".
+ */
+async function resolveCandidateInfo(
+  db: FirebaseFirestore.Firestore,
+  uid: string,
+): Promise<{ candidateName: string; candidateEmail: string }> {
+  let email = '';
+  let name = '';
+
+  try {
+    const userDoc = await db.collection('users').doc(uid).get();
+    if (userDoc.exists) {
+      const data = userDoc.data()!;
+      email = (data['email'] || '').toLowerCase().trim();
+      name = (
+        data['displayName'] ||
+        data['name'] ||
+        data['fullName'] ||
+        (data['profile'] as any)?.fullName ||
+        (data['profile'] as any)?.name ||
+        ''
+      ).trim();
+    }
+  } catch (err) {
+    console.warn('[resolveCandidateInfo] Firestore user lookup failed:', err);
+  }
+
+  if (!email || !name || /^(candidate|user|anonymous|guest|null|undefined)$/i.test(name)) {
+    try {
+      const authUser = await getAuth().getUser(uid);
+      if (!email && authUser.email) {
+        email = authUser.email.toLowerCase().trim();
+      }
+      if ((!name || /^(candidate|user|anonymous|guest|null|undefined)$/i.test(name)) && authUser.displayName?.trim()) {
+        name = authUser.displayName.trim();
+      }
+    } catch (err) {
+      console.warn('[resolveCandidateInfo] Auth user lookup failed:', err);
+    }
+  }
+
+  if ((!name || /^(candidate|user|anonymous|guest|null|undefined)$/i.test(name)) && email) {
+    const prefix = email.split('@')[0].trim();
+    name = prefix
+      .replace(/[._+-]+/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+      .trim();
+  }
+
+  if (!name || /^(candidate|user|anonymous|guest|null|undefined)$/i.test(name)) {
+    name = email || 'Candidate';
+  }
+
+  return { candidateName: name, candidateEmail: email };
+}
+
+/**
  * Create interviews/{id} with status created + Gemini Live session config.
  */
 export async function startInterview(
@@ -389,7 +448,6 @@ export async function startInterview(
     topicProfile,
   });
 
-  const userSnap = await userRef(db, uid).get();
   const geminiSessionConfig = buildGeminiSessionConfig(systemInstructions);
 
   const interviewDocRef = interviewRef(db, db.collection('interviews').doc().id);
@@ -404,8 +462,7 @@ export async function startInterview(
     isJdInterview
   );
 
-  const candidateEmail = userSnap.data()?.email || null;
-  const candidateName = userSnap.data()?.displayName || (userSnap.data()?.profile as any)?.fullName || null;
+  const { candidateName, candidateEmail } = await resolveCandidateInfo(db, uid);
 
   await interviewDocRef.set({
     userId: uid,
@@ -417,8 +474,8 @@ export async function startInterview(
     interviewLinkId: config.interviewLinkId || input.interviewLinkId || null,
     inviteId: config.inviteId || input.inviteId || null,
     jdId: config.jdId || input.jdId || null,
-    candidateEmail,
-    candidateName,
+    candidateEmail: candidateEmail || null,
+    candidateName: candidateName || null,
     autoEnded: false,
     transcriptArchived: false,
     isDeleted: false,
@@ -450,6 +507,7 @@ export async function startInterview(
     interviewDocRef.id,
     (config as any).jdId || input.jdId,
     (config as any).inviteId || input.inviteId,
+    (config as any).interviewLinkId || input.interviewLinkId,
   );
 
   return {
@@ -765,6 +823,10 @@ export async function completeInterview(
       isDeleted: interview.isDeleted ?? false,
       completedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
+      ...(user.email ? { candidateEmail: user.email.toLowerCase().trim() } : {}),
+      ...(user.displayName || (user as any).name || (user.profile as any)?.fullName
+        ? { candidateName: user.displayName || (user as any).name || (user.profile as any)?.fullName }
+        : {}),
     });
 
     const previousOverallScore = user.stats?.lastOverallScore;
@@ -920,9 +982,26 @@ async function syncCandidateInvitesOnInterviewStart(
   interviewLinkId?: string,
 ): Promise<void> {
   try {
-    const userDoc = await db.collection('users').doc(uid).get();
-    const email = userDoc.data()?.email?.toLowerCase()?.trim();
-    if (!email) return;
+    const { candidateName, candidateEmail: email } = await resolveCandidateInfo(db, uid);
+    if (!email && !candidateName) return;
+
+    if (interviewLinkId && !jdId) {
+      try {
+        const linkSnap = await db.collection('InterviewLinks').doc(interviewLinkId).get();
+        if (linkSnap.exists) {
+          jdId = linkSnap.data()?.jdId || jdId;
+        }
+      } catch {}
+    }
+
+    if (jdId && !interviewLinkId) {
+      try {
+        const linkSnap = await db.collection('InterviewLinks').where('jdId', '==', jdId).limit(1).get();
+        if (!linkSnap.empty) {
+          interviewLinkId = linkSnap.docs[0].id;
+        }
+      } catch {}
+    }
 
     if (inviteId) {
       const directDoc = await db.collection('candidateInvites').doc(inviteId).get();
@@ -932,6 +1011,9 @@ async function syncCandidateInvitesOnInterviewStart(
           startedAt: FieldValue.serverTimestamp(),
           interviewSessionId: interviewId,
           interviewId,
+          ...(candidateName && (!directDoc.data()?.name || /^(candidate|user|anonymous|guest)$/i.test(directDoc.data()?.name))
+            ? { name: candidateName }
+            : {}),
         });
         return;
       }
@@ -947,36 +1029,52 @@ async function syncCandidateInvitesOnInterviewStart(
       }
     }
 
-    let query: FirebaseFirestore.Query = db
-      .collection('candidateInvites')
-      .where('email', '==', email)
-      .where('status', 'in', ['SENT', 'DELIVERED', 'OPENED']);
-
-    if (interviewLinkId) {
-      query = query.where('interviewLinkId', '==', interviewLinkId);
-    } else if (jdId) {
-      query = query.where('jdId', '==', jdId);
+    const queries: Array<Promise<FirebaseFirestore.QuerySnapshot>> = [];
+    if (email) {
+      if (interviewLinkId) {
+        queries.push(
+          db
+            .collection('candidateInvites')
+            .where('email', '==', email)
+            .where('interviewLinkId', '==', interviewLinkId)
+            .where('status', 'in', ['SENT', 'DELIVERED', 'OPENED'])
+            .get(),
+        );
+      }
+      if (jdId) {
+        queries.push(
+          db
+            .collection('candidateInvites')
+            .where('email', '==', email)
+            .where('jdId', '==', jdId)
+            .where('status', 'in', ['SENT', 'DELIVERED', 'OPENED'])
+            .get(),
+        );
+      }
     }
 
-    const snap = await query.get();
+    const snaps = await Promise.all(queries);
+    const matchingDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+    snaps.forEach(s => s.docs.forEach(d => matchingDocs.push(d)));
 
-    if (!snap.empty) {
-      // Pick the most recent invitation for this candidate & JD
-      const docs = snap.docs.sort((a, b) => {
+    if (matchingDocs.length > 0) {
+      matchingDocs.sort((a, b) => {
         const aTime = a.data().sentAt?.toMillis?.() || 0;
         const bTime = b.data().sentAt?.toMillis?.() || 0;
         return bTime - aTime;
       });
-      const targetDoc = docs[0];
+      const targetDoc = matchingDocs[0];
       await targetDoc.ref.update({
         status: 'STARTED',
         startedAt: FieldValue.serverTimestamp(),
         interviewSessionId: interviewId,
         interviewId,
+        ...(candidateName && (!targetDoc.data()?.name || /^(candidate|user|anonymous|guest)$/i.test(targetDoc.data()?.name))
+          ? { name: candidateName }
+          : {}),
       });
     } else if (interviewLinkId || jdId) {
       // Auto-create candidateInvites entry for direct copied link attempts
-      const candidateName = userDoc.data()?.displayName || (userDoc.data()?.profile as any)?.fullName || email.split('@')[0];
       const targetId = interviewLinkId || jdId!;
       let jobTitle = 'AI Assessment';
       let companyName = 'InterviewUp';
@@ -1007,7 +1105,7 @@ async function syncCandidateInvitesOnInterviewStart(
       await newInviteRef.set({
         interviewLinkId: interviewLinkId || targetId,
         jdId: jdId || targetId,
-        email,
+        email: email || '',
         name: candidateName,
         inviteUrl: `https://www.app.interviewup.ai/jd-view/${targetId}`,
         status: 'STARTED',
@@ -1037,8 +1135,7 @@ async function syncCandidateInvitesOnInterviewComplete(
   inviteId?: string,
 ): Promise<void> {
   try {
-    const userDoc = await db.collection('users').doc(uid).get();
-    const email = userDoc.data()?.email?.toLowerCase()?.trim();
+    const { candidateName, candidateEmail: email } = await resolveCandidateInfo(db, uid);
     const score = typeof results.overallScore === 'number' ? Math.round(results.overallScore) : null;
 
     // 1. If explicit inviteId passed, try updating candidateInvites and interviewInvites
@@ -1051,6 +1148,9 @@ async function syncCandidateInvitesOnInterviewComplete(
           completedAt: FieldValue.serverTimestamp(),
           interviewSessionId: interviewId,
           interviewId,
+          ...(candidateName && (!inviteSnap.data()?.name || /^(candidate|user|anonymous|guest)$/i.test(inviteSnap.data()?.name))
+            ? { name: candidateName }
+            : {}),
         });
       }
 
@@ -1156,6 +1256,9 @@ async function syncCandidateInvitesOnInterviewComplete(
           completedAt: FieldValue.serverTimestamp(),
           interviewSessionId: interviewId,
           interviewId,
+          ...(candidateName && (!data.name || /^(candidate|user|anonymous|guest)$/i.test(data.name))
+            ? { name: candidateName }
+            : {}),
           ...(resolvedLinkId ? { interviewLinkId: resolvedLinkId } : {}),
           ...(resolvedJdId ? { jdId: resolvedJdId } : {}),
         });
@@ -1167,7 +1270,6 @@ async function syncCandidateInvitesOnInterviewComplete(
       await batch.commit();
     } else if (count === 0 && (resolvedLinkId || resolvedJdId)) {
       // Direct copied link attempt: create completed candidateInvites record
-      const candidateName = userDoc.data()?.displayName || (userDoc.data()?.profile as any)?.fullName || email?.split('@')[0] || 'Candidate';
       const targetId = resolvedLinkId || resolvedJdId!;
       let jobTitle = 'AI Assessment';
       let companyName = 'InterviewUp';
