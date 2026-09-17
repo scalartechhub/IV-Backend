@@ -2,7 +2,7 @@
  * Syncs environment variables from local .env to Firebase Firestore collection 'config'.
  * Saves configurations into Firestore documents:
  *  - config/genai
- *  - config/sendgrid
+ *  - config/smtp
  *  - config/razorpay
  *  - config/groq
  *  - config/judge0
@@ -116,9 +116,13 @@ async function syncToFirestore() {
         : undefined,
       resumeModel: envValues.RESUME_GEMINI_MODEL,
     },
-    sendgrid: {
-      apiKey: envValues.SENDGRID_API_KEY,
-      fromEmail: envValues.SENDGRID_FROM_EMAIL,
+    smtp: {
+      host: envValues.SMTP_HOST,
+      port: envValues.SMTP_PORT ? Number(envValues.SMTP_PORT) : undefined,
+      secure: envValues.SMTP_SECURE === 'true',
+      user: envValues.SMTP_USER,
+      pass: envValues.SMTP_PASS,
+      from: envValues.SMTP_FROM,
       ownerEmail: envValues.OWNER_EMAIL,
     },
     razorpay: {

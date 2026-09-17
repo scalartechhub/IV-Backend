@@ -49,6 +49,9 @@ const startBodySchema = z
     companyId: z.string().min(1).optional(),
     quickStart: z.boolean().optional(),
     jobDescriptionText: z.string().max(25000).optional(),
+    jdId: z.string().optional(),
+    interviewLinkId: z.string().optional(),
+    inviteId: z.string().optional(),
     focusAreas: focusAreasSchema.optional(),
   })
   .superRefine((data, ctx) => {

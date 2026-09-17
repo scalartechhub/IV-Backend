@@ -51,6 +51,12 @@ export interface InterviewConfig {
   sourceCompanyId?: string;
   /** Full job description text when interview was created from a JD */
   jobDescriptionText?: string;
+  /** Job Description document ID if this session was launched from a JD */
+  jdId?: string;
+  /** Interview link ID if this session was launched from an invitation or public link */
+  interviewLinkId?: string;
+  /** Candidate invite ID if this session was launched from an invitation link */
+  inviteId?: string;
   /** Evaluation focus areas for JD-based interviews */
   focusAreas?: InterviewFocusAreas;
 }
@@ -143,6 +149,14 @@ export interface InterviewDoc {
   mode: InterviewMode;
   status: InterviewStatus;
   config: InterviewConfig;
+  /** True when this interview originated from an admin interview link or candidate invite */
+  isInterviewInvite?: boolean;
+  interviewInvite?: boolean;
+  interviewLinkId?: string | null;
+  inviteId?: string | null;
+  jdId?: string | null;
+  candidateEmail?: string | null;
+  candidateName?: string | null;
   startedAt?: Timestamp;
   completedAt?: Timestamp;
   durationSec?: number;

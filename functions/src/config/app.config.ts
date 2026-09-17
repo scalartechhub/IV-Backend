@@ -27,7 +27,10 @@ const appConfigSchema = z.object({
     .transform((v) => (v && v.trim() ? v.trim() : undefined)),
   /** Set to "true" to enable Teams alerts in non-production environments */
   TEAMS_ALERT_IN_DEV: z.string().default("false"),
+  OSM_OVERPASS_URL: z.string().url().optional(),
+  OSM_OVERPASS_FALLBACK_URL: z.string().url().optional(),
 });
+
 
 const parsed = appConfigSchema.safeParse(process.env);
 
@@ -54,6 +57,9 @@ export const appConfig = {
   judge0Url: data.JUDGE0_URL,
   teamsWebhookUrl: data.DISCORD_WEBHOOK_URL,
   teamsAlertInDev: data.TEAMS_ALERT_IN_DEV === "true",
+  osmOverpassUrl: data.OSM_OVERPASS_URL,
+  osmOverpassFallbackUrl: data.OSM_OVERPASS_FALLBACK_URL,
 } as const;
+
 
 export type AppConfig = typeof appConfig;

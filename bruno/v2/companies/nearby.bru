@@ -1,0 +1,40 @@
+meta {
+  name: Nearby Organizations
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v2/companies/nearby
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{firebaseToken}}
+}
+
+body:json {
+  {
+    "latitude": 18.5204,
+    "longitude": 73.8567,
+    "radius": 10000,
+    "limit": 20,
+    "targetRole": "Angular Developer"
+  }
+}
+
+tests {
+  test("status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("response conforms to Nearby Organizations schema", function() {
+    const body = res.getBody();
+    expect(body.success).to.be.true;
+    expect(body.data).to.be.an('object');
+    expect(body.data.organizations).to.be.an('array');
+    expect(body.data.location.latitude).to.equal(18.5204);
+    expect(body.data.location.longitude).to.equal(73.8567);
+  });
+}

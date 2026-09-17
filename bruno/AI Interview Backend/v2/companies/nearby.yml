@@ -1,0 +1,36 @@
+info:
+  name: Nearby Organizations
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/companies/nearby"
+  auth:
+    type: bearer
+    token: "{{token}}"
+  body:
+    type: json
+    data: |-
+      {
+        "latitude": 18.5204,
+        "longitude": 73.8567,
+        "radius": 10000,
+        "limit": 20,
+        "targetRole": "Angular Developer"
+      }
+
+
+runtime:
+  variables:
+    - name: baseUrl
+      value: http://localhost:5000/api
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Discovers organizations near the user's GPS coordinates matching their career onboarding role/domain via OpenStreetMap Overpass API.

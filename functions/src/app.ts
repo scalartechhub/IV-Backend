@@ -18,7 +18,7 @@ const apiPath = (suffix: string): string => `${API_PREFIX}${suffix}`;
 const parseCorsOrigin = (): cors.CorsOptions["origin"] => {
   const raw = appConfig.corsOrigin || process.env.CORS_ORIGIN;
   const configured = raw
-    ? raw.split(",").map((origin) => origin.trim()).filter(Boolean)
+    ? raw.split(",").map((origin) => origin.trim().replace(/\/+$/, "")).filter(Boolean)
     : [];
 
   const defaultAllowed = [
@@ -26,6 +26,7 @@ const parseCorsOrigin = (): cors.CorsOptions["origin"] => {
     "https://www.app.interviewup.ai",
     "https://interview-prod-dd24f.web.app",
     "https://interview-prod-dd24f.firebaseapp.com",
+    "https://voluble-cajeta-e8cba9.netlify.app",
     "http://localhost:4200",
     "http://localhost:5173",
     "http://localhost:3000",
@@ -39,15 +40,21 @@ const parseCorsOrigin = (): cors.CorsOptions["origin"] => {
     if (!origin) {
       return callback(null, true);
     }
-    if (allowedSet.has(origin)) {
+    const cleanOrigin = origin.replace(/\/+$/, "");
+    if (allowedSet.has(origin) || allowedSet.has(cleanOrigin)) {
       return callback(null, true);
     }
     // Allow any localhost / 127.0.0.1 port for local development
-    if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+    if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(cleanOrigin)) {
       return callback(null, true);
     }
-    // Allow subdomains of interviewup.ai, web.app, firebaseapp.com
-    if (/\.interviewup\.ai$/.test(origin) || /\.web\.app$/.test(origin) || /\.firebaseapp\.com$/.test(origin)) {
+    // Allow subdomains of interviewup.ai, web.app, firebaseapp.com, and netlify.app
+    if (
+      /\.interviewup\.ai$/.test(cleanOrigin) ||
+      /\.web\.app$/.test(cleanOrigin) ||
+      /\.firebaseapp\.com$/.test(cleanOrigin) ||
+      /\.netlify\.app$/.test(cleanOrigin)
+    ) {
       return callback(null, true);
     }
 
