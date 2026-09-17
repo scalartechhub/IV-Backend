@@ -416,4 +416,27 @@ router.post(
   }),
 );
 
+// ─── DELETE /:inviteId — Delete Invitation Record ───────────────────────────
+
+router.delete(
+  '/:inviteId',
+  verifyToken,
+  validate(inviteIdParamSchema, 'params'),
+  asyncHandler(async (req, res) => {
+    const { inviteId } = req.params as unknown as z.infer<typeof inviteIdParamSchema>;
+
+    const inviteRef = db.collection(INVITES_COLLECTION).doc(inviteId);
+    const inviteDoc = await inviteRef.get();
+
+    if (!inviteDoc.exists) {
+      sendError(res, 'Invitation not found', 404);
+      return;
+    }
+
+    await inviteRef.delete();
+    sendSuccess(res, { inviteId, deleted: true }, 'Invitation deleted successfully');
+  }),
+);
+
 export default router;
+
