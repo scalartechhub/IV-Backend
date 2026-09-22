@@ -3,14 +3,34 @@ node_modules/
 
 # Build output
 dist/
+build/
+lib/
 functions/lib/
 functions/dist/
+*.tsbuildinfo
 
 # Environment & secrets
 .env*
 !*.example
+!*.env.example
 firebase-service-account*.json
-service-account*.json
+*service-account*.json
+serviceAccountKey*.json
+google-services*.json
+*.pem
+*.key
+*.cert
+
+# Bruno local / private environments
+bruno/**/environments/*.local.bru
+bruno/**/.env*
+
+# Firebase & Emulators
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+pubsub-debug.log*
 
 # Logs
 logs/
@@ -28,3 +48,4 @@ Thumbs.db
 *.ntvs*
 *.njsproj
 *.sln
+
