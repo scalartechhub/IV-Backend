@@ -15,6 +15,39 @@ const fs = require("fs");
 // Determine environment and target project
 const args = process.argv.slice(2);
 const envArg = args.find((a) => a.startsWith("--env="))?.split("=")[1] || process.env.APP_ENV;
+
+// Load environment variables from corresponding .env file
+let envFile = ".env";
+if (envArg === "dev" || envArg === "development") {
+  envFile = ".env.dev";
+} else if (envArg === "prod" || envArg === "production") {
+  envFile = ".env.production";
+}
+let envPath = path.resolve(__dirname, "..", envFile);
+if (!fs.existsSync(envPath)) {
+  envPath = path.resolve(__dirname, "..", ".env");
+}
+if (fs.existsSync(envPath)) {
+  const content = fs.readFileSync(envPath, "utf8");
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let value = trimmed.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (key && value && !process.env[key]) {
+      process.env[key] = value;
+    }
+  }
+}
+
 let targetProjectId = envArg === "dev" ? "interview-89e09" : (process.env.FB_PROJECT_ID || process.env.FIREBASE_PROJECT_ID);
 
 const saCandidates = [
