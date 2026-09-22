@@ -104,6 +104,14 @@ export interface SubscriptionRecord {
   updatedAt: string;
 }
 
+export interface PendingPlanChange {
+  planId: string;
+  planName: string;
+  billingCycle: string;
+  scheduledAt: string;
+  effectiveAt?: string;
+}
+
 /** Embedded in `users/{uid}.subscriptionSummary` — lightweight subscription state. */
 export interface SubscriptionSummary {
   planId: BillingPlanIdWithCycle | string;
@@ -115,6 +123,7 @@ export interface SubscriptionSummary {
   currentPeriodStart?: string;
   currentPeriodEnd?: string;
   cancelAtPeriodEnd: boolean;
+  pendingPlanChange?: PendingPlanChange;
   updatedAt: string;
 }
 
@@ -172,6 +181,7 @@ export interface PlanPublicInfo {
   name: string;
   billingCycle: string;
   currency: string;
+  amount: number;
   displayPrice: number;
   displayPeriod: string;
   annualAmount?: number;
@@ -180,4 +190,5 @@ export interface PlanPublicInfo {
   billingDescription?: string;
   features?: string[];
   active: boolean;
+  exchangeRate?: number;
 }

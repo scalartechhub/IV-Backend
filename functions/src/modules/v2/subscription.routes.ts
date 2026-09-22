@@ -2,15 +2,17 @@
  * V2 subscription, payment, plan & webhook routes.
  *
  * Routes:
- *   GET    /plans                — public, returns active plans
- *   POST   /subscriptions/create — auth, create Razorpay subscription
- *   GET    /subscriptions/current — auth, current subscription status
- *   POST   /subscriptions/cancel — auth, cancel at period end
- *   POST   /payments/verify     — auth, verify Razorpay payment
- *   GET    /payments/history    — auth, payment history
- *   GET    /usage               — auth, usage summary
- *   POST   /subscriptions/free  — auth, activate free plan
- *   POST   /webhooks/razorpay   — Razorpay webhook (NO Firebase auth)
+ *   GET    /plans                  — public, returns active plans
+ *   POST   /subscriptions/create   — auth, create Razorpay subscription
+ *   GET    /subscriptions/current  — auth, current subscription status
+ *   POST   /subscriptions/cancel   — auth, cancel at period end
+ *   POST   /subscriptions/resume   — auth, reverse scheduled cancellation
+ *   POST   /subscriptions/change-plan — auth, upgrade/downgrade subscription plan
+ *   POST   /payments/verify        — auth, verify Razorpay payment
+ *   GET    /payments/history       — auth, payment history
+ *   GET    /usage                  — auth, usage summary
+ *   POST   /subscriptions/free     — auth, activate free plan
+ *   POST   /webhooks/razorpay      — Razorpay webhook (NO Firebase auth)
  */
 
 import { Router, Request } from "express";
@@ -33,11 +35,32 @@ const createSubSchema = z.object({
   planId: z.string().min(1, "Plan ID is required"),
 });
 
-const verifyPaymentSchema = z.object({
-  razorpayPaymentId: z.string().min(1),
-  razorpaySubscriptionId: z.string().min(1),
-  razorpaySignature: z.string().min(1),
+const changePlanSchema = z.object({
+  planId: z.string().min(1, "Plan ID is required"),
+  scheduleChangeAt: z.enum(["now", "cycle_end"]).optional().default("now"),
 });
+
+// Accepts both camelCase (API standard) and snake_case (Razorpay Checkout native callback)
+const verifyPaymentSchema = z
+  .object({
+    razorpayPaymentId: z.string().optional(),
+    razorpaySubscriptionId: z.string().optional(),
+    razorpaySignature: z.string().optional(),
+    razorpay_payment_id: z.string().optional(),
+    razorpay_subscription_id: z.string().optional(),
+    razorpay_signature: z.string().optional(),
+  })
+  .transform((data) => ({
+    razorpayPaymentId: (data.razorpayPaymentId || data.razorpay_payment_id || "").trim(),
+    razorpaySubscriptionId: (data.razorpaySubscriptionId || data.razorpay_subscription_id || "").trim(),
+    razorpaySignature: (data.razorpaySignature || data.razorpay_signature || "").trim(),
+  }))
+  .refine(
+    (data) => Boolean(data.razorpayPaymentId && data.razorpaySubscriptionId && data.razorpaySignature),
+    {
+      message: "razorpayPaymentId, razorpaySubscriptionId, and razorpaySignature are required",
+    }
+  );
 
 // ---------------------------------------------------------------------------
 // PUBLIC ROUTES (no auth)
@@ -79,7 +102,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const { planId } = req.body as z.infer<typeof createSubSchema>;
     const result = await razorpaySubscriptionService.createSubscription(req.user!.uid, planId);
-    sendCreated(res, result, "Subscription created");
+    sendCreated(res, result, "Subscription initiated");
   })
 );
 
@@ -100,10 +123,35 @@ router.post(
 );
 
 router.post(
+  "/subscriptions/resume",
+  asyncHandler(async (req, res) => {
+    const result = await razorpaySubscriptionService.resumeSubscription(req.user!.uid);
+    sendSuccess(res, result, "Subscription cancellation reversed");
+  })
+);
+
+router.post(
+  "/subscriptions/change-plan",
+  validate(changePlanSchema),
+  asyncHandler(async (req, res) => {
+    const { planId, scheduleChangeAt } = req.body as z.infer<typeof changePlanSchema>;
+    const result = await razorpaySubscriptionService.changeSubscriptionPlan(
+      req.user!.uid,
+      planId,
+      scheduleChangeAt
+    );
+    sendSuccess(res, result, "Subscription plan updated");
+  })
+);
+
+router.post(
   "/subscriptions/free",
   asyncHandler(async (req, res) => {
-    await razorpaySubscriptionService.activateFreePlan(req.user!.uid);
-    sendSuccess(res, { planId: "free" }, "Free plan activated");
+    const result = await razorpaySubscriptionService.activateFreePlan(req.user!.uid);
+    const message = result.scheduledForPeriodEnd
+      ? "Subscription cancellation scheduled at period end"
+      : "Free plan activated";
+    sendSuccess(res, result, message);
   })
 );
 
@@ -111,7 +159,7 @@ router.post(
   "/payments/verify",
   validate(verifyPaymentSchema),
   asyncHandler(async (req, res) => {
-    const input = req.body as z.infer<typeof verifyPaymentSchema>;
+    const input = req.body as { razorpayPaymentId: string; razorpaySubscriptionId: string; razorpaySignature: string };
     const result = await razorpaySubscriptionService.verifyPayment(req.user!.uid, input);
     sendSuccess(res, result, "Payment verified");
   })
@@ -120,7 +168,7 @@ router.post(
 router.get(
   "/payments/history",
   asyncHandler(async (req, res) => {
-    const limit = req.query.limit ? Number(req.query.limit) : 20;
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
     const result = await razorpaySubscriptionService.getPaymentHistory(req.user!.uid, limit);
     sendSuccess(res, result, "Payment history fetched");
   })

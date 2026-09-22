@@ -88,6 +88,14 @@ export interface UserStats {
   lastOverallScore?: number;
   /** Count of distinct learning roadmap weeks passed, used by roadmap_weeks_completed achievements. */
   roadmapWeeksCompleted?: number;
+  /** Non-deleted interviews created in interviewsMonthKey (YYYY-MM). */
+  interviewsCreatedThisMonth?: number;
+  /** Calendar month key for interviewsCreatedThisMonth, e.g. "2026-09". */
+  interviewsMonthKey?: string;
+  /** Resume analyses uploaded in resumeAnalysesMonthKey (YYYY-MM). */
+  resumeAnalysesCreatedThisMonth?: number;
+  /** Calendar month key for resumeAnalysesCreatedThisMonth, e.g. "2026-09". */
+  resumeAnalysesMonthKey?: string;
 }
 
 /**

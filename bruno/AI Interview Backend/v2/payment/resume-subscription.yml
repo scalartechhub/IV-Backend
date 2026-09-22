@@ -1,0 +1,20 @@
+info:
+  name: Resume Subscription
+  type: http
+  seq: 8
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/subscriptions/resume"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Reverse a scheduled cancellation before the billing cycle ends.

@@ -52,7 +52,7 @@ export type BillingCycle = (typeof BILLING_CYCLES)[keyof typeof BILLING_CYCLES];
 /** Fallback interview quotas if `plans/{id}.monthlyInterviewLimit` is missing. `null` = unlimited. */
 export const PLAN_MONTHLY_INTERVIEW_LIMITS: Record<BillingPlanId, number | null> = {
   [PLAN_IDS.FREE]: 3,
-  [PLAN_IDS.PRO]: null,
+  [PLAN_IDS.PRO]: 15,
   [PLAN_IDS.ELITE]: null,
   [PLAN_IDS.ENTERPRISE]: null,
 };
@@ -60,14 +60,14 @@ export const PLAN_MONTHLY_INTERVIEW_LIMITS: Record<BillingPlanId, number | null>
 /** Fallback resume quotas if `plans/{id}.monthlyResumeAnalysisLimit` is missing. `null` = unlimited. */
 export const PLAN_MONTHLY_RESUME_ANALYSIS_LIMITS: Record<BillingPlanId, number | null> = {
   [PLAN_IDS.FREE]: 1,
-  [PLAN_IDS.PRO]: null,
+  [PLAN_IDS.PRO]: 3,
   [PLAN_IDS.ELITE]: null,
   [PLAN_IDS.ENTERPRISE]: null,
 };
 
 export const PLAN_DEFAULTS = {
   [PLAN_IDS.FREE]: { duration: 0, interviewCredits: 3 },
-  [PLAN_IDS.PRO]: { duration: 30, interviewCredits: -1 },
+  [PLAN_IDS.PRO]: { duration: 30, interviewCredits: 15 },
   [PLAN_IDS.ELITE]: { duration: 365, interviewCredits: -1 },
   [PLAN_IDS.ENTERPRISE]: { duration: 365, interviewCredits: -1 },
 } as const;
@@ -76,11 +76,12 @@ export const PLAN_DEFAULTS = {
 export const PLAN_FEATURES = {
   [PLAN_IDS.FREE]: {
     interviewsPerMonth: 3,
-    resumeAnalysis: "basic" as const,
+    resumeAnalysis: "basic" as const, // 1/month
     codingPractice: "limited" as const,
-    learningRoadmap: "basic" as const,
-    careerProgress: "basic" as const,
-    companyPreparation: false,
+    learningRoadmap: false, // NOT allowed for free
+    careerProgress: false, // NOT allowed for free
+    companyPreparation: false, // NOT allowed for free
+    nearbyCompanies: false, // NOT allowed for free
     advancedReports: false,
     careerCoach: false,
     atsScan: false,
@@ -92,12 +93,13 @@ export const PLAN_FEATURES = {
     prioritySupport: false,
   },
   [PLAN_IDS.PRO]: {
-    interviewsPerMonth: null,
-    resumeAnalysis: "advanced" as const,
+    interviewsPerMonth: 15,
+    resumeAnalysis: "advanced" as const, // 3/month
     codingPractice: "unlimited" as const,
     learningRoadmap: "full" as const,
     careerProgress: "full" as const,
     companyPreparation: true,
+    nearbyCompanies: true,
     advancedReports: true,
     careerCoach: true,
     atsScan: true,
@@ -109,12 +111,13 @@ export const PLAN_FEATURES = {
     prioritySupport: false,
   },
   [PLAN_IDS.ELITE]: {
-    interviewsPerMonth: null,
-    resumeAnalysis: "advanced" as const,
+    interviewsPerMonth: null, // unlimited
+    resumeAnalysis: "unlimited" as const, // unlimited
     codingPractice: "unlimited" as const,
     learningRoadmap: "full" as const,
     careerProgress: "full" as const,
     companyPreparation: true,
+    nearbyCompanies: true,
     advancedReports: true,
     careerCoach: true,
     atsScan: true,

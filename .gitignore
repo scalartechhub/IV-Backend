@@ -7,8 +7,10 @@ functions/lib/
 functions/dist/
 
 # Environment & secrets
-.env
-firebase-service-account.json
+.env*
+!*.example
+firebase-service-account*.json
+service-account*.json
 
 # Logs
 logs/

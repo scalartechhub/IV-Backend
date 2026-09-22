@@ -3,19 +3,57 @@
  *
  * Usage:
  *   node scripts/seed-plans.js
+ *   OR from root: npm run seed:plans
  *
- * NOTE: razorpayPlanId must be updated manually after creating plans in the
- *       Razorpay Dashboard (Test Mode → Subscriptions → Plans).
+ * NOTE: Preserves existing razorpayPlanId if already present in Firestore.
  */
 
 const admin = require("firebase-admin");
 const path = require("path");
+const fs = require("fs");
 
-// Initialize Firebase Admin
-const serviceAccountPath = path.resolve(__dirname, "..", "firebase-service-account.json");
-admin.initializeApp({
-  credential: admin.credential.cert(require(serviceAccountPath)),
-});
+// Determine environment and target project
+const args = process.argv.slice(2);
+const envArg = args.find((a) => a.startsWith("--env="))?.split("=")[1] || process.env.APP_ENV;
+let targetProjectId = envArg === "dev" ? "interview-89e09" : (process.env.FB_PROJECT_ID || process.env.FIREBASE_PROJECT_ID);
+
+const saCandidates = [
+  targetProjectId ? path.resolve(__dirname, "..", `firebase-service-account.${targetProjectId}.json`) : null,
+  targetProjectId === "interview-89e09" ? path.resolve(__dirname, "..", "firebase-service-account.dev.json") : null,
+  process.env.GOOGLE_APPLICATION_CREDENTIALS,
+  path.resolve(__dirname, "..", "firebase-service-account.json"),
+  path.resolve(__dirname, "..", "service-account.json"),
+].filter(Boolean);
+
+let saPath = null;
+let serviceAccount = null;
+
+for (const p of saCandidates) {
+  if (fs.existsSync(p)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(p, "utf8"));
+      const saProjectId = parsed.projectId || parsed.project_id;
+      if (!targetProjectId || !saProjectId || saProjectId === targetProjectId) {
+        saPath = p;
+        serviceAccount = parsed;
+        break;
+      }
+    } catch {}
+  }
+}
+
+if (serviceAccount) {
+  console.log(`[SeedPlans] Using service account (${saPath}) for project: ${serviceAccount.project_id}`);
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    projectId: serviceAccount.project_id,
+  });
+} else {
+  console.log(`[SeedPlans] Initializing for project: ${targetProjectId || "default"} using application credentials...`);
+  admin.initializeApp({
+    ...(targetProjectId && { projectId: targetProjectId }),
+  });
+}
 
 const db = admin.firestore();
 
@@ -24,135 +62,150 @@ const plans = [
     id: "free",
     name: "Free",
     billingCycle: "none",
-    currency: "USD",
+    currency: "INR",
     amount: 0,
     displayPrice: 0,
     displayPeriod: "month",
     discountPercent: 0,
+    monthlyInterviewLimit: 3,
+    monthlyResumeAnalysisLimit: 1,
     description: "Get started with AI-powered interview practice.",
     active: true,
     features: [
       "3 AI interviews / month",
-      "Basic resume analysis",
-      "Limited coding practice",
-      "Basic learning roadmap",
-      "Basic career progress",
+      "1 Resume analysis / month",
+      "Basic interview feedback",
+      "Standard support",
     ],
   },
   {
     id: "pro_monthly",
     name: "Pro",
     billingCycle: "monthly",
-    currency: "USD",
-    amount: 6.26,
-    displayPrice: 6.26,
+    currency: "INR",
+    amount: 799,
+    displayPrice: 8.34,
     displayPeriod: "month",
     discountPercent: 0,
-    description: "Everything you need to get interview-ready.",
-    razorpayPlanId: "",  // Set after creating in Razorpay Dashboard
+    monthlyInterviewLimit: 15,
+    monthlyResumeAnalysisLimit: 3,
+    billingDescription: "Billed monthly. Cancel anytime.",
+    description: "Perfect for active job seekers preparing for multiple rounds.",
     active: true,
     features: [
-      "Unlimited AI interviews",
-      "Advanced resume analysis",
-      "ATS scan",
-      "Unlimited coding practice",
-      "Company preparation",
-      "Personalized roadmap",
-      "Interview reports",
-      "AI Career Coach",
+      "15 AI interviews / month",
+      "3 Resume analyses / month",
+      "Full AI learning roadmap",
+      "Career progress tracking",
+      "Nearby companies & company prep",
+      "Comprehensive performance reports",
     ],
   },
   {
     id: "pro_yearly",
     name: "Pro",
     billingCycle: "yearly",
-    currency: "USD",
-    amount: 60.12,
-    displayPrice: 5.01,
+    currency: "INR",
+    amount: 7668,
+    displayPrice: 6.67,
     displayPeriod: "month",
-    annualAmount: 60.12,
+    annualAmount: 80,
     discountPercent: 20,
-    billingDescription: "Billed annually",
-    description: "Everything you need to get interview-ready.",
-    razorpayPlanId: "",  // Set after creating in Razorpay Dashboard
+    monthlyInterviewLimit: 15,
+    monthlyResumeAnalysisLimit: 3,
+    billingDescription: "Billed annually at $80/year (Save 20%).",
+    description: "Perfect for active job seekers preparing for multiple rounds.",
     active: true,
     features: [
-      "Unlimited AI interviews",
-      "Advanced resume analysis",
-      "ATS scan",
-      "Unlimited coding practice",
-      "Company preparation",
-      "Personalized roadmap",
-      "Interview reports",
-      "AI Career Coach",
+      "15 AI interviews / month",
+      "3 Resume analyses / month",
+      "Full AI learning roadmap",
+      "Career progress tracking",
+      "Nearby companies & company prep",
+      "Comprehensive performance reports",
     ],
   },
   {
     id: "elite_monthly",
     name: "Elite",
     billingCycle: "monthly",
-    currency: "USD",
-    amount: 10.86,
-    displayPrice: 10.86,
+    currency: "INR",
+    amount: 1999,
+    displayPrice: 20.86,
     displayPeriod: "month",
     discountPercent: 0,
-    description: "Maximum preparation with all premium features.",
-    razorpayPlanId: "",  // Set after creating in Razorpay Dashboard
+    monthlyInterviewLimit: null, // Unlimited
+    monthlyResumeAnalysisLimit: null, // Unlimited
+    billingDescription: "Billed monthly. Cancel anytime.",
+    description: "For professionals aiming for top-tier tech and leadership roles.",
     active: true,
     features: [
+      "Unlimited AI interviews",
+      "Unlimited Resume analyses",
       "Everything in Pro",
-      "Custom company mock interviews",
-      "System design interviews",
-      "Behavioral interview prep",
-      "Job match insights",
-      "Early access to features",
-      "Priority support",
+      "System design & architecture interviews",
+      "Leadership & behavioral deep dives",
+      "Executive career coach insights",
+      "Priority early access & 24/7 support",
     ],
   },
   {
     id: "elite_yearly",
     name: "Elite",
     billingCycle: "yearly",
-    currency: "USD",
-    amount: 104.26,
-    displayPrice: 8.69,
+    currency: "INR",
+    amount: 19188,
+    displayPrice: 16.68,
     displayPeriod: "month",
-    annualAmount: 104.26,
+    annualAmount: 200.19,
     discountPercent: 20,
-    billingDescription: "Billed annually",
-    description: "Maximum preparation with all premium features.",
-    razorpayPlanId: "",  // Set after creating in Razorpay Dashboard
+    monthlyInterviewLimit: null, // Unlimited
+    monthlyResumeAnalysisLimit: null, // Unlimited
+    billingDescription: "Billed annually at $200.19/year (Save 20%).",
+    description: "For professionals aiming for top-tier tech and leadership roles.",
     active: true,
     features: [
+      "Unlimited AI interviews",
+      "Unlimited Resume analyses",
       "Everything in Pro",
-      "Custom company mock interviews",
-      "System design interviews",
-      "Behavioral interview prep",
-      "Job match insights",
-      "Early access to features",
-      "Priority support",
+      "System design & architecture interviews",
+      "Leadership & behavioral deep dives",
+      "Executive career coach insights",
+      "Priority early access & 24/7 support",
     ],
   },
 ];
 
 async function seedPlans() {
-  console.log("🌱 Seeding plans collection...\n");
-
-  const batch = db.batch();
+  console.log("🌱 Seeding/Updating Firestore plans collection...\n");
 
   for (const plan of plans) {
-    const ref = db.collection("plans").doc(plan.id);
-    batch.set(ref, plan, { merge: true });
-    console.log(`  ✅ plans/${plan.id} — ${plan.name} (${plan.billingCycle})`);
+    const docRef = db.collection("plans").doc(plan.id);
+    const existingSnap = await docRef.get();
+    const existingData = existingSnap.exists ? existingSnap.data() : {};
+
+    // Preserve existing razorpayPlanId if already set in Firestore
+    const razorpayPlanId =
+      existingData?.razorpayPlanId ||
+      process.env[`RAZORPAY_${plan.id.toUpperCase()}_PLAN_ID`] ||
+      undefined;
+
+    const dataToSave = {
+      ...plan,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (razorpayPlanId) {
+      dataToSave.razorpayPlanId = razorpayPlanId;
+    }
+
+    await docRef.set(dataToSave, { merge: true });
+    console.log(
+      `  ✅ plans/${plan.id} — ${plan.name} (${plan.billingCycle}) | Limit: ${plan.monthlyInterviewLimit ?? "∞"} interviews, ${plan.monthlyResumeAnalysisLimit ?? "∞"} resumes | Razorpay Plan: ${razorpayPlanId || "(none)"}`
+    );
   }
 
-  await batch.commit();
-
-  console.log("\n✅ All plans seeded successfully!");
-  console.log("\n⚠️  IMPORTANT: Update razorpayPlanId for paid plans after creating");
-  console.log("   subscription plans in the Razorpay Dashboard.");
-  console.log("   Firestore path: plans/{planId}.razorpayPlanId\n");
-
+  console.log("\n✅ All plans seeded and updated successfully in Firestore!");
   process.exit(0);
 }
 

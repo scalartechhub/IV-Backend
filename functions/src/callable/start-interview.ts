@@ -8,6 +8,8 @@ import { z } from 'zod';
 import * as interviewService from '../services/interview.service';
 import { toHttpsError } from '../services/errors';
 import { requireAuth } from '../utils/callable-auth';
+import { assertInterviewQuota, recordInterviewUsage } from '../modules/subscription/feature-access.service';
+import { logger } from '../shared/logger';
 
 const startSchema = z
   .object({
@@ -63,7 +65,15 @@ export const startInterview = onCall(
           `Invalid start payload: ${parsed.error.message}`,
         );
       }
-      return await interviewService.startInterview(uid, parsed.data);
+      await assertInterviewQuota(uid);
+      const result = await interviewService.startInterview(uid, parsed.data);
+      recordInterviewUsage(uid).catch((usageErr: any) => {
+        logger.error('[startInterview callable] Failed to record interview usage', {
+          uid,
+          error: usageErr?.message,
+        });
+      });
+      return result;
     } catch (err) {
       throw toHttpsError(err);
     }

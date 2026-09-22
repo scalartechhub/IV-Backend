@@ -71,13 +71,13 @@ router.post(
       req.body?.onboarding ?? req.query?.onboarding,
     );
 
+    // Enforce monthly quota limit before expensive AI analysis
+    await assertResumeAnalysisQuota(req.user!.uid);
+
     const result = await resumeService.analyzeResume(req.user!.uid, {
       fileBuffer: req.file.buffer,
-
       fileName: req.file.originalname || "resume.pdf",
-
       targetRole,
-
       onboarding,
     });
 

@@ -1,3 +1,4 @@
+import "./load-env";
 import type { Application } from "express";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onRequest } from "firebase-functions/v2/https";
@@ -15,6 +16,7 @@ export { refreshCareerProgress } from "./callable/refresh-career-progress";
 export { onInterviewComplete } from "./triggers/on-interview-complete";
 export { onResumeUploaded } from "./triggers/on-resume-uploaded";
 export { onAchievementCheck } from "./triggers/on-achievement-check";
+export { onUserDeleted } from "./triggers/on-user-deleted";
 
 // Scheduled
 export { computeCareerProgress } from "./scheduled/compute-career-progress";

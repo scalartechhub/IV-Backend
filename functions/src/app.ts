@@ -88,7 +88,9 @@ const globalLimiter = rateLimit({
   max: appConfig.isDevelopment ? 2000 : RATE_LIMIT.MAX_REQUESTS,
   // Quality snapshots are intentionally periodic (every 5–10 seconds) and have
   // their own tighter per-minute limiter in the monitoring router.
-  skip: (req) => req.path.includes("/interview/monitoring/quality"),
+  skip: (req) =>
+    req.path.includes("/interview/monitoring/quality") ||
+    req.path.includes("/webhooks/razorpay"),
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: "Too many requests. Please try again later." },

@@ -116,6 +116,8 @@ const dispatchEvent = async (eventName: string, payload: any): Promise<void> => 
       await handleSubscriptionCharged(payload);
       break;
     case "subscription.pending":
+      await handleSubscriptionPending(payload);
+      break;
     case "subscription.halted":
       await handleSubscriptionHalted(payload);
       break;
@@ -295,7 +297,51 @@ const handleSubscriptionCharged = async (payload: any): Promise<void> => {
     );
   }
 
-  logger.info("[webhook] Subscription charged (renewed)", { uid, rzpSubId });
+  // Reset monthly usage counters for the new billing period so the user's quota
+  // refreshes at each recurring charge (Razorpay fires this on every successful renewal).
+  const now = new Date();
+  const newMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  try {
+    await usersCol().doc(uid).set(
+      {
+        stats: {
+          interviewsCreatedThisMonth: 0,
+          interviewsMonthKey: newMonthKey,
+          resumeAnalysesCreatedThisMonth: 0,
+          resumeAnalysesMonthKey: newMonthKey,
+        },
+      },
+      { merge: true }
+    );
+  } catch (statsErr: any) {
+    logger.warn("[webhook] Failed to reset monthly stats on subscription.charged", {
+      uid,
+      rzpSubId,
+      error: statsErr.message,
+    });
+  }
+
+  logger.info("[webhook] Subscription charged (renewed) — monthly stats reset", { uid, rzpSubId });
+};
+
+const handleSubscriptionPending = async (payload: any): Promise<void> => {
+  const subEntity = extractSubscriptionEntity(payload);
+  const rzpSubId = subEntity.id;
+  if (!rzpSubId) return;
+
+  const uid = subEntity.notes?.userId || (await resolveUserIdFromSubscription(rzpSubId));
+  if (!uid) return;
+
+  // subscription.pending means payment is awaiting bank confirmation.
+  // We set status=pending but do NOT revoke access — the user may still be charged successfully.
+  await updateSubscriptionAndUser(
+    rzpSubId,
+    uid,
+    { status: SUBSCRIPTION_STATUS.PENDING },
+    { status: SUBSCRIPTION_STATUS.PENDING }
+  );
+
+  logger.info("[webhook] Subscription pending (awaiting payment confirmation)", { uid, rzpSubId });
 };
 
 const handleSubscriptionHalted = async (payload: any): Promise<void> => {
@@ -324,27 +370,45 @@ const handleSubscriptionCancelled = async (payload: any): Promise<void> => {
   const uid = subEntity.notes?.userId || (await resolveUserIdFromSubscription(rzpSubId));
   if (!uid) return;
 
-  await updateSubscriptionAndUser(
-    rzpSubId,
-    uid,
-    { status: SUBSCRIPTION_STATUS.CANCELLED, cancelAtPeriodEnd: true },
-    { status: SUBSCRIPTION_STATUS.CANCELLED, cancelAtPeriodEnd: true }
-  );
+  const now = new Date().toISOString();
+  const batch = db.batch();
 
-  // Downgrade legacy subscription
-  await usersCol().doc(uid).set(
+  // Mark subscription record as cancelled (cancelAtPeriodEnd=false — period has ended, nothing pending)
+  batch.update(subsCol().doc(rzpSubId), {
+    status: SUBSCRIPTION_STATUS.CANCELLED,
+    cancelAtPeriodEnd: false,
+    updatedAt: now,
+  });
+
+  // Fully reset subscriptionSummary to free plan state so getCurrentSubscription
+  // doesn't fall into the self-healing Razorpay sync path on every subsequent call.
+  batch.set(
+    usersCol().doc(uid),
     {
+      subscriptionSummary: {
+        planId: "free",
+        planName: "Free",
+        billingCycle: "none",
+        status: SUBSCRIPTION_STATUS.ACTIVE,
+        provider: "none",
+        cancelAtPeriodEnd: false,
+        updatedAt: now,
+      },
       subscription: {
         plan: "free",
         status: SUBSCRIPTION_STATUS.ACTIVE,
         expiresAt: null,
         interviewCredits: 3,
       },
+      planTier: "free",
+      updatedAt: Timestamp.now(),
     },
     { merge: true }
   );
 
-  logger.info("[webhook] Subscription cancelled", { uid, rzpSubId });
+  await batch.commit();
+
+  logger.info("[webhook] Subscription cancelled — user downgraded to free", { uid, rzpSubId });
 };
 
 const handleSubscriptionExpired = async (payload: any): Promise<void> => {
@@ -355,26 +419,44 @@ const handleSubscriptionExpired = async (payload: any): Promise<void> => {
   const uid = subEntity.notes?.userId || (await resolveUserIdFromSubscription(rzpSubId));
   if (!uid) return;
 
-  await updateSubscriptionAndUser(
-    rzpSubId,
-    uid,
-    { status: SUBSCRIPTION_STATUS.EXPIRED },
-    { status: SUBSCRIPTION_STATUS.EXPIRED }
-  );
+  const now = new Date().toISOString();
+  const batch = db.batch();
 
-  // Downgrade legacy subscription
-  await usersCol().doc(uid).set(
+  // Mark subscription record as expired
+  batch.update(subsCol().doc(rzpSubId), {
+    status: SUBSCRIPTION_STATUS.EXPIRED,
+    cancelAtPeriodEnd: false,
+    updatedAt: now,
+  });
+
+  // Fully reset subscriptionSummary to free plan state
+  batch.set(
+    usersCol().doc(uid),
     {
+      subscriptionSummary: {
+        planId: "free",
+        planName: "Free",
+        billingCycle: "none",
+        status: SUBSCRIPTION_STATUS.ACTIVE,
+        provider: "none",
+        cancelAtPeriodEnd: false,
+        updatedAt: now,
+      },
       subscription: {
         plan: "free",
         status: SUBSCRIPTION_STATUS.EXPIRED,
+        expiresAt: null,
         interviewCredits: 3,
       },
+      planTier: "free",
+      updatedAt: Timestamp.now(),
     },
     { merge: true }
   );
 
-  logger.info("[webhook] Subscription expired", { uid, rzpSubId });
+  await batch.commit();
+
+  logger.info("[webhook] Subscription expired — user downgraded to free", { uid, rzpSubId });
 };
 
 const handlePaymentCaptured = async (payload: any): Promise<void> => {
@@ -411,7 +493,7 @@ const handlePaymentCaptured = async (payload: any): Promise<void> => {
     razorpaySubscriptionId: rzpSubId || undefined,
     planId,
     amount: payEntity.amount ? Number(payEntity.amount) / 100 : 0,
-    currency: payEntity.currency || "USD",
+    currency: payEntity.currency || "INR",
     status: "captured",
     method: payEntity.method || undefined,
     createdAt: new Date().toISOString(),
@@ -451,7 +533,7 @@ const handlePaymentFailed = async (payload: any): Promise<void> => {
     razorpaySubscriptionId: rzpSubId || undefined,
     planId,
     amount: payEntity.amount ? Number(payEntity.amount) / 100 : 0,
-    currency: payEntity.currency || "USD",
+    currency: payEntity.currency || "INR",
     status: "failed",
     method: payEntity.method || undefined,
     createdAt: new Date().toISOString(),
