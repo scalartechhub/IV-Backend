@@ -10,6 +10,8 @@ export const COLLECTIONS = {
   CODING_PROBLEM_SECRETS: "codingProblemSecrets",
   INTERVIEW_DOMAIN: "interview_domain",
   APP_METADATA: "appMetadata",
+  SUBSCRIPTIONS: "subscriptions",
+  RAZORPAY_EVENTS: "razorpayEvents",
 } as const;
 
 export const CODING_SUBCOLLECTIONS = {

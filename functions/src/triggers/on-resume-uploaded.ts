@@ -9,13 +9,20 @@ import { ensureAdmin } from '../utils/callable-auth';
 import { resumesCol } from '../utils/firestore-refs';
 import { withTeamsAlert } from '../shared/with-teams-alert';
 
+const getStorageRegion = (): string => {
+  if (process.env.GCLOUD_PROJECT === 'interview-prod-dd24f') return 'us-central1';
+  if (process.env.GCLOUD_PROJECT === 'interview-89e09') return 'us-east1';
+  if (process.env.STORAGE_REGION) return process.env.STORAGE_REGION;
+  return process.env.FB_PROJECT_ID === 'interview-89e09' ? 'us-east1' : 'us-central1';
+};
+
 /**
  * When a resume PDF lands in Storage, mark matching pending resume docs as processing.
  * Full ATS analysis is performed by uploadResume callable.
  */
 export const onResumeUploaded = onObjectFinalized(
   {
-    region: 'us-central1',
+    region: getStorageRegion(),
     memory: '512MiB',
   },
   withTeamsAlert('onResumeUploaded', async (event) => {

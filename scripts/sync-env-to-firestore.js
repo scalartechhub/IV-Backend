@@ -24,8 +24,21 @@ try {
   admin = require(functionsAdminPath);
 }
 
-// 1. Load .env file
-const envPath = path.resolve(__dirname, "..", ".env");
+// 1. Determine environment and load appropriate .env file
+const args = process.argv.slice(2);
+const envArg = args.find((a) => a.startsWith("--env="))?.split("=")[1] || process.env.APP_ENV;
+let envFile = ".env";
+if (envArg === "dev" || envArg === "development") {
+  envFile = ".env.dev";
+} else if (envArg === "prod" || envArg === "production") {
+  envFile = ".env.production";
+}
+
+let envPath = path.resolve(__dirname, "..", envFile);
+if (!fs.existsSync(envPath)) {
+  envPath = path.resolve(__dirname, "..", ".env");
+}
+
 let envValues = { ...process.env };
 
 if (fs.existsSync(envPath)) {
@@ -65,32 +78,53 @@ const missingKeys = REQUIRED_ENV_KEYS.filter(
 
 if (missingKeys.length > 0) {
   console.error(
-    `\n❌ [SyncScript Error] Missing required environment variables in .env:\n` +
+    `\n❌ [SyncScript Error] Missing required environment variables in ${envFile}:\n` +
       missingKeys.map((k) => `   - ${k}`).join("\n") +
-      `\n\nPlease add all required environment variables to your .env file before running sync-env-to-firestore.\n`
+      `\n\nPlease add all required environment variables to your ${envFile} file before running sync-env-to-firestore.\n`
   );
   process.exit(1);
 }
 
 // 2. Initialize Firebase Admin SDK
 function initFirebase() {
+  const targetProjectId = envValues.FB_PROJECT_ID || envValues.FIREBASE_PROJECT_ID;
+
   const saCandidates = [
+    targetProjectId ? path.resolve(__dirname, "..", `firebase-service-account.${targetProjectId}.json`) : null,
+    targetProjectId === "interview-89e09" ? path.resolve(__dirname, "..", "firebase-service-account.dev.json") : null,
+    process.env.GOOGLE_APPLICATION_CREDENTIALS,
     path.resolve(__dirname, "..", "firebase-service-account.json"),
     path.resolve(__dirname, "..", "..", "firebase-service-account.json"),
-    process.env.GOOGLE_APPLICATION_CREDENTIALS,
-  ];
+  ].filter(Boolean);
 
-  let saPath = saCandidates.find((p) => p && fs.existsSync(p));
+  let saPath = null;
+  let serviceAccount = null;
 
-  if (saPath) {
-    console.log(`[SyncScript] Using service account: ${saPath}`);
-    const serviceAccount = JSON.parse(fs.readFileSync(saPath, "utf8"));
+  for (const p of saCandidates) {
+    if (fs.existsSync(p)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(p, "utf8"));
+        const saProjectId = parsed.projectId || parsed.project_id;
+        if (!targetProjectId || !saProjectId || saProjectId === targetProjectId) {
+          saPath = p;
+          serviceAccount = parsed;
+          break;
+        }
+      } catch {}
+    }
+  }
+
+  if (serviceAccount) {
+    console.log(`[SyncScript] Using service account (${saPath}) for project: ${serviceAccount.project_id}`);
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
+      projectId: serviceAccount.project_id,
     });
   } else {
-    console.log("[SyncScript] Using default application credentials...");
-    admin.initializeApp();
+    console.log(`[SyncScript] Initializing with project: ${targetProjectId || "default"} using application credentials...`);
+    admin.initializeApp({
+      ...(targetProjectId && { projectId: targetProjectId }),
+    });
   }
 
   return admin.firestore();

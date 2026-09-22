@@ -1,0 +1,31 @@
+info:
+  name: Change Plan
+  type: http
+  seq: 9
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/subscriptions/change-plan"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "planId": "elite_monthly",
+        "scheduleChangeAt": "now"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Upgrade or downgrade an active Razorpay subscription to a new plan.
+  `scheduleChangeAt` can be "now" (immediate) or "cycle_end" (effective next cycle).

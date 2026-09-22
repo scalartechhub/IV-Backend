@@ -40,7 +40,7 @@ export const assertInterviewCreationAllowed = (
   if (billingPlan === PLAN_IDS.PRO) {
     throw new AppError(
       403,
-      `You have reached your monthly limit of ${monthlyLimit} interviews. Please upgrade to the Enterprise plan to create more interviews.`
+      `You have reached your monthly limit of ${monthlyLimit} interviews. Please upgrade to the Elite plan to create more interviews.`
     );
   }
 
@@ -66,7 +66,7 @@ export const assertResumeAnalysisAllowed = (
   if (billingPlan === PLAN_IDS.PRO) {
     throw new AppError(
       403,
-      `You have reached your monthly limit of ${monthlyLimit} resume analyses. Please upgrade to the Enterprise plan to analyze more resumes.`
+      `You have reached your monthly limit of ${monthlyLimit} resume analyses. Please upgrade to the Elite plan to analyze more resumes.`
     );
   }
 

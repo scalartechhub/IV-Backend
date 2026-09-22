@@ -1,0 +1,42 @@
+info:
+  name: Verify Payment
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/payments/verify"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "razorpayPaymentId": "{{razorpayPaymentId}}",
+        "razorpaySubscriptionId": "{{razorpaySubscriptionId}}",
+        "razorpaySignature": "{{razorpaySignature}}"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  variables:
+    - name: razorpaySubscriptionId
+      value: sub_TaJWa94jS1THRX
+    - name: razorpayPaymentId
+      value: pay_TaJeql9VoMl2GP
+    - name: razorpaySignature
+      value: sig_test12345
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: |-
+  Verify Razorpay checkout payment signature and activate the user's subscription and monthly quotas.
+  Provide `razorpayPaymentId`, `razorpaySubscriptionId`, and `razorpaySignature` returned by Razorpay Checkout modal.

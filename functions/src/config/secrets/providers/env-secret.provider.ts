@@ -36,15 +36,49 @@ const resolveServiceAccountPath = (): string | null => {
   const configured = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim();
   if (configured && existsSync(configured)) return configured;
 
-  const candidates = [
-    resolve(process.cwd(), "firebase-service-account.json"),
-    resolve(process.cwd(), "../firebase-service-account.json"),
-    resolve(__dirname, "../../../../firebase-service-account.json"),
-    resolve(__dirname, "../../../firebase-service-account.json"),
+  const targetProjectId = (
+    process.env.FB_PROJECT_ID ||
+    process.env.FIREBASE_PROJECT_ID ||
+    ""
+  ).trim();
+
+  const searchDirs = [
+    process.cwd(),
+    resolve(process.cwd(), ".."),
+    resolve(__dirname, "../../../../"),
+    resolve(__dirname, "../../../"),
   ];
 
-  for (const filePath of candidates) {
-    if (existsSync(filePath)) return filePath;
+  const filenames: string[] = [];
+  if (targetProjectId) {
+    filenames.push(
+      `firebase-service-account.${targetProjectId}.json`,
+      `service-account.${targetProjectId}.json`
+    );
+    if (targetProjectId === "interview-89e09" || targetProjectId.includes("dev")) {
+      filenames.push(
+        "firebase-service-account.dev.json",
+        "service-account.dev.json"
+      );
+    }
+  }
+  filenames.push("firebase-service-account.json", "service-account.json");
+
+  for (const dir of searchDirs) {
+    for (const name of filenames) {
+      const filePath = resolve(dir, name);
+      if (existsSync(filePath)) {
+        try {
+          const parsed = JSON.parse(readFileSync(filePath, "utf-8"));
+          const saProjectId = parsed.projectId ?? parsed.project_id;
+          if (!targetProjectId || !saProjectId || saProjectId === targetProjectId) {
+            return filePath;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
   }
 
   return null;

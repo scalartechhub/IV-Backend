@@ -6,6 +6,8 @@
 import { Request, Response } from 'express';
 import { companiesService, CompaniesService, OnboardingIncompleteError } from './companies.service';
 import { logger } from '../../shared/logger';
+import { assertFeatureAccess } from '../subscription/feature-access.service';
+import { AppError } from '../../shared/utils';
 
 export class CompaniesController {
   private static readonly MAX_RADIUS_METERS = 50000;
@@ -29,6 +31,9 @@ export class CompaniesController {
         });
         return;
       }
+
+      // Feature gate: Nearby companies is exclusive to Pro and Elite plans
+      await assertFeatureAccess(uid, 'nearbyCompanies');
 
       // 2. Request body validation
       const body = req.body ?? {};
@@ -141,6 +146,17 @@ export class CompaniesController {
         data,
       });
     } catch (err: unknown) {
+      if (err instanceof AppError) {
+        res.status(err.statusCode).json({
+          success: false,
+          error: {
+            code: err.errors?.[0]?.message || 'FEATURE_NOT_AVAILABLE',
+            message: err.message,
+          },
+        });
+        return;
+      }
+
       if (err instanceof OnboardingIncompleteError) {
         res.status(400).json({
           success: false,

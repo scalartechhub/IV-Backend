@@ -1,0 +1,44 @@
+info:
+  name: Create Subscription
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/subscriptions/create"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "planId": "{{planId}}"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  variables:
+    - name: planId
+      value: pro_monthly
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body?.data?.subscriptionId) {
+          bru.setEnvVar("razorpaySubscriptionId", body.data.subscriptionId);
+          bru.setEnvVar("subscriptionId", body.data.subscriptionId);
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Create a Razorpay subscription for a paid plan (e.g. `pro_monthly`, `pro_yearly`, `elite_monthly`, `elite_yearly`).
+  Requires Firebase Bearer token authentication.
+  Auto-saves `razorpaySubscriptionId` for the verification step.

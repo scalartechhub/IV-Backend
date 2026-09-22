@@ -4,6 +4,7 @@ import { COLLECTIONS } from "../../shared/constants";
 import { assertInterviewCreationAllowed, assertResumeAnalysisAllowed } from "../../shared/entitlements";
 import { getStartOfCurrentMonth, resolveBillingPlan } from "../../shared/plan.utils";
 import { AppError } from "../../shared/utils";
+import { logger } from "../../shared/logger";
 import type { Interview, ResumeAnalysis } from "../interview/interview.types";
 import { getPlanMonthlyLimits } from "../payment/plan.repository";
 import {
@@ -204,28 +205,14 @@ const isMissingIndexError = (error: unknown): boolean => {
  */
 const queryInterviewsCreatedThisMonthCount = async (uid: string): Promise<number> => {
   const startOfMonth = Timestamp.fromDate(getStartOfCurrentMonth());
+  const startMs = startOfMonth.toMillis();
 
   try {
     const snapshot = await db
       .collection(COLLECTIONS.INTERVIEWS)
       .where("userId", "==", uid)
       .where("isDeleted", "==", false)
-      .where("createdAt", ">=", startOfMonth)
-      .orderBy("createdAt", "desc")
-      .count()
-      .get();
-
-    return snapshot.data().count;
-  } catch (error) {
-    if (!isMissingIndexError(error)) throw error;
-
-    // Fallback for environments where the composite index is not ready yet.
-    // Uses the simpler (userId, isDeleted) index, then filters the month in memory once.
-    const startMs = startOfMonth.toMillis();
-    const snapshot = await db
-      .collection(COLLECTIONS.INTERVIEWS)
-      .where("userId", "==", uid)
-      .where("isDeleted", "==", false)
+      .where("status", "==", "completed")
       .get();
 
     return snapshot.docs.filter((doc) => {
@@ -240,6 +227,9 @@ const queryInterviewsCreatedThisMonthCount = async (uid: string): Promise<number
 
       return createdMs >= startMs;
     }).length;
+  } catch (error) {
+    logger.warn("[auth.repository] Error querying completed interviews this month", { uid, error });
+    return 0;
   }
 };
 

@@ -14,7 +14,8 @@ const nearbyRateLimiter = rateLimit({
   max: 30, // 30 requests per minute
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?.uid || req.ip || 'anonymous',
+  keyGenerator: (req) => req.user?.uid || 'anonymous',
+  validate: { keyGeneratorIpFallback: false },
   message: {
     success: false,
     error: {

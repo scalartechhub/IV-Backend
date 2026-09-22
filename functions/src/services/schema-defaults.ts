@@ -72,15 +72,34 @@ export async function ensureUserDefaults(
   const data = snap.data()!;
   const updates: Record<string, unknown> = {};
 
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
   if (!data.stats) {
     updates['stats.totalInterviews'] = 0;
     updates['stats.problemsSolved'] = 0;
+    updates['stats.interviewsCreatedThisMonth'] = 0;
+    updates['stats.interviewsMonthKey'] = currentMonth;
+    updates['stats.resumeAnalysesCreatedThisMonth'] = 0;
+    updates['stats.resumeAnalysesMonthKey'] = currentMonth;
   } else {
     if (typeof data.stats.totalInterviews !== 'number') {
       updates['stats.totalInterviews'] = 0;
     }
     if (typeof data.stats.problemsSolved !== 'number') {
       updates['stats.problemsSolved'] = 0;
+    }
+    if (!data.stats.interviewsMonthKey) {
+      updates['stats.interviewsMonthKey'] = currentMonth;
+      updates['stats.interviewsCreatedThisMonth'] = typeof data.stats.interviewsCreatedThisMonth === 'number'
+        ? data.stats.interviewsCreatedThisMonth
+        : 0;
+    }
+    if (!data.stats.resumeAnalysesMonthKey) {
+      updates['stats.resumeAnalysesMonthKey'] = currentMonth;
+      updates['stats.resumeAnalysesCreatedThisMonth'] = typeof data.stats.resumeAnalysesCreatedThisMonth === 'number'
+        ? data.stats.resumeAnalysesCreatedThisMonth
+        : 0;
     }
   }
 

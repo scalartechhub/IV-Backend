@@ -1,0 +1,20 @@
+info:
+  name: Activate Free Plan
+  type: http
+  seq: 8
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/subscriptions/free"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Activate or revert user to the free tier subscription and reset quotas.

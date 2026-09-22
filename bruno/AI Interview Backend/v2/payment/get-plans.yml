@@ -1,0 +1,18 @@
+info:
+  name: Get Plans
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/v2/plans"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Public endpoint to fetch all active subscription plans (Free, Pro Monthly, Pro Yearly, Elite Monthly, Elite Yearly).
+  Does not require authentication.

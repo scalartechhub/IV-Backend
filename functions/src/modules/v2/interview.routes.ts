@@ -10,6 +10,7 @@ import { validate } from '../../middleware/validation.middleware';
 import { sendCreated, sendSuccess } from '../../shared/responses';
 import * as interviewService from '../../services/interview.service';
 import * as jdAnalysisService from '../../services/jd-analysis.service';
+import { assertInterviewQuota, recordInterviewUsage } from '../subscription/feature-access.service';
 
 const router = Router();
 
@@ -157,7 +158,19 @@ router.post(
   '/start',
   validate(startBodySchema),
   asyncHandler(async (req, res) => {
+    // 1. Enforce monthly interview quota based on user's plan
+    await assertInterviewQuota(req.user!.uid);
+    // 2. Create the interview
     const result = await interviewService.startInterview(req.user!.uid, req.body);
+    // 3. Record usage immediately after creation — this prevents the race condition where two
+    //    concurrent tabs pass the quota check at step 1 before either increments the counter.
+    //    Non-fatal: if this fails, the interview is still created (don't block the user).
+    recordInterviewUsage(req.user!.uid).catch((usageErr: any) => {
+      console.error('[interview.routes] Failed to record interview usage', {
+        uid: req.user!.uid,
+        error: usageErr?.message,
+      });
+    });
     sendCreated(res, result, 'Interview started');
   }),
 );
@@ -171,6 +184,8 @@ router.post(
       interviewId: String(req.params.id),
       ...req.body,
     });
+    // NOTE: Interview usage is recorded at /start (not here) to prevent race conditions
+    // where two concurrent tabs could both pass the quota check before either increments.
     sendSuccess(res, result, 'Interview completed');
   }),
 );
