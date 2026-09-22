@@ -769,13 +769,38 @@ export const changeSubscriptionPlan = async (
       customer_notify: 1,
     });
   } catch (err: any) {
+    const errorDesc = err?.error?.description || err?.message || "";
+    // Razorpay Subscriptions under RBI mandate rules does not permit in-place plan/amount updates
+    // for card/UPI mandates or domestic cards. Seamlessly fall back to requiring a new checkout.
+    const isMandateRestriction =
+      err?.statusCode === 400 ||
+      err?.error?.code === "BAD_REQUEST_ERROR" ||
+      errorDesc.toLowerCase().includes("mandate") ||
+      errorDesc.toLowerCase().includes("domestic card") ||
+      errorDesc.toLowerCase().includes("card");
+
+    if (isMandateRestriction) {
+      logger.info(
+        "[razorpay-subscription] In-place plan update not permitted by Razorpay mandate rules; prompting new checkout",
+        { uid, rzpSubId, newPlanId, reason: errorDesc }
+      );
+      return {
+        success: false,
+        requiresNewCheckout: true,
+        planId: newPlan.id,
+        planName: newPlan.name,
+        billingCycle: newPlan.billingCycle,
+        scheduleChangeAt,
+      };
+    }
+
     logger.error("[razorpay-subscription] Failed to update Razorpay subscription plan", {
       uid,
       rzpSubId,
       newPlanId,
-      error: err.message,
+      error: errorDesc,
     });
-    throw new AppError(502, `Unable to change subscription plan: ${err.message || "Razorpay update failed"}`);
+    throw new AppError(502, `Unable to change subscription plan: ${errorDesc || "Razorpay update failed"}`);
   }
 
   // 4. Update Firestore documents
