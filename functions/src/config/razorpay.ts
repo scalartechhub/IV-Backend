@@ -3,6 +3,8 @@ import { AppError } from "../shared/utils";
 import { firestoreConfigService } from "./firestore-config.service";
 
 let razorpayInstance: Razorpay | null = null;
+let currentKeyId: string | null = null;
+let currentKeySecret: string | null = null;
 
 export const getRazorpayConfig = () => {
   const config = firestoreConfigService.getRazorpayConfig();
@@ -18,15 +20,29 @@ export const isRazorpayConfigured = (): boolean => {
   return Boolean(keyId && keySecret);
 };
 
-/** Lazily initialized so the app can start when Razorpay env vars are unset (non-payment routes). */
+/** Lazily initialized and automatically reloaded when Firestore configuration changes. */
 export const getRazorpay = (): Razorpay => {
-  if (razorpayInstance) return razorpayInstance;
-
   const { keyId, keySecret } = getRazorpayConfig();
   if (!keyId || !keySecret) {
-    throw new AppError(503, "Payment service is not configured. Please try again later.");
+    razorpayInstance = null;
+    currentKeyId = null;
+    currentKeySecret = null;
+    const missing: string[] = [];
+    if (!keyId) missing.push("keyId");
+    if (!keySecret) missing.push("keySecret");
+    throw new AppError(
+      503,
+      `Razorpay payment configuration is missing: [${missing.join(", ")}]. Please set them in Firestore collection "config", document "razorpay".`
+    );
   }
 
+  // Reuse instance if keys haven't changed
+  if (razorpayInstance && currentKeyId === keyId && currentKeySecret === keySecret) {
+    return razorpayInstance;
+  }
+
+  currentKeyId = keyId;
+  currentKeySecret = keySecret;
   razorpayInstance = new Razorpay({
     key_id: keyId,
     key_secret: keySecret,

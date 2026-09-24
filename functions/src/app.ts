@@ -9,6 +9,7 @@ import { errorMiddleware, notFoundMiddleware } from "./middleware/error.middlewa
 import { logger } from "./shared/logger";
 import { RATE_LIMIT } from "./shared/constants";
 import { appConfig } from "./config/app.config";
+import { firestoreConfigService } from "./config/firestore-config.service";
 import { isCloudRuntime } from "./shared/runtime";
 
 /** On Firebase Functions the function name is `api`, so routes mount at `/` not `/api`. */
@@ -70,6 +71,14 @@ app.set("trust proxy", 1);
 
 app.use(helmet());
 app.use(cors({ origin: parseCorsOrigin(), credentials: true }));
+app.use(async (_req, _res, next) => {
+  try {
+    await firestoreConfigService.ensureFreshConfig();
+  } catch (err: any) {
+    logger.warn("[FirestoreConfigService] Periodic config refresh skipped", { error: err?.message });
+  }
+  next();
+});
 app.use(morgan("combined"));
 app.use((req, res, next) => {
   const limit = req.path.includes("/ocr-jd") ? "15mb" : "1mb";

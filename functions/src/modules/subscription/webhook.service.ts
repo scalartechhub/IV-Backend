@@ -41,7 +41,10 @@ export const handleWebhookEvent = async (
   // 1. Validate signature
   const { webhookSecret } = getRazorpayConfig();
   if (!webhookSecret) {
-    throw new AppError(503, "Webhook secret is not configured.");
+    throw new AppError(
+      503,
+      'Razorpay webhook secret is not configured. Please set "webhookSecret" in Firestore collection "config", document "razorpay".'
+    );
   }
 
   if (!signature) {

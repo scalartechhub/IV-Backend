@@ -1,65 +1,65 @@
-import { z } from "zod";
+import { firestoreConfigService } from "./firestore-config.service";
 
 /**
- * Non-secret application configuration only.
+ * Non-secret application configuration.
+ * Dynamically resolves from Firestore `config` documents with sensible fallbacks.
  * Secrets must be accessed exclusively via secretService.
  */
-const appConfigSchema = z.object({
-  PORT: z.string().default("5000"),
-  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  FIREBASE_STORAGE_BUCKET: z.string().optional(),
-  FB_STORAGE_BUCKET: z.string().optional(),
-  GEMINI_MODEL: z.string().optional(),
-  GEMINI_LIVE_MODEL: z.string().optional(),
-  GEMINI_VOICE_NAME: z.string().default("Charon"),
-  GEMINI_TIMEOUT_MS: z
-    .string()
-    .default("60000")
-    .transform((v) => parseInt(v, 10))
-    .pipe(z.number().int().min(5000).max(300_000)),
-  CORS_ORIGIN: z.string().optional(),
-  JUDGE0_URL: z.string().url().default("http://localhost:2358"),
-  GROQ_MODEL: z.string().default("llama-3.3-70b-versatile"),
-  /** Discord Incoming Webhook URL for error alerting */
-  DISCORD_WEBHOOK_URL: z
-    .string()
-    .optional()
-    .transform((v) => (v && v.trim() ? v.trim() : undefined)),
-  /** Set to "true" to enable Teams alerts in non-production environments */
-  TEAMS_ALERT_IN_DEV: z.string().default("false"),
-  OSM_OVERPASS_URL: z.string().url().optional(),
-  OSM_OVERPASS_FALLBACK_URL: z.string().url().optional(),
-});
-
-
-const parsed = appConfigSchema.safeParse(process.env);
-
-if (!parsed.success) {
-  console.error("Invalid application configuration:");
-  console.error(JSON.stringify(parsed.error.flatten().fieldErrors, null, 2));
-  process.exit(1);
-}
-
-const data = parsed.data;
-
 export const appConfig = {
-  port: parseInt(data.PORT, 10),
-  nodeEnv: data.NODE_ENV,
-  isProduction: data.NODE_ENV === "production",
-  isDevelopment: data.NODE_ENV === "development",
-  firebaseStorageBucket: data.FB_STORAGE_BUCKET || data.FIREBASE_STORAGE_BUCKET,
-  geminiModel: data.GEMINI_MODEL,
-  geminiLiveModel: data.GEMINI_LIVE_MODEL,
-  geminiVoiceName: data.GEMINI_VOICE_NAME,
-  groqModel: data.GROQ_MODEL,
-  geminiTimeoutMs: data.GEMINI_TIMEOUT_MS,
-  corsOrigin: data.CORS_ORIGIN,
-  judge0Url: data.JUDGE0_URL,
-  teamsWebhookUrl: data.DISCORD_WEBHOOK_URL,
-  teamsAlertInDev: data.TEAMS_ALERT_IN_DEV === "true",
-  osmOverpassUrl: data.OSM_OVERPASS_URL,
-  osmOverpassFallbackUrl: data.OSM_OVERPASS_FALLBACK_URL,
-} as const;
-
+  get port(): number {
+    return firestoreConfigService.getAppConfigDoc().port || 5000;
+  },
+  get nodeEnv(): "development" | "production" | "test" {
+    const raw =
+      firestoreConfigService.getAppConfigDoc().nodeEnv ||
+      (process.env.APP_ENV === "production" ? "production" : "development");
+    return raw === "production" || raw === "test" ? raw : "development";
+  },
+  get isProduction(): boolean {
+    return this.nodeEnv === "production";
+  },
+  get isDevelopment(): boolean {
+    return this.nodeEnv === "development";
+  },
+  get firebaseStorageBucket(): string | undefined {
+    return firestoreConfigService.getFirebaseConfig().storageBucket;
+  },
+  get geminiModel(): string | undefined {
+    return firestoreConfigService.getGenAIConfig().model;
+  },
+  get geminiLiveModel(): string | undefined {
+    return firestoreConfigService.getGenAIConfig().liveModel;
+  },
+  get geminiVoiceName(): string {
+    return firestoreConfigService.getGenAIConfig().voiceName || "Charon";
+  },
+  get groqModel(): string {
+    return firestoreConfigService.getGroqConfig().model || "llama-3.3-70b-versatile";
+  },
+  get geminiTimeoutMs(): number {
+    return firestoreConfigService.getGenAIConfig().timeoutMs || 120000;
+  },
+  get corsOrigin(): string | undefined {
+    return firestoreConfigService.getAppConfigDoc().corsOrigin;
+  },
+  get judge0Url(): string {
+    return firestoreConfigService.getJudge0Config().url || "http://34.180.31.202:2358/";
+  },
+  get teamsWebhookUrl(): string | undefined {
+    return firestoreConfigService.getDiscordConfig().webhookUrl;
+  },
+  get teamsAlertInDev(): boolean {
+    return false;
+  },
+  get osmOverpassUrl(): string | undefined {
+    return firestoreConfigService.getOSMConfig().overpassUrl || "https://overpass-api.de/api/interpreter";
+  },
+  get osmOverpassFallbackUrl(): string | undefined {
+    return firestoreConfigService.getOSMConfig().overpassFallbackUrl || "https://overpass.kumi.systems/api/interpreter";
+  },
+  get frontendUrl(): string | undefined {
+    return firestoreConfigService.getAppConfigDoc().frontendUrl;
+  },
+};
 
 export type AppConfig = typeof appConfig;

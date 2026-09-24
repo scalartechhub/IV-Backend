@@ -1,40 +1,21 @@
-import fs from "fs";
-import path from "path";
-import { config as loadEnv } from "dotenv";
+/**
+ * Application environment initializer.
+ *
+ * NOTE: Configuration is loaded dynamically from Firestore's `config` collection
+ * during application bootstrap. Local .env files are NOT loaded.
+ *
+ * APP_ENV specifies the target environment:
+ *   - 'dev' | 'development' (default) -> Target project: interview-89e09
+ *   - 'prod' | 'production'           -> Target project: interview-prod-dd24f
+ */
+const rawEnv = (process.env.APP_ENV || process.env.NODE_ENV || "").trim().toLowerCase();
 
-const appEnv = (process.env.APP_ENV || "").trim().toLowerCase();
-
-const candidates: string[] = [];
-
-if (appEnv === "dev" || appEnv === "development") {
-  candidates.push(
-    path.resolve(__dirname, "../../.env.dev"),
-    path.resolve(__dirname, "../../.env.development"),
-    path.resolve(__dirname, "../.env.dev"),
-    path.resolve(__dirname, "../.env.interview-89e09")
-  );
-} else if (appEnv === "prod" || appEnv === "production") {
-  candidates.push(
-    path.resolve(__dirname, "../../.env.production"),
-    path.resolve(__dirname, "../.env.production"),
-    path.resolve(__dirname, "../.env.interview-prod-dd24f")
-  );
-}
-
-// Default fallbacks
-candidates.push(
-  path.resolve(__dirname, "../../.env"),
-  path.resolve(__dirname, "../.env"),
-  path.resolve(__dirname, "../../.env.dev"),
-  path.resolve(__dirname, "../.env.interview-89e09")
-);
-
-const matchedPath = candidates.find((p) => fs.existsSync(p));
-
-if (matchedPath) {
-  loadEnv({ path: matchedPath });
-  console.log(`[EnvLoader] Loaded environment variables from: ${matchedPath}`);
+if (rawEnv === "prod" || rawEnv === "production") {
+  process.env.APP_ENV = "production";
 } else {
-  loadEnv();
-  console.log("[EnvLoader] Using system process.env");
+  process.env.APP_ENV = "dev";
 }
+
+console.log(
+  `[EnvLoader] Active APP_ENV=${process.env.APP_ENV} (Configuration sourced exclusively from Firestore config)`
+);

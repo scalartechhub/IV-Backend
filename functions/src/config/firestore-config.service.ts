@@ -24,6 +24,10 @@ export interface RazorpayConfig {
   keyId?: string;
   keySecret?: string;
   webhookSecret?: string;
+  proMonthlyPlanId?: string;
+  proYearlyPlanId?: string;
+  eliteMonthlyPlanId?: string;
+  eliteYearlyPlanId?: string;
 }
 
 export interface GroqConfig {
@@ -38,10 +42,28 @@ export interface Judge0Config {
 export interface FirebaseClientConfig {
   apiKey?: string;
   storageBucket?: string;
+  projectId?: string;
+  authDomain?: string;
+  messagingSenderId?: string;
+  appId?: string;
+  measurementId?: string;
 }
 
 export interface DiscordConfig {
   webhookUrl?: string;
+}
+
+export interface AppConfigDoc {
+  port?: number;
+  nodeEnv?: string;
+  corsOrigin?: string;
+  frontendUrl?: string;
+}
+
+export interface OSMConfig {
+  overpassUrl?: string;
+  overpassFallbackUrl?: string;
+  timeoutMs?: number;
 }
 
 export interface FirestoreConfigMap {
@@ -52,42 +74,56 @@ export interface FirestoreConfigMap {
   judge0: Judge0Config;
   firebase: FirebaseClientConfig;
   discord: DiscordConfig;
+  app: AppConfigDoc;
+  osm: OSMConfig;
 }
 
 class FirestoreConfigService {
   private configCache: Partial<FirestoreConfigMap> = {};
   private loaded = false;
+  private lastFetchTime = 0;
+  private readonly CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes cache TTL
 
   clearCache(): void {
     this.loaded = false;
+    this.lastFetchTime = 0;
     this.configCache = {};
   }
 
   async refreshConfig(): Promise<FirestoreConfigMap> {
     this.clearCache();
-    return this.loadConfigFromFirestore();
+    return this.loadConfigFromFirestore(true);
+  }
+
+  /**
+   * Ensures the configuration is loaded and not older than CACHE_TTL_MS.
+   * If expired or not yet loaded, automatically refreshes from Firestore.
+   */
+  async ensureFreshConfig(): Promise<FirestoreConfigMap> {
+    const isExpired = Date.now() - this.lastFetchTime > this.CACHE_TTL_MS;
+    if (!this.loaded || isExpired) {
+      return this.loadConfigFromFirestore(true);
+    }
+    return this.configCache as FirestoreConfigMap;
   }
 
   /**
    * Fetches all configuration documents from the 'config' collection in Firestore.
-   * If a document or key is missing, falls back to process.env.
-   * Caches results in memory for subsequent synchronous or fast access.
+   * Caches results in memory with a 3-minute TTL so changes in Firestore are picked up automatically.
    */
   async loadConfigFromFirestore(forceRefresh = false): Promise<FirestoreConfigMap> {
+    const isExpired = Date.now() - this.lastFetchTime > this.CACHE_TTL_MS;
+    if (this.loaded && !forceRefresh && !isExpired) {
+      return this.configCache as FirestoreConfigMap;
+    }
+
     if (forceRefresh) {
       this.clearCache();
     }
 
-    if (this.loaded) {
-      return this.configCache as FirestoreConfigMap;
-    }
-
     try {
       if (!db) {
-        logger.warn("[FirestoreConfigService] Firestore db not initialized yet. Using process.env fallbacks.");
-        this.populateFromEnv();
-        this.loaded = true;
-        return this.configCache as FirestoreConfigMap;
+        throw new Error("[FirestoreConfigService] Firestore database is not initialized. Cannot load config collection.");
       }
 
       const snapshot = await db.collection("config").get();
@@ -99,6 +135,7 @@ class FirestoreConfigService {
 
       // Parse GenAI Config
       const genaiDoc = docsData["genai"] || {};
+      const aiDoc = docsData["ai"] || {};
       const parseFallbackModels = (val: any): string[] => {
         if (Array.isArray(val) && val.length > 0) {
           return val.map((s) => String(s).trim()).filter(Boolean);
@@ -110,63 +147,84 @@ class FirestoreConfigService {
       };
 
       const genaiConfig: GenAIConfig = {
-        apiKey: genaiDoc.apiKey || genaiDoc.GEMINI_API_KEY || process.env.GEMINI_API_KEY,
-        model: genaiDoc.model || genaiDoc.GEMINI_MODEL || process.env.GEMINI_MODEL,
-        liveModel: genaiDoc.liveModel || genaiDoc.GEMINI_LIVE_MODEL || process.env.GEMINI_LIVE_MODEL,
-        fallbackModels: parseFallbackModels(genaiDoc.fallbackModels || genaiDoc.GEMINI_FALLBACK_MODELS || process.env.GEMINI_FALLBACK_MODELS),
-        voiceName: genaiDoc.voiceName || genaiDoc.GEMINI_VOICE_NAME || process.env.GEMINI_VOICE_NAME || "Charon",
-        timeoutMs: genaiDoc.timeoutMs ? Number(genaiDoc.timeoutMs) : (process.env.GEMINI_TIMEOUT_MS ? Number(process.env.GEMINI_TIMEOUT_MS) : 120000),
-        resumeModel: genaiDoc.resumeModel || genaiDoc.RESUME_GEMINI_MODEL || process.env.RESUME_GEMINI_MODEL,
+        apiKey: genaiDoc.apiKey || genaiDoc.GEMINI_API_KEY || aiDoc.geminiApiKey || "",
+        model: genaiDoc.model || genaiDoc.GEMINI_MODEL || "gemini-3.6-flash",
+        liveModel: genaiDoc.liveModel || genaiDoc.GEMINI_LIVE_MODEL || "gemini-2.5-flash-native-audio-preview-12-2025",
+        fallbackModels: parseFallbackModels(genaiDoc.fallbackModels || genaiDoc.GEMINI_FALLBACK_MODELS),
+        voiceName: genaiDoc.voiceName || genaiDoc.GEMINI_VOICE_NAME || "Charon",
+        timeoutMs: genaiDoc.timeoutMs ? Number(genaiDoc.timeoutMs) : 120000,
+        resumeModel: genaiDoc.resumeModel || genaiDoc.RESUME_GEMINI_MODEL || "gemini-3.6-flash",
       };
 
-      // Parse Razorpay Config
+      // Parse Razorpay Config (exclusively from 'config/razorpay')
       const razorpayDoc = docsData["razorpay"] || {};
       const razorpayConfig: RazorpayConfig = {
-        keyId: razorpayDoc.keyId || razorpayDoc.RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID,
-        keySecret: razorpayDoc.keySecret || razorpayDoc.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_KEY_SECRET,
-        webhookSecret: razorpayDoc.webhookSecret || razorpayDoc.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_WEBHOOK_SECRET,
+        keyId: razorpayDoc.keyId || razorpayDoc.RAZORPAY_KEY_ID || "",
+        keySecret: razorpayDoc.keySecret || razorpayDoc.RAZORPAY_KEY_SECRET || "",
+        webhookSecret: razorpayDoc.webhookSecret || razorpayDoc.RAZORPAY_WEBHOOK_SECRET || "",
+        proMonthlyPlanId: razorpayDoc.proMonthlyPlanId || razorpayDoc.RAZORPAY_PRO_MONTHLY_PLAN_ID,
+        proYearlyPlanId: razorpayDoc.proYearlyPlanId || razorpayDoc.RAZORPAY_PRO_YEARLY_PLAN_ID,
+        eliteMonthlyPlanId: razorpayDoc.eliteMonthlyPlanId || razorpayDoc.RAZORPAY_ELITE_MONTHLY_PLAN_ID,
+        eliteYearlyPlanId: razorpayDoc.eliteYearlyPlanId || razorpayDoc.RAZORPAY_ELITE_YEARLY_PLAN_ID,
       };
 
       // Parse Groq Config
       const groqDoc = docsData["groq"] || {};
       const groqConfig: GroqConfig = {
-        apiKey: groqDoc.apiKey || groqDoc.GROQ_API_KEY || process.env.GROQ_API_KEY,
-        model: groqDoc.model || groqDoc.GROQ_MODEL || process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+        apiKey: groqDoc.apiKey || groqDoc.GROQ_API_KEY || aiDoc.groqApiKey || "",
+        model: groqDoc.model || groqDoc.GROQ_MODEL || "llama-3.3-70b-versatile",
       };
 
       // Parse Judge0 Config
       const judge0Doc = docsData["judge0"] || {};
       const judge0Config: Judge0Config = {
-        url: judge0Doc.url || judge0Doc.JUDGE0_URL || process.env.JUDGE0_URL || "http://localhost:2358",
+        url: judge0Doc.url || judge0Doc.JUDGE0_URL || "http://34.180.31.202:2358/",
       };
 
       // Parse Firebase Client Config
       const firebaseDoc = docsData["firebase"] || {};
       const firebaseConfig: FirebaseClientConfig = {
-        apiKey: firebaseDoc.apiKey || firebaseDoc.FIREBASE_API_KEY || firebaseDoc.FB_API_KEY || process.env.FIREBASE_API_KEY || process.env.FB_API_KEY,
-        storageBucket: firebaseDoc.storageBucket || firebaseDoc.FIREBASE_STORAGE_BUCKET || firebaseDoc.FB_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || process.env.FB_STORAGE_BUCKET,
+        apiKey: firebaseDoc.apiKey || firebaseDoc.FIREBASE_API_KEY || firebaseDoc.FB_API_KEY || firebaseDoc.firebaseApiKey || "",
+        storageBucket: firebaseDoc.storageBucket || firebaseDoc.FIREBASE_STORAGE_BUCKET || firebaseDoc.firebaseStorageBucket || "",
+        projectId: firebaseDoc.projectId || firebaseDoc.FIREBASE_PROJECT_ID || firebaseDoc.FB_PROJECT_ID || "",
+        authDomain: firebaseDoc.authDomain || firebaseDoc.FIREBASE_AUTH_DOMAIN || "",
+        messagingSenderId: firebaseDoc.messagingSenderId || firebaseDoc.FIREBASE_MESSAGING_SENDER_ID || "",
+        appId: firebaseDoc.appId || firebaseDoc.FIREBASE_APP_ID || "",
+        measurementId: firebaseDoc.measurementId || firebaseDoc.FIREBASE_MEASUREMENT_ID || "",
       };
 
       // Parse Discord Config (reads from 'discord' or 'alerts' document in 'config' collection)
       const discordDoc = docsData["discord"] || docsData["alerts"] || {};
       const discordConfig: DiscordConfig = {
-        webhookUrl:
-          discordDoc.webhookUrl ||
-          discordDoc.DISCORD_WEBHOOK_URL ||
-          discordDoc.webhook_url ||
-          discordDoc.url ||
-          process.env.DISCORD_WEBHOOK_URL,
+        webhookUrl: discordDoc.webhookUrl || discordDoc.DISCORD_WEBHOOK_URL || discordDoc.webhook_url || discordDoc.url || "",
       };
 
       // Parse SMTP Config
       const smtpDoc = docsData["smtp"] || {};
       const smtpConfig: SMTPConfig = {
-        host: smtpDoc.host || smtpDoc.SMTP_HOST || process.env.SMTP_HOST,
-        port: smtpDoc.port ? Number(smtpDoc.port) : (process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined),
-        secure: smtpDoc.secure !== undefined ? Boolean(smtpDoc.secure) : (process.env.SMTP_SECURE === 'true'),
-        user: smtpDoc.user || smtpDoc.SMTP_USER || process.env.SMTP_USER,
-        pass: smtpDoc.pass || smtpDoc.SMTP_PASS || process.env.SMTP_PASS,
-        from: smtpDoc.from || smtpDoc.SMTP_FROM || process.env.SMTP_FROM,
+        host: smtpDoc.host || smtpDoc.SMTP_HOST || "smtp.gmail.com",
+        port: smtpDoc.port ? Number(smtpDoc.port) : 465,
+        secure: smtpDoc.secure !== undefined ? Boolean(smtpDoc.secure) : true,
+        user: smtpDoc.user || smtpDoc.SMTP_USER || "",
+        pass: smtpDoc.pass || smtpDoc.SMTP_PASS || "",
+        from: smtpDoc.from || smtpDoc.SMTP_FROM || "",
+      };
+
+      // Parse App Config
+      const appDoc = docsData["app"] || {};
+      const appConfigDoc: AppConfigDoc = {
+        port: appDoc.port ? Number(appDoc.port) : 5000,
+        nodeEnv: appDoc.nodeEnv || (process.env.APP_ENV === "production" ? "production" : "development"),
+        corsOrigin: appDoc.corsOrigin || "",
+        frontendUrl: appDoc.frontendUrl || appDoc.IV_FRONTEND_URL || "",
+      };
+
+      // Parse OSM Config
+      const osmDoc = docsData["osm"] || {};
+      const osmConfig: OSMConfig = {
+        overpassUrl: osmDoc.overpassUrl || osmDoc.OSM_OVERPASS_URL || "https://overpass-api.de/api/interpreter",
+        overpassFallbackUrl: osmDoc.overpassFallbackUrl || osmDoc.OSM_OVERPASS_FALLBACK_URL || "https://overpass.kumi.systems/api/interpreter",
+        timeoutMs: osmDoc.timeoutMs ? Number(osmDoc.timeoutMs) : 25000,
       };
 
       this.configCache = {
@@ -177,72 +235,28 @@ class FirestoreConfigService {
         judge0: judge0Config,
         firebase: firebaseConfig,
         discord: discordConfig,
+        app: appConfigDoc,
+        osm: osmConfig,
       };
 
-      // Sync to process.env for third-party libraries reading directly from environment
+      // Sync to process.env for third-party libraries reading directly from environment in Node runtime
       this.syncToProcessEnv();
 
       this.loaded = true;
+      this.lastFetchTime = Date.now();
       logger.info("[FirestoreConfigService] Successfully loaded configuration documents from Firestore.");
     } catch (err: any) {
-      logger.error("[FirestoreConfigService] Failed to load config from Firestore, falling back to process.env", {
+      logger.error("[FirestoreConfigService] Failed to load config from Firestore", {
         error: err.message,
       });
-      this.populateFromEnv();
-      this.loaded = true;
+      throw err;
     }
 
     return this.configCache as FirestoreConfigMap;
   }
 
-  private populateFromEnv(): void {
-    const rawFallback = process.env.GEMINI_FALLBACK_MODELS;
-    const fallbackModels = rawFallback
-      ? rawFallback.split(",").map((s) => s.trim()).filter(Boolean)
-      : [];
-
-    this.configCache = {
-      genai: {
-        apiKey: process.env.GEMINI_API_KEY,
-        model: process.env.GEMINI_MODEL,
-        fallbackModels,
-        liveModel: process.env.GEMINI_LIVE_MODEL,
-        voiceName: process.env.GEMINI_VOICE_NAME || "Charon",
-        timeoutMs: process.env.GEMINI_TIMEOUT_MS ? Number(process.env.GEMINI_TIMEOUT_MS) : 120000,
-        resumeModel: process.env.RESUME_GEMINI_MODEL,
-      },
-      smtp: {
-        host: process.env.SMTP_HOST,
-        port: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined,
-        secure: process.env.SMTP_SECURE === 'true',
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-        from: process.env.SMTP_FROM,
-      },
-      razorpay: {
-        keyId: process.env.RAZORPAY_KEY_ID,
-        keySecret: process.env.RAZORPAY_KEY_SECRET,
-        webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
-      },
-      groq: {
-        apiKey: process.env.GROQ_API_KEY,
-        model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
-      },
-      judge0: {
-        url: process.env.JUDGE0_URL || "http://localhost:2358",
-      },
-      firebase: {
-        apiKey: process.env.FIREBASE_API_KEY || process.env.FB_API_KEY,
-        storageBucket: process.env.FIREBASE_STORAGE_BUCKET || process.env.FB_STORAGE_BUCKET,
-      },
-      discord: {
-        webhookUrl: process.env.DISCORD_WEBHOOK_URL,
-      },
-    };
-  }
-
   private syncToProcessEnv(): void {
-    const { genai, smtp, razorpay, groq, judge0, firebase, discord } = this.configCache;
+    const { genai, smtp, razorpay, groq, judge0, firebase, discord, app, osm } = this.configCache;
 
     if (genai?.apiKey) process.env.GEMINI_API_KEY = genai.apiKey;
     if (genai?.model) process.env.GEMINI_MODEL = genai.model;
@@ -262,6 +276,10 @@ class FirestoreConfigService {
     if (razorpay?.keyId) process.env.RAZORPAY_KEY_ID = razorpay.keyId;
     if (razorpay?.keySecret) process.env.RAZORPAY_KEY_SECRET = razorpay.keySecret;
     if (razorpay?.webhookSecret) process.env.RAZORPAY_WEBHOOK_SECRET = razorpay.webhookSecret;
+    if (razorpay?.proMonthlyPlanId) process.env.RAZORPAY_PRO_MONTHLY_PLAN_ID = razorpay.proMonthlyPlanId;
+    if (razorpay?.proYearlyPlanId) process.env.RAZORPAY_PRO_YEARLY_PLAN_ID = razorpay.proYearlyPlanId;
+    if (razorpay?.eliteMonthlyPlanId) process.env.RAZORPAY_ELITE_MONTHLY_PLAN_ID = razorpay.eliteMonthlyPlanId;
+    if (razorpay?.eliteYearlyPlanId) process.env.RAZORPAY_ELITE_YEARLY_PLAN_ID = razorpay.eliteYearlyPlanId;
 
     if (groq?.apiKey) process.env.GROQ_API_KEY = groq.apiKey;
     if (groq?.model) process.env.GROQ_MODEL = groq.model;
@@ -276,44 +294,57 @@ class FirestoreConfigService {
       process.env.FIREBASE_STORAGE_BUCKET = firebase.storageBucket;
       process.env.FB_STORAGE_BUCKET = firebase.storageBucket;
     }
+    if (firebase?.projectId) {
+      process.env.FIREBASE_PROJECT_ID = firebase.projectId;
+      process.env.FB_PROJECT_ID = firebase.projectId;
+    }
+    if (firebase?.authDomain) {
+      process.env.FIREBASE_AUTH_DOMAIN = firebase.authDomain;
+      process.env.FB_AUTH_DOMAIN = firebase.authDomain;
+    }
     if (discord?.webhookUrl) {
       process.env.DISCORD_WEBHOOK_URL = discord.webhookUrl;
     }
+
+    if (osm?.overpassUrl) process.env.OSM_OVERPASS_URL = osm.overpassUrl;
+    if (osm?.overpassFallbackUrl) process.env.OSM_OVERPASS_FALLBACK_URL = osm.overpassFallbackUrl;
+    if (osm?.timeoutMs) process.env.OVERPASS_TIMEOUT_MS = String(osm.timeoutMs);
   }
 
   getGenAIConfig(): GenAIConfig {
-    if (!this.loaded) this.populateFromEnv();
     return this.configCache.genai || {};
   }
 
   getSMTPConfig(): SMTPConfig {
-    if (!this.loaded) this.populateFromEnv();
     return this.configCache.smtp || {};
   }
 
   getRazorpayConfig(): RazorpayConfig {
-    if (!this.loaded) this.populateFromEnv();
     return this.configCache.razorpay || {};
   }
 
   getGroqConfig(): GroqConfig {
-    if (!this.loaded) this.populateFromEnv();
     return this.configCache.groq || {};
   }
 
   getJudge0Config(): Judge0Config {
-    if (!this.loaded) this.populateFromEnv();
     return this.configCache.judge0 || {};
   }
 
   getFirebaseConfig(): FirebaseClientConfig {
-    if (!this.loaded) this.populateFromEnv();
     return this.configCache.firebase || {};
   }
 
   getDiscordConfig(): DiscordConfig {
-    if (!this.loaded) this.populateFromEnv();
     return this.configCache.discord || {};
+  }
+
+  getAppConfigDoc(): AppConfigDoc {
+    return this.configCache.app || {};
+  }
+
+  getOSMConfig(): OSMConfig {
+    return this.configCache.osm || {};
   }
 }
 

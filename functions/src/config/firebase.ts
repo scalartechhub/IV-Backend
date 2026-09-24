@@ -23,24 +23,25 @@ export { admin };
 let _initialized = false;
 
 export const getStorageBucket = (): string | undefined => {
-  const fromFirestore = firestoreConfigService.getFirebaseConfig()?.storageBucket;
-  const raw =
-    fromFirestore ||
-    appConfig.firebaseStorageBucket ||
-    process.env.FB_STORAGE_BUCKET ||
-    process.env.FIREBASE_STORAGE_BUCKET ||
-    "";
+  const raw = firestoreConfigService.getFirebaseConfig()?.storageBucket || "";
   const cleaned = raw.replace(/^gs:\/\//, "").trim();
   return cleaned || undefined;
 };
 
-const getTargetProjectId = (): string | undefined => {
-  return (
+const getTargetProjectId = (): string => {
+  const explicit = (
     process.env.FB_PROJECT_ID ||
     process.env.FIREBASE_PROJECT_ID ||
     process.env.GCLOUD_PROJECT ||
     ""
-  ).trim() || undefined;
+  ).trim();
+  if (explicit) return explicit;
+
+  const appEnv = (process.env.APP_ENV || "").trim().toLowerCase();
+  if (appEnv === "prod" || appEnv === "production") {
+    return "interview-prod-dd24f";
+  }
+  return "interview-89e09";
 };
 
 const findServiceAccountPath = (targetProjectId?: string): string | null => {

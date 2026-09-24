@@ -211,17 +211,39 @@ const plans = [
 
 async function seedPlans() {
   console.log("🌱 Seeding/Updating Firestore plans collection...\n");
+  console.log("Reading configuration from Firestore collection 'config', document 'razorpay'...\n");
+
+  const rzpConfigDoc = await db.collection("config").doc("razorpay").get();
+  const rzpConfig = rzpConfigDoc.exists ? rzpConfigDoc.data() : {};
+
+  const planKeyCamelMap = {
+    pro_monthly: "proMonthlyPlanId",
+    pro_yearly: "proYearlyPlanId",
+    elite_monthly: "eliteMonthlyPlanId",
+    elite_yearly: "eliteYearlyPlanId",
+  };
+
+  const planKeyUpperMap = {
+    pro_monthly: "RAZORPAY_PRO_MONTHLY_PLAN_ID",
+    pro_yearly: "RAZORPAY_PRO_YEARLY_PLAN_ID",
+    elite_monthly: "RAZORPAY_ELITE_MONTHLY_PLAN_ID",
+    elite_yearly: "RAZORPAY_ELITE_YEARLY_PLAN_ID",
+  };
 
   for (const plan of plans) {
     const docRef = db.collection("plans").doc(plan.id);
     const existingSnap = await docRef.get();
     const existingData = existingSnap.exists ? existingSnap.data() : {};
 
-    // Preserve existing razorpayPlanId if already set in Firestore
+    const camelKey = planKeyCamelMap[plan.id];
+    const upperKey = planKeyUpperMap[plan.id];
+    const configPlanId = camelKey ? (rzpConfig[camelKey] || rzpConfig[upperKey]) : undefined;
+
+    // Prioritize ID from config/razorpay so updates in config take effect; fall back to existing data if unset in config
     const razorpayPlanId =
-      existingData?.razorpayPlanId ||
-      process.env[`RAZORPAY_${plan.id.toUpperCase()}_PLAN_ID`] ||
-      undefined;
+      configPlanId && String(configPlanId).trim()
+        ? String(configPlanId).trim()
+        : (existingData?.razorpayPlanId || undefined);
 
     const dataToSave = {
       ...plan,
@@ -233,8 +255,16 @@ async function seedPlans() {
     }
 
     await docRef.set(dataToSave, { merge: true });
+
+    const sourceLabel =
+      configPlanId && String(configPlanId).trim()
+        ? "from config/razorpay"
+        : existingData?.razorpayPlanId
+        ? "from existing plan"
+        : "not configured";
+
     console.log(
-      `  ✅ plans/${plan.id} — ${plan.name} (${plan.billingCycle}) | Limit: ${plan.monthlyInterviewLimit ?? "∞"} interviews, ${plan.monthlyResumeAnalysisLimit ?? "∞"} resumes | Razorpay Plan: ${razorpayPlanId || "(none)"}`
+      `  ✅ plans/${plan.id.padEnd(14)} — ${plan.name.padEnd(5)} (${plan.billingCycle.padEnd(7)}) | Razorpay Plan: ${(razorpayPlanId || "(none)").padEnd(24)} [${sourceLabel}]`
     );
   }
 

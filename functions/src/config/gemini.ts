@@ -11,14 +11,12 @@ const SECONDARY_FALLBACK_MODEL = "gemini-1.5-flash";
 export function getActiveGeminiModel(): string {
   const model = (
     firestoreConfigService.getGenAIConfig().model ||
-    appConfig.geminiModel ||
-    process.env.GEMINI_MODEL ||
     ""
   ).trim();
   if (!model) {
     throw new AppError(
       503,
-      'Gemini AI model is not configured. Please set the "model" field in Firestore collection "config", document "genai" (e.g. "gemini-2.0-flash").'
+      'Gemini AI model is not configured. Please set the "model" field in Firestore collection "config", document "genai" (e.g. "gemini-3.6-flash").'
     );
   }
   return model;
@@ -33,20 +31,31 @@ export function getGeminiFallbackModels(): readonly string[] {
   return [primary];
 }
 
-export const GEMINI_REQUEST_TIMEOUT_MS = appConfig.geminiTimeoutMs;
+export const GEMINI_REQUEST_TIMEOUT_MS = 120000;
+export const getGeminiRequestTimeoutMs = (): number => appConfig.geminiTimeoutMs;
 
 let _genai: GoogleGenAI | null = null;
+let _currentApiKey: string | null = null;
 
 export const initializeGemini = (): void => {
-  if (_genai) return;
-  const apiKey = firestoreConfigService.getGenAIConfig().apiKey || secretService.getGeminiApiKey();
+  const apiKey = (firestoreConfigService.getGenAIConfig().apiKey || secretService.getGeminiApiKey() || "").trim();
+  if (!apiKey) {
+    _genai = null;
+    _currentApiKey = null;
+    throw new AppError(
+      503,
+      'Gemini AI API key is not configured. Please set the "apiKey" field in Firestore collection "config", document "genai".'
+    );
+  }
+  if (_genai && _currentApiKey === apiKey) {
+    return;
+  }
+  _currentApiKey = apiKey;
   _genai = new GoogleGenAI({ apiKey });
 };
 
 export const getGenAI = (): GoogleGenAI => {
-  if (!_genai) {
-    initializeGemini();
-  }
+  initializeGemini();
   return _genai!;
 };
 
@@ -113,6 +122,7 @@ export const geminiModel = {
 
         return parseModelJson<T>(rawText);
       } catch (error) {
+        if (error instanceof AppError) throw error;
         lastError = error instanceof Error ? error : new Error(String(error));
         logger.warn(
           `[geminiService] Model ${model} failed, trying next fallback`,
@@ -124,9 +134,22 @@ export const geminiModel = {
     }
 
     logger.error("[geminiService] All models failed to generate JSON");
+    const rawMsg = lastError?.message || "Unknown error";
+    if (rawMsg.includes("API key not valid") || rawMsg.includes("API_KEY_INVALID")) {
+      throw new AppError(
+        502,
+        'Invalid Gemini API key. Please check the "apiKey" field in Firestore collection "config", document "genai".'
+      );
+    }
+    if (rawMsg.includes("RESOURCE_EXHAUSTED") || rawMsg.includes("quota")) {
+      throw new AppError(
+        429,
+        'Gemini API quota exceeded for configured model. Please check API quota or configure "fallbackModels" in Firestore collection "config", document "genai".'
+      );
+    }
     throw new AppError(
       502,
-      `AI analysis failed: ${lastError?.message || "Unknown error"}`,
+      `AI analysis failed: ${rawMsg}`,
     );
   },
 };

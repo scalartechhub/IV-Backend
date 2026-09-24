@@ -71,8 +71,12 @@ export interface SubscriptionPlan {
   discountPercent: number;
   billingDescription?: string;
   description: string;
-  /** Razorpay plan ID — never exposed to frontend. */
+  /** Razorpay plan ID (INR) — never exposed to frontend. */
   razorpayPlanId?: string;
+  /** Razorpay plan ID (USD) — for international subscribers. */
+  razorpayPlanIdUsd?: string;
+  /** USD amount (in dollars). */
+  amountUsd?: number;
   active: boolean;
   features?: string[];
 }

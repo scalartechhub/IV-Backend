@@ -87,11 +87,20 @@ if (missingKeys.length > 0) {
 
 // 2. Initialize Firebase Admin SDK
 function initFirebase() {
-  const targetProjectId = envValues.FB_PROJECT_ID || envValues.FIREBASE_PROJECT_ID;
+  const targetProjectId =
+    envValues.FB_PROJECT_ID ||
+    envValues.FIREBASE_PROJECT_ID ||
+    (envArg === "dev" || envArg === "development"
+      ? "interview-89e09"
+      : envArg === "prod" || envArg === "production"
+      ? "interview-prod-dd24f"
+      : undefined);
 
   const saCandidates = [
     targetProjectId ? path.resolve(__dirname, "..", `firebase-service-account.${targetProjectId}.json`) : null,
     targetProjectId === "interview-89e09" ? path.resolve(__dirname, "..", "firebase-service-account.dev.json") : null,
+    targetProjectId === "interview-89e09" ? path.resolve(__dirname, "..", "firebase-service-account.interview-89e09.json") : null,
+    targetProjectId === "interview-prod-dd24f" ? path.resolve(__dirname, "..", "firebase-service-account.interview-prod-dd24f.json") : null,
     process.env.GOOGLE_APPLICATION_CREDENTIALS,
     path.resolve(__dirname, "..", "firebase-service-account.json"),
     path.resolve(__dirname, "..", "..", "firebase-service-account.json"),
@@ -163,6 +172,10 @@ async function syncToFirestore() {
       keyId: envValues.RAZORPAY_KEY_ID,
       keySecret: envValues.RAZORPAY_KEY_SECRET,
       webhookSecret: envValues.RAZORPAY_WEBHOOK_SECRET,
+      proMonthlyPlanId: envValues.RAZORPAY_PRO_MONTHLY_PLAN_ID,
+      proYearlyPlanId: envValues.RAZORPAY_PRO_YEARLY_PLAN_ID,
+      eliteMonthlyPlanId: envValues.RAZORPAY_ELITE_MONTHLY_PLAN_ID,
+      eliteYearlyPlanId: envValues.RAZORPAY_ELITE_YEARLY_PLAN_ID,
     },
     groq: {
       apiKey: envValues.GROQ_API_KEY,
@@ -174,9 +187,25 @@ async function syncToFirestore() {
     firebase: {
       apiKey: envValues.FB_API_KEY || envValues.FIREBASE_API_KEY,
       storageBucket: envValues.FB_STORAGE_BUCKET || envValues.FIREBASE_STORAGE_BUCKET,
+      projectId: envValues.FB_PROJECT_ID || envValues.FIREBASE_PROJECT_ID,
+      authDomain: envValues.FB_AUTH_DOMAIN || envValues.FIREBASE_AUTH_DOMAIN,
+      messagingSenderId: envValues.FB_MESSAGING_SENDER_ID || envValues.FIREBASE_MESSAGING_SENDER_ID,
+      appId: envValues.FB_APP_ID || envValues.FIREBASE_APP_ID,
+      measurementId: envValues.FB_MEASUREMENT_ID || envValues.FIREBASE_MEASUREMENT_ID,
     },
     discord: {
       webhookUrl: envValues.DISCORD_WEBHOOK_URL,
+    },
+    app: {
+      port: envValues.PORT ? Number(envValues.PORT) : 5000,
+      nodeEnv: envValues.NODE_ENV || (envArg === "prod" || envArg === "production" ? "production" : "development"),
+      corsOrigin: envValues.CORS_ORIGIN,
+      frontendUrl: envValues.IV_FRONTEND_URL,
+    },
+    osm: {
+      overpassUrl: envValues.OSM_OVERPASS_URL || envValues.OVERPASS_API_URL,
+      overpassFallbackUrl: envValues.OSM_OVERPASS_FALLBACK_URL || envValues.OVERPASS_FALLBACK_API_URL,
+      timeoutMs: envValues.OVERPASS_TIMEOUT_MS ? Number(envValues.OVERPASS_TIMEOUT_MS) : undefined,
     },
   };
 

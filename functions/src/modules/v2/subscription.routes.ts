@@ -33,6 +33,7 @@ const router = Router();
 
 const createSubSchema = z.object({
   planId: z.string().min(1, "Plan ID is required"),
+  currency: z.enum(["USD"]).optional().default("USD"),
 });
 
 const changePlanSchema = z.object({
@@ -100,8 +101,12 @@ router.post(
   "/subscriptions/create",
   validate(createSubSchema),
   asyncHandler(async (req, res) => {
-    const { planId } = req.body as z.infer<typeof createSubSchema>;
-    const result = await razorpaySubscriptionService.createSubscription(req.user!.uid, planId);
+    const { planId, currency } = req.body as z.infer<typeof createSubSchema>;
+    const result = await razorpaySubscriptionService.createSubscription(
+      req.user!.uid,
+      planId,
+      currency
+    );
     sendCreated(res, result, "Subscription initiated");
   })
 );

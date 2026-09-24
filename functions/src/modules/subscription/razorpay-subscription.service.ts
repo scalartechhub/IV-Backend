@@ -98,7 +98,8 @@ export const getActivePlans = async (): Promise<PlanPublicInfo[]> => {
 
 export const createSubscription = async (
   uid: string,
-  planId: BillingPlanIdWithCycle | string
+  planId: BillingPlanIdWithCycle | string,
+  preferredCurrency: "USD" = "USD"
 ): Promise<CreateSubscriptionResponse> => {
   // 1. Validate plan
   if (planId === BILLING_PLAN_IDS.FREE) {
@@ -114,8 +115,19 @@ export const createSubscription = async (
   if (!plan.active) {
     throw new AppError(400, "This plan is currently unavailable. Please try another plan.");
   }
-  if (!plan.razorpayPlanId) {
-    throw new AppError(503, "Payment configuration is incomplete for this plan. Please contact support.");
+
+  // Use USD Razorpay plan
+  const rzpPlanId = plan.razorpayPlanIdUsd || plan.razorpayPlanId;
+  const currency = "USD";
+  const chargeAmount = plan.billingCycle === "yearly"
+    ? (plan.annualAmount || plan.displayPrice || 80)
+    : (plan.displayPrice || 8.34);
+
+  if (!rzpPlanId) {
+    throw new AppError(
+      503,
+      `Razorpay recurring plan ID is not configured for plan "${plan.name || plan.id}". Please check Firestore collection "plans" or document "config/razorpay".`
+    );
   }
 
   // 2. No duplicate guard here — paid users may create a new subscription to switch billing
@@ -129,22 +141,26 @@ export const createSubscription = async (
   let razorpaySub: Record<string, unknown>;
   try {
     razorpaySub = await (razorpay.subscriptions as any).create({
-      plan_id: plan.razorpayPlanId,
+      plan_id: rzpPlanId,
       total_count: plan.billingCycle === "yearly" ? 10 : 120, // max billing cycles
       quantity: 1,
       notes: {
         userId: uid,
         planId: plan.id,
         planName: plan.name,
+        currency,
       },
     });
   } catch (err: any) {
+    const detail = err?.error?.description || err?.message || "Razorpay API error";
     logger.error("[razorpay-subscription] Failed to create Razorpay subscription", {
       uid,
       planId,
-      error: err.message,
+      currency,
+      rzpPlanId,
+      error: detail,
     });
-    throw new AppError(502, "Unable to create subscription. Please try again later.");
+    throw new AppError(502, `Payment gateway error: ${detail}`);
   }
 
   const rzpSubId = String(razorpaySub.id);
@@ -176,13 +192,13 @@ export const createSubscription = async (
     provider: "razorpay",
     razorpaySubscriptionId: rzpSubId,
     ...(razorpaySub.customer_id ? { razorpayCustomerId: String(razorpaySub.customer_id) } : {}),
-    razorpayPlanId: plan.razorpayPlanId,
+    razorpayPlanId: rzpPlanId,
     planId: plan.id,
     planName: plan.name,
     billingCycle: plan.billingCycle === "none" ? "monthly" : plan.billingCycle,
     status: SUBSCRIPTION_STATUS.PENDING,
-    amount: plan.amount,
-    currency: plan.currency,
+    amount: chargeAmount,
+    currency,
     cancelAtPeriodEnd: false,
     createdAt: now,
     updatedAt: now,
@@ -194,6 +210,7 @@ export const createSubscription = async (
     uid,
     planId,
     rzpSubId,
+    currency,
   });
 
   return {
@@ -202,8 +219,8 @@ export const createSubscription = async (
     planId: plan.id,
     planName: plan.name,
     billingCycle: plan.billingCycle === "none" ? "monthly" : plan.billingCycle,
-    amount: plan.amount,
-    currency: plan.currency,
+    amount: chargeAmount,
+    currency,
   };
 };
 
@@ -763,8 +780,12 @@ export const changeSubscriptionPlan = async (
   // 3. Update subscription on Razorpay
   const razorpay = getRazorpay();
   try {
+    const existingSubDoc = await subsCol().doc(rzpSubId).get();
+    const isUsd = existingSubDoc.exists && (existingSubDoc.data() as SubscriptionRecord).currency === "USD";
+    const targetPlanId = isUsd && newPlan.razorpayPlanIdUsd ? newPlan.razorpayPlanIdUsd : newPlan.razorpayPlanId;
+
     await (razorpay.subscriptions as any).update(rzpSubId, {
-      plan_id: newPlan.razorpayPlanId,
+      plan_id: targetPlanId,
       schedule_change_at: scheduleChangeAt,
       customer_notify: 1,
     });
