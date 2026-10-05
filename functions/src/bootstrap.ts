@@ -9,6 +9,11 @@ export const bootstrapApplication = async (): Promise<void> => {
   await firestoreConfigService.loadConfigFromFirestore();
   secretService.initialize();
   initializeGemini();
+  firestoreConfigService.startRealtimeListener();
+  firestoreConfigService.onConfigChange(() => {
+    secretService.reload();
+    initializeGemini();
+  });
 };
 
 export { SecretValidationError };

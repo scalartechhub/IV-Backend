@@ -6,8 +6,26 @@ type LogLevel = "INFO" | "WARN" | "ERROR" | "DEBUG";
 const format = (level: LogLevel, message: string, meta?: unknown): string => {
   const ts = new Date().toISOString();
   const safeMessage = maskSensitiveText(message);
-  const metaPart =
-    meta !== undefined ? ` ${JSON.stringify(maskSensitiveValue(meta))}` : "";
+
+  if (meta === undefined) {
+    return `[${ts}] [${level}] ${safeMessage}`;
+  }
+
+  if (meta instanceof Error) {
+    const metaObj = maskSensitiveValue(meta) as Record<string, unknown>;
+    const code = metaObj.status || metaObj.statusCode || metaObj.code;
+    const codeStr = code ? ` [Code: ${code}]` : "";
+    const stackStr = meta.stack ? `\n${maskSensitiveText(meta.stack)}` : "";
+    return `[${ts}] [${level}] ${safeMessage}: ${metaObj.name || "Error"}${codeStr} - ${metaObj.message}${stackStr}`;
+  }
+
+  let metaPart = "";
+  try {
+    const masked = maskSensitiveValue(meta);
+    metaPart = ` ${JSON.stringify(masked)}`;
+  } catch {
+    metaPart = " [Unserializable Object]";
+  }
   return `[${ts}] [${level}] ${safeMessage}${metaPart}`;
 };
 

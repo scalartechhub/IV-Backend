@@ -62,11 +62,16 @@ function buildPayload(opts: AlertOptions): Record<string, unknown> {
       }))
     : [];
 
+  const statusCode = opts.extras?.['Status Code'];
+  const title = statusCode
+    ? `🚨 Error HTTP ${statusCode} — ${opts.context}`
+    : `🚨 Function Failure Detected — ${opts.context}`;
+
   return {
     username: 'IV Backend Alerts',
     embeds: [
       {
-        title: '🚨 Function Failure Detected',
+        title,
         color: COLOR_ERROR,
         timestamp,
         fields: [
@@ -130,7 +135,8 @@ export async function notify(opts: AlertOptions): Promise<void> {
       const body = await response.text().catch(() => '');
       logger.warn(`[alerter] Discord webhook returned ${response.status}: ${body}`);
     } else {
-      logger.info(`[alerter] Discord alert sent for: ${opts.context}`);
+      const code = opts.extras?.['Status Code'] || 'N/A';
+      logger.info(`[alerter] Discord alert sent for: ${opts.context} [HTTP ${code}]`);
     }
   } catch (sendError) {
     // Never let alerting crash the process

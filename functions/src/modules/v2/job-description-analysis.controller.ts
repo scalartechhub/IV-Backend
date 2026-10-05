@@ -1,9 +1,9 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { createJobDescriptionAnalysis } from './job-description-analysis.service';
 import { logger } from '../../shared/logger';
 import { AppError } from '../../shared/utils';
 
-export const jobDescriptionAnalysisController = async (req: Request, res: Response) => {
+export const jobDescriptionAnalysisController = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { jdText } = req.body;
 
@@ -19,11 +19,6 @@ export const jobDescriptionAnalysisController = async (req: Request, res: Respon
 
     res.status(201).json(jobDescription);
   } catch (error) {
-    logger.error('[jobDescriptionAnalysis] Error during analysis:', error);
-    if (error instanceof AppError) {
-      res.status(error.statusCode).json({ error: error.message });
-    } else {
-      res.status(500).json({ error: 'An unexpected error occurred during job description analysis.' });
-    }
+    next(error);
   }
 };

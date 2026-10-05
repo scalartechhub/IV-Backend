@@ -185,6 +185,31 @@ export async function generateJson<T>(params: {
         );
       }
 
+      const isNotFound =
+        msg.includes('404') ||
+        msg.includes('NOT_FOUND') ||
+        msg.includes('no longer available') ||
+        msg.includes('is not found');
+
+      if (isNotFound && model !== modelsToTry[modelsToTry.length - 1]) {
+        console.warn(
+          `[gemini-client] Model "${model}" is no longer available (404), retrying with fallback model...`,
+        );
+        continue;
+      }
+
+      const isCreditsDepleted =
+        msg.includes('402') ||
+        msg.includes('prepayment credits') ||
+        msg.includes('credits are depleted');
+
+      if (isCreditsDepleted) {
+        throw new AppError(
+          402,
+          'Gemini API prepayment credits are depleted. Please manage your project and billing in Google AI Studio at https://ai.studio/projects.',
+        );
+      }
+
       const isHighDemand =
         msg.includes('503') ||
         msg.includes('high demand') ||

@@ -42,13 +42,51 @@ async function startServer() {
 const serverPromise = startServer();
 
 
+import { parseAiError } from "./middleware/error.middleware";
+
 process.on("unhandledRejection", (reason) => {
-  logger.error("Unhandled Promise Rejection:", reason);
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  const parsed = parseAiError(err);
+  const code = parsed?.statusCode || (err as any)?.status || (err as any)?.statusCode || 500;
+  const cleanMsg = parsed?.cleanMessage || err.message;
+
+  console.error(
+    `\n[Unhandled Promise Rejection] ❌ HTTP ${code}\n` +
+    `  Error: ${cleanMsg}\n` +
+    (parsed?.howToFix ? `  HOW TO FIX: ${parsed.howToFix}\n` : "") +
+    `  Stack: ${err.stack ?? "no stack"}\n`
+  );
+
   void teamsAlerter.notify({
     context: "process.unhandledRejection",
-    error: reason instanceof Error ? reason : new Error(String(reason)),
+    error: new Error(cleanMsg),
     extras: {
-      'Function Type': 'Express Server / Process',
+      "Status Code": String(code),
+      "Function Type": "Express Server / Process",
+      ...(parsed?.howToFix ? { "HOW TO FIX": parsed.howToFix } : {}),
+    },
+  });
+});
+
+process.on("uncaughtException", (error) => {
+  const parsed = parseAiError(error);
+  const code = parsed?.statusCode || (error as any)?.status || (error as any)?.statusCode || 500;
+  const cleanMsg = parsed?.cleanMessage || error.message;
+
+  console.error(
+    `\n[Uncaught Exception] ❌ HTTP ${code}\n` +
+    `  Error: ${cleanMsg}\n` +
+    (parsed?.howToFix ? `  HOW TO FIX: ${parsed.howToFix}\n` : "") +
+    `  Stack: ${error.stack ?? "no stack"}\n`
+  );
+
+  void teamsAlerter.notify({
+    context: "process.uncaughtException",
+    error: new Error(cleanMsg),
+    extras: {
+      "Status Code": String(code),
+      "Function Type": "Express Server / Process",
+      ...(parsed?.howToFix ? { "HOW TO FIX": parsed.howToFix } : {}),
     },
   });
 });

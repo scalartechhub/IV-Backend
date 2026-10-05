@@ -24,6 +24,13 @@ export class SecretService {
     this.initialized = true;
   }
 
+  /** Reload secrets when environment or Firestore configuration changes in real time */
+  reload(provider?: SecretProvider): void {
+    this.initialized = false;
+    this.secrets = null;
+    this.initialize(provider);
+  }
+
   get isInitialized(): boolean {
     return this.initialized;
   }

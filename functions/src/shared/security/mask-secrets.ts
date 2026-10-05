@@ -56,6 +56,25 @@ export const maskSensitiveValue = (value: unknown): unknown => {
     return maskSensitiveText(value);
   }
 
+  if (value instanceof Error) {
+    const errorObj: Record<string, unknown> = {
+      name: value.name,
+      message: maskSensitiveText(value.message),
+    };
+    if ((value as any).code !== undefined) errorObj.code = (value as any).code;
+    if ((value as any).status !== undefined) errorObj.status = (value as any).status;
+    if ((value as any).statusCode !== undefined) errorObj.statusCode = (value as any).statusCode;
+    if (value.stack) errorObj.stack = maskSensitiveText(value.stack);
+
+    for (const key of Object.getOwnPropertyNames(value)) {
+      if (!(key in errorObj)) {
+        const val = (value as any)[key];
+        errorObj[key] = typeof val === "string" ? maskSensitiveText(val) : val;
+      }
+    }
+    return errorObj;
+  }
+
   if (typeof value === "object") {
     try {
       return JSON.parse(maskSensitiveText(JSON.stringify(value)));

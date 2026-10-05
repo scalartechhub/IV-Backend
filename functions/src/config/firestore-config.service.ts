@@ -83,6 +83,64 @@ class FirestoreConfigService {
   private loaded = false;
   private lastFetchTime = 0;
   private readonly CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes cache TTL
+  private unsubscribeRealtime: (() => void) | null = null;
+  private changeListeners: Array<(config: FirestoreConfigMap) => void> = [];
+
+  /**
+   * Start a real-time Firestore listener on the 'config' collection.
+   * Any change made in the Firebase console is detected and applied immediately (within milliseconds).
+   */
+  startRealtimeListener(): void {
+    if (this.unsubscribeRealtime) return;
+    if (!db) {
+      logger.warn("[FirestoreConfigService] Firestore db not available yet to start real-time listener.");
+      return;
+    }
+
+    try {
+      this.unsubscribeRealtime = db.collection("config").onSnapshot(
+        (snapshot) => {
+          const docsData: Record<string, any> = {};
+          snapshot.forEach((doc) => {
+            docsData[doc.id] = doc.data();
+          });
+
+          this.parseAndApplyDocs(docsData);
+          logger.info("[FirestoreConfigService] Real-time configuration update received from Firestore.", {
+            docsUpdated: Object.keys(docsData),
+          });
+
+          for (const listener of this.changeListeners) {
+            try {
+              listener(this.configCache as FirestoreConfigMap);
+            } catch (err) {
+              logger.warn("[FirestoreConfigService] Change listener threw error:", err);
+            }
+          }
+        },
+        (error) => {
+          logger.warn("[FirestoreConfigService] Real-time listener error:", error);
+        }
+      );
+      logger.info("[FirestoreConfigService] Real-time listener active for Firestore collection 'config'.");
+    } catch (err) {
+      logger.warn("[FirestoreConfigService] Failed to start real-time listener:", err);
+    }
+  }
+
+  stopRealtimeListener(): void {
+    if (this.unsubscribeRealtime) {
+      this.unsubscribeRealtime();
+      this.unsubscribeRealtime = null;
+    }
+  }
+
+  onConfigChange(listener: (config: FirestoreConfigMap) => void): () => void {
+    this.changeListeners.push(listener);
+    return () => {
+      this.changeListeners = this.changeListeners.filter((l) => l !== listener);
+    };
+  }
 
   clearCache(): void {
     this.loaded = false;
@@ -133,6 +191,17 @@ class FirestoreConfigService {
         docsData[doc.id] = doc.data();
       });
 
+      return this.parseAndApplyDocs(docsData);
+    } catch (err: any) {
+      logger.error("[FirestoreConfigService] Failed to load config from Firestore", {
+        error: err.message,
+      });
+      throw err;
+    }
+  }
+
+  parseAndApplyDocs(docsData: Record<string, any>): FirestoreConfigMap {
+    try {
       // Parse GenAI Config
       const genaiDoc = docsData["genai"] || {};
       const aiDoc = docsData["ai"] || {};
