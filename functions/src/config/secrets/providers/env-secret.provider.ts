@@ -121,9 +121,18 @@ const loadFirebaseCredentials = (): FirebaseCredentials => {
     }
   }
 
-  const projectId = process.env.FIREBASE_PROJECT_ID?.trim();
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim();
-  const privateKeyRaw = process.env.FIREBASE_PRIVATE_KEY?.trim();
+  const projectId = (
+    process.env.FB_PROJECT_ID ||
+    process.env.FIREBASE_PROJECT_ID
+  )?.trim();
+  const clientEmail = (
+    process.env.FB_CLIENT_EMAIL ||
+    process.env.FIREBASE_CLIENT_EMAIL
+  )?.trim();
+  const privateKeyRaw = (
+    process.env.FB_PRIVATE_KEY ||
+    process.env.FIREBASE_PRIVATE_KEY
+  )?.trim();
 
   if (projectId && clientEmail && privateKeyRaw) {
     return {
@@ -154,7 +163,12 @@ export class EnvSecretProvider implements SecretProvider {
     const smtpConfig = firestoreConfigService.getSMTPConfig();
 
     const geminiApiKey = (genaiConfig.apiKey || "").trim();
-    const firebaseApiKey = (firebaseConfig.apiKey || "").trim();
+    const firebaseApiKey = (
+      firebaseConfig.apiKey ||
+      process.env.FB_API_KEY ||
+      process.env.FIREBASE_API_KEY ||
+      ""
+    ).trim();
     const smtpPassword = (smtpConfig.pass || "").trim() || undefined;
 
     return {
