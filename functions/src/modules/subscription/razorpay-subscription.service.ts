@@ -8,7 +8,7 @@ import { createHmac } from "crypto";
 import { db } from "../../config/firebase";
 import { getRazorpay, getRazorpayConfig } from "../../config/razorpay";
 import { BILLING_PLAN_IDS, BILLING_PLAN_TO_TIER, PLAN_IDS, SUBSCRIPTION_STATUS } from "../../constants/payment.constants";
-import type { BillingPlanIdWithCycle } from "../../constants/payment.constants";
+import type { BillingPlanIdWithCycle, SubscriptionStatus } from "../../constants/payment.constants";
 import { COLLECTIONS } from "../../shared/constants";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
@@ -21,7 +21,8 @@ import type {
   SubscriptionSummary,
   VerifyPaymentInput,
 } from "../payment/payment.model";
-
+import { Request } from "express";
+import { detectPaymentCurrency } from "./country-detection.service";
 import { getInrPerUsdRate, convertInrToUsd } from "./currency.service";
 
 // ---------------------------------------------------------------------------
@@ -43,51 +44,105 @@ export const getPlanTierRank = (planIdOrName?: string): number => {
 // GET PLANS (public)
 // ---------------------------------------------------------------------------
 
-export const getActivePlans = async (): Promise<PlanPublicInfo[]> => {
+export const getActivePlans = async (
+  targetCurrency?: "INR" | "USD",
+  country?: string
+): Promise<PlanPublicInfo[]> => {
   const [snap, inrPerUsd] = await Promise.all([
     plansCol().where("active", "==", true).get(),
     getInrPerUsdRate(),
   ]);
 
+  const currencyToUse: "INR" | "USD" =
+    targetCurrency || (country === "IN" ? "INR" : "USD");
+
   return snap.docs.map((doc) => {
     const data = doc.data() as SubscriptionPlan;
     const isYearly = data.billingCycle === "yearly";
 
-    let displayPrice = data.displayPrice;
-    let annualAmount = data.annualAmount;
-    let billingDescription = data.billingDescription;
+    // Standard amounts for INR
+    const amountInr =
+      data.amountInr ||
+      (data.id === "pro_yearly"
+        ? 7668
+        : data.id === "elite_yearly"
+        ? 19188
+        : data.id === "elite_monthly"
+        ? 1999
+        : data.id === "free"
+        ? 0
+        : 799);
+    const displayPriceInr =
+      data.displayPriceInr || (isYearly ? Math.round(amountInr / 12) : amountInr);
+    const annualAmountInr = isYearly ? amountInr : undefined;
 
-    // Dynamically calculate live USD prices from INR amount
-    if (data.currency === "INR" && typeof data.amount === "number" && data.amount > 0) {
-      if (isYearly) {
-        annualAmount = convertInrToUsd(data.amount, inrPerUsd);
-        displayPrice = Number((annualAmount / 12).toFixed(2));
-        const discount = data.discountPercent || 20;
-        billingDescription = `Billed annually at $${annualAmount}/year (Save ${discount}%).`;
+    // Standard amounts for USD
+    let amountUsd =
+      data.amountUsd ||
+      (data.id === "pro_yearly"
+        ? 80
+        : data.id === "elite_yearly"
+        ? 200
+        : data.id === "elite_monthly"
+        ? 20.86
+        : data.id === "free"
+        ? 0
+        : 8.34);
+    let displayPriceUsd =
+      data.displayPriceUsd || (isYearly ? (data.id === "elite_yearly" ? 16.67 : 6.67) : amountUsd);
+    let annualAmountUsd = isYearly ? amountUsd : undefined;
+
+    if (data.id === "free") {
+      amountUsd = 0;
+      displayPriceUsd = 0;
+      annualAmountUsd = undefined;
+    }
+
+    const finalAmount = currencyToUse === "INR" ? amountInr : amountUsd;
+    const finalDisplayPrice = currencyToUse === "INR" ? displayPriceInr : displayPriceUsd;
+    const finalAnnualAmount = currencyToUse === "INR" ? annualAmountInr : annualAmountUsd;
+
+    let finalBillingDescription = data.billingDescription;
+    if (currencyToUse === "INR") {
+      if (data.id === "free") {
+        finalBillingDescription = "Free forever.";
+      } else if (isYearly) {
+        finalBillingDescription = `Billed annually at ₹${amountInr}/year (Save ${data.discountPercent || 20}%).`;
       } else {
-        displayPrice = convertInrToUsd(data.amount, inrPerUsd);
-        billingDescription = "Billed monthly. Cancel anytime.";
+        finalBillingDescription = "Billed monthly. Cancel anytime.";
       }
-    } else if (data.amount === 0) {
-      displayPrice = 0;
-      annualAmount = undefined;
+    } else {
+      if (data.id === "free") {
+        finalBillingDescription = "Free forever.";
+      } else if (isYearly) {
+        finalBillingDescription = `Billed annually at $${annualAmountUsd || 80}/year (Save ${data.discountPercent || 20}%).`;
+      } else {
+        finalBillingDescription = "Billed monthly. Cancel anytime.";
+      }
     }
 
     return {
       id: data.id || doc.id,
       name: data.name,
       billingCycle: data.billingCycle,
-      currency: data.currency,
-      amount: data.amount,
-      displayPrice,
+      currency: currencyToUse,
+      amount: finalAmount,
+      displayPrice: finalDisplayPrice,
       displayPeriod: data.displayPeriod,
-      annualAmount,
+      annualAmount: finalAnnualAmount,
       discountPercent: data.discountPercent,
       description: data.description,
-      billingDescription,
+      billingDescription: finalBillingDescription,
       features: data.features,
       active: data.active,
       exchangeRate: inrPerUsd,
+      amountInr,
+      displayPriceInr,
+      annualAmountInr,
+      amountUsd,
+      displayPriceUsd,
+      annualAmountUsd,
+      country,
     };
   });
 };
@@ -99,7 +154,7 @@ export const getActivePlans = async (): Promise<PlanPublicInfo[]> => {
 export const createSubscription = async (
   uid: string,
   planId: BillingPlanIdWithCycle | string,
-  preferredCurrency: "USD" = "USD"
+  req?: Request
 ): Promise<CreateSubscriptionResponse> => {
   // 1. Validate plan
   if (planId === BILLING_PLAN_IDS.FREE) {
@@ -116,39 +171,80 @@ export const createSubscription = async (
     throw new AppError(400, "This plan is currently unavailable. Please try another plan.");
   }
 
-  // Use USD Razorpay plan
-  const rzpPlanId = plan.razorpayPlanIdUsd || plan.razorpayPlanId;
-  const currency = "USD";
-  const chargeAmount = plan.billingCycle === "yearly"
-    ? (plan.annualAmount || plan.displayPrice || 80)
-    : (plan.displayPrice || 8.34);
+  // 2. Detect country & currency via backend IP/headers (Backend is single source of truth!)
+  const geo = req
+    ? detectPaymentCurrency(req)
+    : { country: "US", currency: "USD" as const, clientIp: "", source: "fallback" as const };
+  const currency: "INR" | "USD" = geo.currency;
+  const country = geo.country;
+
+  const rzpConfig = getRazorpayConfig();
+  let rzpPlanId: string | undefined;
+  let chargeAmount: number;
+
+  const isYearly = plan.billingCycle === "yearly";
+
+  if (currency === "INR") {
+    // 🇮🇳 INDIA: Use INR Razorpay Plan
+    if (plan.id === "pro_monthly") {
+      rzpPlanId = plan.razorpayPlanId || rzpConfig.proMonthlyPlanId;
+      chargeAmount = plan.displayPriceInr || plan.amountInr || 799;
+    } else if (plan.id === "pro_yearly") {
+      rzpPlanId = plan.razorpayPlanId || rzpConfig.proYearlyPlanId;
+      chargeAmount = plan.annualAmountInr || plan.amountInr || 7668;
+    } else if (plan.id === "elite_monthly") {
+      rzpPlanId = plan.razorpayPlanId || rzpConfig.eliteMonthlyPlanId;
+      chargeAmount = plan.displayPriceInr || plan.amountInr || 1999;
+    } else if (plan.id === "elite_yearly") {
+      rzpPlanId = plan.razorpayPlanId || rzpConfig.eliteYearlyPlanId;
+      chargeAmount = plan.annualAmountInr || plan.amountInr || 19188;
+    } else {
+      rzpPlanId = plan.razorpayPlanId;
+      chargeAmount = plan.amountInr || plan.amount || 799;
+    }
+  } else {
+    // 🌎 REST OF WORLD: Use USD Razorpay Plan (Existing USD implementation preserved intact)
+    if (plan.id === "pro_monthly") {
+      rzpPlanId = plan.razorpayPlanIdUsd || rzpConfig.proMonthlyPlanIdUsd || plan.razorpayPlanId;
+      chargeAmount = plan.displayPriceUsd || plan.amountUsd || plan.displayPrice || 8.34;
+    } else if (plan.id === "pro_yearly") {
+      rzpPlanId = plan.razorpayPlanIdUsd || rzpConfig.proYearlyPlanIdUsd || plan.razorpayPlanId;
+      chargeAmount = plan.annualAmountUsd || plan.amountUsd || plan.annualAmount || 80;
+    } else if (plan.id === "elite_monthly") {
+      rzpPlanId = plan.razorpayPlanIdUsd || rzpConfig.eliteMonthlyPlanIdUsd || plan.razorpayPlanId;
+      chargeAmount = plan.displayPriceUsd || plan.amountUsd || plan.displayPrice || 20.86;
+    } else if (plan.id === "elite_yearly") {
+      rzpPlanId = plan.razorpayPlanIdUsd || rzpConfig.eliteYearlyPlanIdUsd || plan.razorpayPlanId;
+      chargeAmount = plan.annualAmountUsd || plan.amountUsd || plan.annualAmount || 200;
+    } else {
+      rzpPlanId = plan.razorpayPlanIdUsd || plan.razorpayPlanId;
+      chargeAmount = plan.amountUsd || plan.amount || 8.34;
+    }
+  }
 
   if (!rzpPlanId) {
     throw new AppError(
       503,
-      `Razorpay recurring plan ID is not configured for plan "${plan.name || plan.id}". Please check Firestore collection "plans" or document "config/razorpay".`
+      `Razorpay recurring plan ID is not configured for plan "${plan.name || plan.id}" in ${currency}. Please check Firestore collection "plans" or document "config/razorpay".`
     );
   }
 
-  // 2. No duplicate guard here — paid users may create a new subscription to switch billing
-  //    cycles. Double-billing protection is handled in verifyPayment() which cancels the
-  //    old subscription before activating the new one.
-
   // 3. Create Razorpay subscription
   const razorpay = getRazorpay();
-  const { keyId } = getRazorpayConfig();
+  const { keyId } = rzpConfig;
 
   let razorpaySub: Record<string, unknown>;
   try {
     razorpaySub = await (razorpay.subscriptions as any).create({
       plan_id: rzpPlanId,
-      total_count: plan.billingCycle === "yearly" ? 10 : 120, // max billing cycles
+      total_count: isYearly ? 10 : 120, // max billing cycles
       quantity: 1,
       notes: {
         userId: uid,
         planId: plan.id,
         planName: plan.name,
         currency,
+        country,
       },
     });
   } catch (err: any) {
@@ -157,6 +253,7 @@ export const createSubscription = async (
       uid,
       planId,
       currency,
+      country,
       rzpPlanId,
       error: detail,
     });
@@ -199,6 +296,7 @@ export const createSubscription = async (
     status: SUBSCRIPTION_STATUS.PENDING,
     amount: chargeAmount,
     currency,
+    country,
     cancelAtPeriodEnd: false,
     createdAt: now,
     updatedAt: now,
@@ -211,6 +309,7 @@ export const createSubscription = async (
     planId,
     rzpSubId,
     currency,
+    country,
   });
 
   return {
@@ -221,6 +320,7 @@ export const createSubscription = async (
     billingCycle: plan.billingCycle === "none" ? "monthly" : plan.billingCycle,
     amount: chargeAmount,
     currency,
+    country,
   };
 };
 
@@ -305,7 +405,7 @@ export const verifyPayment = async (
 
   // 2. Update user's subscriptionSummary & legacy subscription field
   const tier = BILLING_PLAN_TO_TIER[subData.planId as BillingPlanIdWithCycle] || "pro";
-  const currentMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+  const cycleKey = `cycle_${now.slice(0, 10)}`;
 
   await usersCol().doc(uid).set(
     {
@@ -319,6 +419,9 @@ export const verifyPayment = async (
         currentPeriodStart: now,
         currentPeriodEnd: periodEnd,
         cancelAtPeriodEnd: false,
+        currency: subData.currency,
+        country: subData.country,
+        amount: subData.amount,
         updatedAt: now,
       },
       subscription: {
@@ -331,9 +434,9 @@ export const verifyPayment = async (
       planTier: tier,
       stats: {
         interviewsCreatedThisMonth: 0,
-        interviewsMonthKey: currentMonthKey,
+        interviewsMonthKey: cycleKey,
         resumeAnalysesCreatedThisMonth: 0,
-        resumeAnalysesMonthKey: currentMonthKey,
+        resumeAnalysesMonthKey: cycleKey,
       },
       updatedAt: Timestamp.now(),
     },
@@ -348,6 +451,7 @@ export const verifyPayment = async (
     planId: subData.planId,
     amount: subData.amount,
     currency: subData.currency,
+    country: subData.country,
     status: "captured",
     createdAt: now,
     updatedAt: now,
@@ -375,13 +479,56 @@ export const syncUserSubscriptionWithRazorpay = async (
     const subsSnap = await subsCol().where("userId", "==", uid).get();
     if (subsSnap.empty) return null;
 
-    // Check recent subscriptions
-    for (const doc of subsSnap.docs) {
+    // Check subscriptions sorted newest first
+    const sortedDocs = [...subsSnap.docs].sort((a, b) => {
+      const timeA = new Date(a.data().createdAt || 0).getTime();
+      const timeB = new Date(b.data().createdAt || 0).getTime();
+      return timeB - timeA;
+    });
+
+    for (const doc of sortedDocs) {
       const subRecord = doc.data() as SubscriptionRecord;
       try {
         const rzpSub = await (razorpay.subscriptions as any).fetch(subRecord.razorpaySubscriptionId);
-        if (rzpSub && (rzpSub.status === "active" || rzpSub.status === "completed")) {
-          const now = new Date().toISOString();
+        if (!rzpSub) continue;
+
+        const now = new Date().toISOString();
+        const nowMs = Date.now();
+        const currentPeriodEndMs = rzpSub.current_end ? rzpSub.current_end * 1000 : undefined;
+        const isCycleEnded = currentPeriodEndMs !== undefined ? currentPeriodEndMs < nowMs : false;
+
+        // If subscription is completed, cancelled, expired, halted, pending after period end, or cycle ended:
+        if (
+          rzpSub.status === "completed" ||
+          rzpSub.status === "cancelled" ||
+          rzpSub.status === "expired" ||
+          rzpSub.status === "halted" ||
+          (rzpSub.status === "pending" && isCycleEnded) ||
+          (rzpSub.status === "active" && isCycleEnded)
+        ) {
+          const finalStatus =
+            rzpSub.status === "completed"
+              ? SUBSCRIPTION_STATUS.COMPLETED
+              : rzpSub.status === "active"
+              ? SUBSCRIPTION_STATUS.CANCELLED
+              : (rzpSub.status as SubscriptionStatus);
+
+          await subsCol().doc(doc.id).update({
+            status: finalStatus,
+            cancelAtPeriodEnd: false,
+            updatedAt: now,
+          });
+
+          // This subscription is not active; continue checking other docs if any
+          continue;
+        }
+
+        // Active subscription on Razorpay:
+        // Must be status "active" or "authenticated" AND cycle must not be ended
+        if (
+          (rzpSub.status === "active" || rzpSub.status === "authenticated") &&
+          !isCycleEnded
+        ) {
           const currentPeriodStart = rzpSub.current_start ? new Date(rzpSub.current_start * 1000).toISOString() : now;
           const currentPeriodEnd = rzpSub.current_end ? new Date(rzpSub.current_end * 1000).toISOString() : undefined;
           const planId = subRecord.planId || rzpSub.notes?.planId || "pro_monthly";
@@ -406,6 +553,7 @@ export const syncUserSubscriptionWithRazorpay = async (
             status: SUBSCRIPTION_STATUS.ACTIVE,
             currentPeriodStart,
             currentPeriodEnd,
+            cancelAtPeriodEnd: Boolean(rzpSub.cancel_at_cycle_end),
             ...(rzpSub.customer_id ? { razorpayCustomerId: String(rzpSub.customer_id) } : {}),
             updatedAt: now,
           });
@@ -504,33 +652,54 @@ export const getCurrentSubscription = async (
   const userData = userDoc.data();
   let summary = userData?.subscriptionSummary as SubscriptionSummary | undefined;
 
-  // 1. If no active paid summary on user document, attempt self-healing sync from Razorpay
+  // 1a. If user is explicitly on Free plan with provider "none", return immediately without querying Razorpay
   if (
-    !summary ||
-    summary.status !== SUBSCRIPTION_STATUS.ACTIVE ||
-    summary.planId === PLAN_IDS.FREE ||
-    summary.planId === "free"
+    summary &&
+    (summary.planId === PLAN_IDS.FREE || summary.planId === "free") &&
+    summary.provider === "none"
   ) {
-    const synced = await syncUserSubscriptionWithRazorpay(uid);
-    if (synced) {
-      summary = synced;
-    }
-  } else if (
+    return {
+      planId: "free",
+      planName: "Free",
+      status: SUBSCRIPTION_STATUS.ACTIVE,
+      billingCycle: "none",
+      cancelAtPeriodEnd: false,
+      provider: "none",
+    };
+  }
+
+  // 1b. If paid summary period has expired, attempt sync to see if renewed or reset to Free
+  if (
+    summary &&
     summary.currentPeriodEnd &&
     summary.planId !== PLAN_IDS.FREE &&
     summary.planId !== "free"
   ) {
-    // 1b. If paid summary period has expired, attempt sync to see if renewed or reset to Free
     const periodEndMs = new Date(summary.currentPeriodEnd).getTime();
     if (!isNaN(periodEndMs) && periodEndMs < Date.now()) {
       const synced = await syncUserSubscriptionWithRazorpay(uid);
       if (synced && synced.status === SUBSCRIPTION_STATUS.ACTIVE && synced.planId !== "free") {
         summary = synced;
       } else {
-        // Not renewed — forcefully downgrade to Free
+        // Not renewed (cancelled at period end, mandate revoked, or payment failed) — forcefully downgrade to Free
         await forceResetUserToFreePlan(uid);
-        summary = undefined;
+        return {
+          planId: "free",
+          planName: "Free",
+          status: SUBSCRIPTION_STATUS.ACTIVE,
+          billingCycle: "none",
+          cancelAtPeriodEnd: false,
+          provider: "none",
+        };
       }
+    }
+  }
+
+  // 1c. If no active summary, or pending status on paid plan, attempt self-healing sync from Razorpay
+  if (!summary || summary.status !== SUBSCRIPTION_STATUS.ACTIVE) {
+    const synced = await syncUserSubscriptionWithRazorpay(uid);
+    if (synced) {
+      summary = synced;
     }
   }
 
@@ -555,6 +724,7 @@ export const getCurrentSubscription = async (
       };
     }
 
+    await forceResetUserToFreePlan(uid);
     return {
       planId: "free",
       planName: "Free",
@@ -779,11 +949,11 @@ export const changeSubscriptionPlan = async (
 
   // 3. Update subscription on Razorpay
   const razorpay = getRazorpay();
-  try {
-    const existingSubDoc = await subsCol().doc(rzpSubId).get();
-    const isUsd = existingSubDoc.exists && (existingSubDoc.data() as SubscriptionRecord).currency === "USD";
-    const targetPlanId = isUsd && newPlan.razorpayPlanIdUsd ? newPlan.razorpayPlanIdUsd : newPlan.razorpayPlanId;
+  const existingSubDoc = await subsCol().doc(rzpSubId).get();
+  const isUsd = existingSubDoc.exists && (existingSubDoc.data() as SubscriptionRecord).currency === "USD";
+  const targetPlanId = isUsd && newPlan.razorpayPlanIdUsd ? newPlan.razorpayPlanIdUsd : newPlan.razorpayPlanId;
 
+  try {
     await (razorpay.subscriptions as any).update(rzpSubId, {
       plan_id: targetPlanId,
       schedule_change_at: scheduleChangeAt,
@@ -830,13 +1000,19 @@ export const changeSubscriptionPlan = async (
   const batch = db.batch();
 
   if (scheduleChangeAt === "now") {
+    const isYearly = newPlan.billingCycle === "yearly";
+    const targetAmount = isUsd
+      ? (isYearly ? (newPlan.annualAmountUsd || newPlan.amountUsd) : (newPlan.displayPriceUsd || newPlan.amountUsd)) || newPlan.amount || 8.34
+      : (isYearly ? (newPlan.annualAmountInr || newPlan.amountInr) : (newPlan.displayPriceInr || newPlan.amountInr)) || newPlan.amount || 799;
+    const targetCurrency = isUsd ? "USD" : "INR";
+
     batch.update(subsCol().doc(rzpSubId), {
       planId: newPlan.id,
       planName: newPlan.name,
       billingCycle: newPlan.billingCycle === "none" ? "monthly" : newPlan.billingCycle,
-      razorpayPlanId: newPlan.razorpayPlanId,
-      amount: newPlan.amount,
-      currency: newPlan.currency,
+      razorpayPlanId: targetPlanId,
+      amount: targetAmount,
+      currency: targetCurrency,
       cancelAtPeriodEnd: false,
       pendingPlanChange: FieldValue.delete(),
       updatedAt: now,
@@ -848,6 +1024,8 @@ export const changeSubscriptionPlan = async (
       "subscriptionSummary.planName": newPlan.name,
       "subscriptionSummary.billingCycle": newPlan.billingCycle === "none" ? "monthly" : newPlan.billingCycle,
       "subscriptionSummary.cancelAtPeriodEnd": false,
+      "subscriptionSummary.currency": targetCurrency,
+      "subscriptionSummary.amount": targetAmount,
       "subscriptionSummary.pendingPlanChange": FieldValue.delete(),
       "subscriptionSummary.updatedAt": now,
       "subscription.plan": tier,

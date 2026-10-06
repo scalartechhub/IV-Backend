@@ -24,6 +24,7 @@ import { sendSuccess, sendCreated } from "../../shared/responses";
 import * as razorpaySubscriptionService from "../subscription/razorpay-subscription.service";
 import * as webhookService from "../subscription/webhook.service";
 import * as featureAccessService from "../subscription/feature-access.service";
+import { detectPaymentCurrency } from "../subscription/country-detection.service";
 
 const router = Router();
 
@@ -33,7 +34,7 @@ const router = Router();
 
 const createSubSchema = z.object({
   planId: z.string().min(1, "Plan ID is required"),
-  currency: z.enum(["USD"]).optional().default("USD"),
+  currency: z.string().optional(), // Informational; backend detection is source of truth
 });
 
 const changePlanSchema = z.object({
@@ -67,10 +68,46 @@ const verifyPaymentSchema = z
 // PUBLIC ROUTES (no auth)
 // ---------------------------------------------------------------------------
 
+// Detect country & currency based on IP and edge headers (Backend source of truth)
+router.get(
+  "/subscriptions/country",
+  asyncHandler(async (req: Request, res) => {
+    const geo = detectPaymentCurrency(req);
+    sendSuccess(
+      res,
+      {
+        country: geo.country,
+        currency: geo.currency,
+        clientIp: geo.clientIp,
+      },
+      "Payment country detected"
+    );
+  })
+);
+
+// Alias endpoint for REST standard
+router.get(
+  "/payment/country",
+  asyncHandler(async (req: Request, res) => {
+    const geo = detectPaymentCurrency(req);
+    sendSuccess(
+      res,
+      {
+        country: geo.country,
+        currency: geo.currency,
+        clientIp: geo.clientIp,
+      },
+      "Payment country detected"
+    );
+  })
+);
+
 router.get(
   "/plans",
-  asyncHandler(async (_req, res) => {
-    const plans = await razorpaySubscriptionService.getActivePlans();
+  asyncHandler(async (req: Request, res) => {
+    const geo = detectPaymentCurrency(req);
+    const targetCurrency = (req.query.currency as "INR" | "USD") || geo.currency;
+    const plans = await razorpaySubscriptionService.getActivePlans(targetCurrency, geo.country);
     sendSuccess(res, plans, "Plans fetched");
   })
 );
@@ -101,11 +138,11 @@ router.post(
   "/subscriptions/create",
   validate(createSubSchema),
   asyncHandler(async (req, res) => {
-    const { planId, currency } = req.body as z.infer<typeof createSubSchema>;
+    const { planId } = req.body as z.infer<typeof createSubSchema>;
     const result = await razorpaySubscriptionService.createSubscription(
       req.user!.uid,
       planId,
-      currency
+      req
     );
     sendCreated(res, result, "Subscription initiated");
   })

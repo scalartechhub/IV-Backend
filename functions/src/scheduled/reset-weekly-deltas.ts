@@ -1,5 +1,7 @@
 /**
- * Scheduled: every Monday 00:00 UTC — zero deltaThisWeek on all skill docs.
+ * Scheduled Cron Function: Runs every Monday at 00:00 UTC.
+ * Resets deltaThisWeek to 0 on all skill documents across all users
+ * so weekly improvement indicators (+X% this week) reflect the current week.
  */
 
 import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';

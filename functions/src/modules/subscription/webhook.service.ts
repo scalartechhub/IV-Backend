@@ -124,6 +124,9 @@ const dispatchEvent = async (eventName: string, payload: any): Promise<void> => 
     case "subscription.halted":
       await handleSubscriptionHalted(payload);
       break;
+    case "subscription.updated":
+      await handleSubscriptionUpdated(payload);
+      break;
     case "subscription.cancelled":
       await handleSubscriptionCancelled(payload);
       break;
@@ -136,6 +139,11 @@ const dispatchEvent = async (eventName: string, payload: any): Promise<void> => 
       break;
     case "payment.failed":
       await handlePaymentFailed(payload);
+      break;
+    case "payment.refunded":
+    case "refund.processed":
+    case "refund.created":
+      await handlePaymentRefunded(payload);
       break;
     case "order.paid":
       // Usually handled via subscription.charged / payment.captured
@@ -347,6 +355,35 @@ const handleSubscriptionPending = async (payload: any): Promise<void> => {
   logger.info("[webhook] Subscription pending (awaiting payment confirmation)", { uid, rzpSubId });
 };
 
+const handleSubscriptionUpdated = async (payload: any): Promise<void> => {
+  const subEntity = extractSubscriptionEntity(payload);
+  const rzpSubId = subEntity.id;
+  if (!rzpSubId) return;
+
+  const uid = subEntity.notes?.userId || (await resolveUserIdFromSubscription(rzpSubId));
+  if (!uid) return;
+
+  const cancelAtPeriodEnd = Boolean(subEntity.cancel_at_cycle_end);
+  const currentPeriodEnd = subEntity.current_end
+    ? new Date(subEntity.current_end * 1000).toISOString()
+    : undefined;
+
+  await updateSubscriptionAndUser(
+    rzpSubId,
+    uid,
+    {
+      cancelAtPeriodEnd,
+      ...(currentPeriodEnd ? { currentPeriodEnd } : {}),
+    },
+    {
+      cancelAtPeriodEnd,
+      ...(currentPeriodEnd ? { currentPeriodEnd } : {}),
+    }
+  );
+
+  logger.info("[webhook] Subscription updated", { uid, rzpSubId, cancelAtPeriodEnd });
+};
+
 const handleSubscriptionHalted = async (payload: any): Promise<void> => {
   const subEntity = extractSubscriptionEntity(payload);
   const rzpSubId = subEntity.id;
@@ -355,14 +392,52 @@ const handleSubscriptionHalted = async (payload: any): Promise<void> => {
   const uid = subEntity.notes?.userId || (await resolveUserIdFromSubscription(rzpSubId));
   if (!uid) return;
 
-  await updateSubscriptionAndUser(
-    rzpSubId,
-    uid,
-    { status: SUBSCRIPTION_STATUS.HALTED },
-    { status: SUBSCRIPTION_STATUS.HALTED }
-  );
+  const nowMs = Date.now();
+  const currentPeriodEndMs = subEntity.current_end ? subEntity.current_end * 1000 : undefined;
+  const isPeriodEnded = currentPeriodEndMs !== undefined ? currentPeriodEndMs <= nowMs : true;
 
-  logger.info("[webhook] Subscription halted", { uid, rzpSubId });
+  if (isPeriodEnded) {
+    const now = new Date().toISOString();
+    const batch = db.batch();
+    batch.update(subsCol().doc(rzpSubId), {
+      status: SUBSCRIPTION_STATUS.HALTED,
+      cancelAtPeriodEnd: false,
+      updatedAt: now,
+    });
+    batch.set(
+      usersCol().doc(uid),
+      {
+        subscriptionSummary: {
+          planId: "free",
+          planName: "Free",
+          billingCycle: "none",
+          status: SUBSCRIPTION_STATUS.ACTIVE,
+          provider: "none",
+          cancelAtPeriodEnd: false,
+          updatedAt: now,
+        },
+        subscription: {
+          plan: "free",
+          status: SUBSCRIPTION_STATUS.ACTIVE,
+          expiresAt: null,
+          interviewCredits: 3,
+        },
+        planTier: "free",
+        updatedAt: Timestamp.now(),
+      },
+      { merge: true }
+    );
+    await batch.commit();
+    logger.info("[webhook] Subscription halted and period ended — user downgraded to free", { uid, rzpSubId });
+  } else {
+    await updateSubscriptionAndUser(
+      rzpSubId,
+      uid,
+      { status: SUBSCRIPTION_STATUS.HALTED },
+      { status: SUBSCRIPTION_STATUS.HALTED }
+    );
+    logger.info("[webhook] Subscription halted within period", { uid, rzpSubId });
+  }
 };
 
 const handleSubscriptionCancelled = async (payload: any): Promise<void> => {
@@ -447,7 +522,7 @@ const handleSubscriptionExpired = async (payload: any): Promise<void> => {
       },
       subscription: {
         plan: "free",
-        status: SUBSCRIPTION_STATUS.EXPIRED,
+        status: SUBSCRIPTION_STATUS.ACTIVE,
         expiresAt: null,
         interviewCredits: 3,
       },
@@ -481,10 +556,15 @@ const handlePaymentCaptured = async (payload: any): Promise<void> => {
 
   // Read subscription doc for plan info
   let planId = "unknown";
+  let country: string | undefined;
+  let subCurrency: string | undefined;
   if (rzpSubId) {
     const subDoc = await subsCol().doc(rzpSubId).get();
     if (subDoc.exists) {
-      planId = (subDoc.data() as SubscriptionRecord).planId;
+      const subData = subDoc.data() as SubscriptionRecord;
+      planId = subData.planId;
+      country = subData.country;
+      subCurrency = subData.currency;
     }
   }
 
@@ -496,7 +576,8 @@ const handlePaymentCaptured = async (payload: any): Promise<void> => {
     razorpaySubscriptionId: rzpSubId || undefined,
     planId,
     amount: payEntity.amount ? Number(payEntity.amount) / 100 : 0,
-    currency: payEntity.currency || "INR",
+    currency: payEntity.currency || subCurrency || "USD",
+    country,
     status: "captured",
     method: payEntity.method || undefined,
     createdAt: new Date().toISOString(),
@@ -505,7 +586,7 @@ const handlePaymentCaptured = async (payload: any): Promise<void> => {
 
   await paymentsCol().doc(paymentId).set(paymentRecord, { merge: true });
 
-  logger.info("[webhook] Payment captured", { uid, paymentId, planId });
+  logger.info("[webhook] Payment captured", { uid, paymentId, planId, country, currency: paymentRecord.currency });
 };
 
 const handlePaymentFailed = async (payload: any): Promise<void> => {
@@ -522,10 +603,15 @@ const handlePaymentFailed = async (payload: any): Promise<void> => {
   if (!uid) return;
 
   let planId = "unknown";
+  let country: string | undefined;
+  let subCurrency: string | undefined;
   if (rzpSubId) {
     const subDoc = await subsCol().doc(rzpSubId).get();
     if (subDoc.exists) {
-      planId = (subDoc.data() as SubscriptionRecord).planId;
+      const subData = subDoc.data() as SubscriptionRecord;
+      planId = subData.planId;
+      country = subData.country;
+      subCurrency = subData.currency;
     }
   }
 
@@ -536,7 +622,8 @@ const handlePaymentFailed = async (payload: any): Promise<void> => {
     razorpaySubscriptionId: rzpSubId || undefined,
     planId,
     amount: payEntity.amount ? Number(payEntity.amount) / 100 : 0,
-    currency: payEntity.currency || "INR",
+    currency: payEntity.currency || subCurrency || "USD",
+    country,
     status: "failed",
     method: payEntity.method || undefined,
     createdAt: new Date().toISOString(),
@@ -546,4 +633,34 @@ const handlePaymentFailed = async (payload: any): Promise<void> => {
   await paymentsCol().doc(paymentId).set(paymentRecord, { merge: true });
 
   logger.info("[webhook] Payment failed", { uid, paymentId });
+};
+
+const handlePaymentRefunded = async (payload: any): Promise<void> => {
+  const payEntity = extractPaymentEntity(payload);
+  const refundEntity = payload?.payload?.refund?.entity || {};
+  const paymentId = payEntity.id || refundEntity.payment_id;
+  if (!paymentId) return;
+
+  const now = new Date().toISOString();
+  try {
+    const paymentDoc = await paymentsCol().doc(paymentId).get();
+    if (paymentDoc.exists) {
+      const amountRefunded = refundEntity.amount
+        ? Number(refundEntity.amount) / 100
+        : payEntity.amount_refunded
+        ? Number(payEntity.amount_refunded) / 100
+        : undefined;
+
+      await paymentsCol().doc(paymentId).update({
+        status: "refunded",
+        ...(amountRefunded !== undefined ? { amountRefunded } : {}),
+        updatedAt: now,
+      });
+      logger.info("[webhook] Marked payment as refunded", { paymentId, amountRefunded });
+    } else {
+      logger.info("[webhook] Refund received for unrecorded payment doc", { paymentId });
+    }
+  } catch (err: any) {
+    logger.warn("[webhook] Error updating payment record on refund", { paymentId, error: err.message });
+  }
 };

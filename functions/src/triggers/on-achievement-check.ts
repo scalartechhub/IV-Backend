@@ -1,6 +1,11 @@
 /**
- * Trigger: on users/{uid} update — re-check streak/interview/problem achievements.
- * score_gte is handled via targeted checkAchievements(uid, { overallScore }) from complete.
+ * ============================================================================
+ * UNUSED / DUMMY FUNCTION — NOT IN ACTIVE USE
+ * ============================================================================
+ * Note: This function is dummy / not used in the application and is not going
+ * to be used. It has been commented out from functions/src/index.ts.
+ * Achievement checks are handled directly within the service layer.
+ * ============================================================================
  */
 
 import { onDocumentUpdated } from 'firebase-functions/v2/firestore';

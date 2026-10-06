@@ -1,5 +1,10 @@
 /**
- * Scheduled: daily 03:00 UTC — archive 90+ day conversation transcripts to Storage.
+ * ============================================================================
+ * UNUSED / DUMMY FUNCTION — NOT IN ACTIVE USE
+ * ============================================================================
+ * Note: This function is dummy / not used in the application and is not going
+ * to be used. It has been commented out from functions/src/index.ts.
+ * ============================================================================
  */
 
 import { gzipSync } from 'zlib';

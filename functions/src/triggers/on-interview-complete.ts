@@ -1,8 +1,12 @@
 /**
- * Trigger: when interview status flips to completed — safety-net achievement check.
- *
- * Primary evaluation runs inside interview.service.completeInterview (richer context).
- * Skip when that path already finished (xpEarned + results present) to avoid double-counting.
+ * ============================================================================
+ * UNUSED / DUMMY FUNCTION — NOT IN ACTIVE USE
+ * ============================================================================
+ * Note: This function is dummy / not used in the application and is not going
+ * to be used. It has been commented out from functions/src/index.ts.
+ * Interview completion and scoring are handled directly inside interview.service
+ * via the Express REST API.
+ * ============================================================================
  */
 
 import { onDocumentUpdated } from 'firebase-functions/v2/firestore';

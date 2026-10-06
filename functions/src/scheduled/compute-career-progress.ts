@@ -1,6 +1,7 @@
 /**
- * Scheduled: nightly peer benchmarking → users/{uid}/careerProgress/current.
- * TODO: migrate to BigQuery at scale (Firestore export extension).
+ * Scheduled Cron Function: Runs every day at 02:00 UTC.
+ * Recomputes cohort peer averages across all users by target role
+ * and updates users/{uid}/careerProgress/current peer benchmarks.
  */
 
 import { onSchedule } from 'firebase-functions/v2/scheduler';

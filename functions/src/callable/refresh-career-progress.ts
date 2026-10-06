@@ -1,5 +1,11 @@
 /**
- * Callable: refreshCareerProgress — recompute career progress on demand.
+ * ============================================================================
+ * UNUSED / DUMMY FUNCTION — NOT IN ACTIVE USE
+ * ============================================================================
+ * Note: This function is dummy / not used in the application and is not going
+ * to be used. It has been commented out from functions/src/index.ts.
+ * All career progress flows are handled directly via the Express REST API.
+ * ============================================================================
  */
 
 import { onCall } from 'firebase-functions/v2/https';

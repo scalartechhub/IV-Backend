@@ -6,12 +6,40 @@ let razorpayInstance: Razorpay | null = null;
 let currentKeyId: string | null = null;
 let currentKeySecret: string | null = null;
 
+const isPlaceholder = (val?: string): boolean => {
+  if (!val) return true;
+  const lower = val.toLowerCase().trim();
+  return (
+    lower.includes("xxxx") ||
+    lower.includes("your-razorpay") ||
+    lower.includes("placeholder") ||
+    lower === "your-key-id" ||
+    lower === "your-key-secret"
+  );
+};
+
 export const getRazorpayConfig = () => {
   const config = firestoreConfigService.getRazorpayConfig();
+  const envKeyId = (process.env.RAZORPAY_KEY_ID || "").trim();
+  const envKeySecret = (process.env.RAZORPAY_KEY_SECRET || "").trim();
+  const envWebhook = (process.env.RAZORPAY_WEBHOOK_SECRET || "").trim();
+
+  const keyId = (!isPlaceholder(config.keyId) ? config.keyId! : envKeyId).trim();
+  const keySecret = (!isPlaceholder(config.keySecret) ? config.keySecret! : envKeySecret).trim();
+  const webhookSecret = (!isPlaceholder(config.webhookSecret) ? config.webhookSecret! : envWebhook).trim();
+
   return {
-    keyId: (config.keyId || process.env.RAZORPAY_KEY_ID || "").trim(),
-    keySecret: (config.keySecret || process.env.RAZORPAY_KEY_SECRET || "").trim(),
-    webhookSecret: (config.webhookSecret || process.env.RAZORPAY_WEBHOOK_SECRET || "").trim(),
+    keyId,
+    keySecret,
+    webhookSecret,
+    proMonthlyPlanId: config.proMonthlyPlanId || process.env.RAZORPAY_PRO_MONTHLY_PLAN_ID,
+    proYearlyPlanId: config.proYearlyPlanId || process.env.RAZORPAY_PRO_YEARLY_PLAN_ID,
+    eliteMonthlyPlanId: config.eliteMonthlyPlanId || process.env.RAZORPAY_ELITE_MONTHLY_PLAN_ID,
+    eliteYearlyPlanId: config.eliteYearlyPlanId || process.env.RAZORPAY_ELITE_YEARLY_PLAN_ID,
+    proMonthlyPlanIdUsd: config.proMonthlyPlanIdUsd || process.env.RAZORPAY_PRO_MONTHLY_PLAN_ID_USD,
+    proYearlyPlanIdUsd: config.proYearlyPlanIdUsd || process.env.RAZORPAY_PRO_YEARLY_PLAN_ID_USD,
+    eliteMonthlyPlanIdUsd: config.eliteMonthlyPlanIdUsd || process.env.RAZORPAY_ELITE_MONTHLY_PLAN_ID_USD,
+    eliteYearlyPlanIdUsd: config.eliteYearlyPlanIdUsd || process.env.RAZORPAY_ELITE_YEARLY_PLAN_ID_USD,
   };
 };
 

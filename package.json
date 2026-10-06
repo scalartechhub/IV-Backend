@@ -31,7 +31,8 @@
     "seed:plans:prod": "node scripts/seed-plans.js --env=prod",
     "seed:career-catalog": "node scripts/seed-career-catalog.js",
     "seed:coding": "node scripts/seed-coding-problems.js",
-    "seed:achievements": "node scripts/seed-achievements.js"
+    "seed:achievements": "node scripts/seed-achievements.js",
+    "create:test-plans": "node scripts/create-razorpay-test-plans.js"
   },
   "author": "",
   "license": "ISC",

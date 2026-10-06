@@ -176,6 +176,10 @@ async function syncToFirestore() {
       proYearlyPlanId: envValues.RAZORPAY_PRO_YEARLY_PLAN_ID,
       eliteMonthlyPlanId: envValues.RAZORPAY_ELITE_MONTHLY_PLAN_ID,
       eliteYearlyPlanId: envValues.RAZORPAY_ELITE_YEARLY_PLAN_ID,
+      proMonthlyPlanIdUsd: envValues.RAZORPAY_PRO_MONTHLY_PLAN_ID_USD,
+      proYearlyPlanIdUsd: envValues.RAZORPAY_PRO_YEARLY_PLAN_ID_USD,
+      eliteMonthlyPlanIdUsd: envValues.RAZORPAY_ELITE_MONTHLY_PLAN_ID_USD,
+      eliteYearlyPlanIdUsd: envValues.RAZORPAY_ELITE_YEARLY_PLAN_ID_USD,
     },
     groq: {
       apiKey: envValues.GROQ_API_KEY,

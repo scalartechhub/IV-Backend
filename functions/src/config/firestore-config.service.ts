@@ -28,6 +28,10 @@ export interface RazorpayConfig {
   proYearlyPlanId?: string;
   eliteMonthlyPlanId?: string;
   eliteYearlyPlanId?: string;
+  proMonthlyPlanIdUsd?: string;
+  proYearlyPlanIdUsd?: string;
+  eliteMonthlyPlanIdUsd?: string;
+  eliteYearlyPlanIdUsd?: string;
 }
 
 export interface GroqConfig {

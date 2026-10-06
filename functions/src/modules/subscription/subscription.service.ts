@@ -36,13 +36,10 @@ export const resolveSubscriptionFromUser = (user: User | null | undefined): User
     subscription.plan !== PLAN_IDS.FREE &&
     isSubscriptionExpired(subscription.expiresAt)
   ) {
-    return {
-      ...buildFreeSubscription(),
-      status: SUBSCRIPTION_STATUS.EXPIRED,
-    };
+    return buildFreeSubscription();
   }
 
-  if (subscription.status === SUBSCRIPTION_STATUS.FAILED) {
+  if (subscription.status === SUBSCRIPTION_STATUS.FAILED || subscription.status === SUBSCRIPTION_STATUS.EXPIRED) {
     return buildFreeSubscription();
   }
 

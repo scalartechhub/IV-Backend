@@ -77,6 +77,11 @@ export interface SubscriptionPlan {
   razorpayPlanIdUsd?: string;
   /** USD amount (in dollars). */
   amountUsd?: number;
+  displayPriceUsd?: number;
+  annualAmountUsd?: number;
+  amountInr?: number;
+  displayPriceInr?: number;
+  annualAmountInr?: number;
   active: boolean;
   features?: string[];
 }
@@ -98,6 +103,7 @@ export interface SubscriptionRecord {
 
   amount: number;
   currency: string;
+  country?: string;
 
   currentPeriodStart?: string;
   currentPeriodEnd?: string;
@@ -127,6 +133,9 @@ export interface SubscriptionSummary {
   currentPeriodStart?: string;
   currentPeriodEnd?: string;
   cancelAtPeriodEnd: boolean;
+  currency?: string;
+  country?: string;
+  amount?: number;
   pendingPlanChange?: PendingPlanChange;
   updatedAt: string;
 }
@@ -143,6 +152,7 @@ export interface SubscriptionPaymentRecord {
 
   amount: number;
   currency: string;
+  country?: string;
 
   status: PaymentStatus;
   method?: string;
@@ -170,6 +180,7 @@ export interface CreateSubscriptionResponse {
   billingCycle: string;
   amount: number;
   currency: string;
+  country?: string;
 }
 
 /** Frontend → Backend: verify payment after Razorpay Checkout. */
@@ -195,4 +206,11 @@ export interface PlanPublicInfo {
   features?: string[];
   active: boolean;
   exchangeRate?: number;
+  amountInr?: number;
+  displayPriceInr?: number;
+  annualAmountInr?: number;
+  amountUsd?: number;
+  displayPriceUsd?: number;
+  annualAmountUsd?: number;
+  country?: string;
 }

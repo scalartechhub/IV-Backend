@@ -97,6 +97,12 @@ const plans = [
     billingCycle: "none",
     currency: "INR",
     amount: 0,
+    amountInr: 0,
+    displayPriceInr: 0,
+    annualAmountInr: null,
+    amountUsd: 0,
+    displayPriceUsd: 0,
+    annualAmountUsd: null,
     displayPrice: 0,
     displayPeriod: "month",
     discountPercent: 0,
@@ -116,8 +122,16 @@ const plans = [
     name: "Pro",
     billingCycle: "monthly",
     currency: "INR",
+    // INR Configuration (₹799/mo)
+    amountInr: 799,
+    displayPriceInr: 799,
+    annualAmountInr: null,
+    // USD Configuration ($10/mo)
+    amountUsd: 10,
+    displayPriceUsd: 10,
+    annualAmountUsd: null,
     amount: 799,
-    displayPrice: 8.34,
+    displayPrice: 799,
     displayPeriod: "month",
     discountPercent: 0,
     monthlyInterviewLimit: 15,
@@ -139,14 +153,22 @@ const plans = [
     name: "Pro",
     billingCycle: "yearly",
     currency: "INR",
+    // INR Configuration (₹7,668/year -> ₹639/mo, Save 20%)
+    amountInr: 7668,
+    displayPriceInr: 639,
+    annualAmountInr: 7668,
+    // USD Configuration ($80/year -> $6.67/mo, Save 20%)
+    amountUsd: 80,
+    displayPriceUsd: 6.67,
+    annualAmountUsd: 80,
     amount: 7668,
-    displayPrice: 6.67,
+    displayPrice: 639,
+    annualAmount: 7668,
     displayPeriod: "month",
-    annualAmount: 80,
     discountPercent: 20,
     monthlyInterviewLimit: 15,
     monthlyResumeAnalysisLimit: 3,
-    billingDescription: "Billed annually at $80/year (Save 20%).",
+    billingDescription: "Billed annually (Save 20%).",
     description: "Perfect for active job seekers preparing for multiple rounds.",
     active: true,
     features: [
@@ -163,8 +185,16 @@ const plans = [
     name: "Elite",
     billingCycle: "monthly",
     currency: "INR",
+    // INR Configuration (₹1,999/mo)
+    amountInr: 1999,
+    displayPriceInr: 1999,
+    annualAmountInr: null,
+    // USD Configuration ($20.86/mo)
+    amountUsd: 20.86,
+    displayPriceUsd: 20.86,
+    annualAmountUsd: null,
     amount: 1999,
-    displayPrice: 20.86,
+    displayPrice: 1999,
     displayPeriod: "month",
     discountPercent: 0,
     monthlyInterviewLimit: null, // Unlimited
@@ -187,14 +217,22 @@ const plans = [
     name: "Elite",
     billingCycle: "yearly",
     currency: "INR",
+    // INR Configuration (₹19,188/year -> ₹1,599/mo, Save 20%)
+    amountInr: 19188,
+    displayPriceInr: 1599,
+    annualAmountInr: 19188,
+    // USD Configuration ($200/year -> $16.67/mo, Save 20%)
+    amountUsd: 200,
+    displayPriceUsd: 16.67,
+    annualAmountUsd: 200,
     amount: 19188,
-    displayPrice: 16.68,
+    displayPrice: 1599,
+    annualAmount: 19188,
     displayPeriod: "month",
-    annualAmount: 200.19,
     discountPercent: 20,
     monthlyInterviewLimit: null, // Unlimited
     monthlyResumeAnalysisLimit: null, // Unlimited
-    billingDescription: "Billed annually at $200.19/year (Save 20%).",
+    billingDescription: "Billed annually (Save 20%).",
     description: "For professionals aiming for top-tier tech and leadership roles.",
     active: true,
     features: [
@@ -223,11 +261,11 @@ async function seedPlans() {
     elite_yearly: "eliteYearlyPlanId",
   };
 
-  const planKeyUpperMap = {
-    pro_monthly: "RAZORPAY_PRO_MONTHLY_PLAN_ID",
-    pro_yearly: "RAZORPAY_PRO_YEARLY_PLAN_ID",
-    elite_monthly: "RAZORPAY_ELITE_MONTHLY_PLAN_ID",
-    elite_yearly: "RAZORPAY_ELITE_YEARLY_PLAN_ID",
+  const planKeyCamelMapUsd = {
+    pro_monthly: "proMonthlyPlanIdUsd",
+    pro_yearly: "proYearlyPlanIdUsd",
+    elite_monthly: "eliteMonthlyPlanIdUsd",
+    elite_yearly: "eliteYearlyPlanIdUsd",
   };
 
   for (const plan of plans) {
@@ -235,36 +273,55 @@ async function seedPlans() {
     const existingSnap = await docRef.get();
     const existingData = existingSnap.exists ? existingSnap.data() : {};
 
-    const camelKey = planKeyCamelMap[plan.id];
-    const upperKey = planKeyUpperMap[plan.id];
-    const configPlanId = camelKey ? (rzpConfig[camelKey] || rzpConfig[upperKey]) : undefined;
+    const inrKey = planKeyCamelMap[plan.id];
+    const usdKey = planKeyCamelMapUsd[plan.id];
 
-    // Prioritize ID from config/razorpay so updates in config take effect; fall back to existing data if unset in config
+    const configInrPlanId = inrKey ? (rzpConfig[inrKey] || rzpConfig[inrKey.toUpperCase()]) : undefined;
+    const configUsdPlanId = usdKey ? (rzpConfig[usdKey] || rzpConfig[usdKey.toUpperCase()]) : undefined;
+
+    // INR Razorpay plan ID
     const razorpayPlanId =
-      configPlanId && String(configPlanId).trim()
-        ? String(configPlanId).trim()
-        : (existingData?.razorpayPlanId || undefined);
+      configInrPlanId && String(configInrPlanId).trim()
+        ? String(configInrPlanId).trim()
+        : existingData?.razorpayPlanId && !String(existingData.razorpayPlanId).includes("Usd")
+        ? existingData.razorpayPlanId
+        : undefined;
+
+    // USD Razorpay plan ID
+    const razorpayPlanIdUsd =
+      configUsdPlanId && String(configUsdPlanId).trim()
+        ? String(configUsdPlanId).trim()
+        : existingData?.razorpayPlanIdUsd || undefined;
 
     const dataToSave = {
       ...plan,
+      amountInr: plan.amountInr,
+      displayPriceInr: plan.displayPriceInr,
+      annualAmountInr: plan.annualAmountInr,
+      amountUsd: plan.amountUsd,
+      displayPriceUsd: plan.displayPriceUsd,
+      annualAmountUsd: plan.annualAmountUsd,
       updatedAt: new Date().toISOString(),
     };
 
     if (razorpayPlanId) {
       dataToSave.razorpayPlanId = razorpayPlanId;
     }
+    if (razorpayPlanIdUsd) {
+      dataToSave.razorpayPlanIdUsd = razorpayPlanIdUsd;
+    }
 
-    await docRef.set(dataToSave, { merge: true });
+    const cleanData = {};
+    for (const [k, v] of Object.entries(dataToSave)) {
+      if (v !== undefined) {
+        cleanData[k] = v;
+      }
+    }
 
-    const sourceLabel =
-      configPlanId && String(configPlanId).trim()
-        ? "from config/razorpay"
-        : existingData?.razorpayPlanId
-        ? "from existing plan"
-        : "not configured";
+    await docRef.set(cleanData, { merge: true });
 
     console.log(
-      `  ✅ plans/${plan.id.padEnd(14)} — ${plan.name.padEnd(5)} (${plan.billingCycle.padEnd(7)}) | Razorpay Plan: ${(razorpayPlanId || "(none)").padEnd(24)} [${sourceLabel}]`
+      `  ✅ plans/${plan.id.padEnd(14)} — ${plan.name.padEnd(5)} (${plan.billingCycle.padEnd(7)}) | INR Plan: ${(razorpayPlanId || "(none)").padEnd(22)} | USD Plan: ${(razorpayPlanIdUsd || "(none)").padEnd(22)}`
     );
   }
 
