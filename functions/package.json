@@ -16,7 +16,7 @@
     "deploy": "firebase deploy --only functions",
     "deploy:trigger:user-deleted": "firebase deploy --only functions:onUserDeleted",
     "logs": "firebase functions:log",
-    "test": "node -r ts-node/register --test src/lib/xp.spec.ts src/lib/skills.spec.ts src/lib/readiness.spec.ts src/lib/level.spec.ts src/lib/streak.spec.ts"
+    "test": "node -r ts-node/register --test src/library/xp.spec.ts src/library/skills.spec.ts src/library/readiness.spec.ts src/library/level.spec.ts"
   },
   "engines": {
     "node": "22"

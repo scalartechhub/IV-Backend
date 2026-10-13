@@ -1,14 +1,13 @@
-// Mirrors src/app/interfaces/notification.interface.ts � keep in sync
+// Mirrors src/app/interfaces/notification.interface.ts — keep in sync
 import type { Timestamp } from 'firebase-admin/firestore';
 
 /**
- * Notification types from architecture §8.
- * TODO: 'level_up' is required by complete-interview but not listed in architecture §8.
+ * Notification types from architecture Â§8.
+ * TODO: 'level_up' is required by complete-interview but not listed in architecture Â§8.
  */
 export type NotificationType =
   | 'reminder'
   | 'achievement_unlocked'
-  | 'streak_risk'
   | 'report_ready'
   | 'job_match'
   | 'system'

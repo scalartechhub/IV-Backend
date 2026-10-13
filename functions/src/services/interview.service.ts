@@ -34,7 +34,6 @@ import {
   writeSkillUpdates,
   type SkillScoreMap,
 } from '../library/skills';
-import { updateStreak } from '../library/streak';
 import { calculateInterviewXp, creditXpInTransaction } from '../library/xp';
 import { AppError } from '../shared/utils';
 import { ensureAdmin } from '../utils/callable-auth';
@@ -112,7 +111,6 @@ export interface CompleteInterviewResult {
   newLevel: number;
   levelUp: boolean;
   updatedSkills: SkillScoreMap;
-  streakCount: number;
   readinessScore: number;
   scoreImprovement: number;
 }
@@ -591,7 +589,7 @@ export async function updateInterviewEnvironment(
 }
 
 /**
- * Score + XP/skills/streak pipeline. Gemini scoring runs before the transaction.
+ * Score + XP/skills pipeline. Gemini scoring runs before the transaction.
  */
 export async function completeInterview(
   uid: string,
@@ -678,9 +676,6 @@ export async function completeInterview(
       levelName: 'Candidate',
       currentXP: 0,
       xpToNextLevel: 500,
-      streakCount: 0,
-      lastActiveDate: '',
-      longestStreak: 0,
     };
     const prevXP = gamification.currentXP ?? 0;
     const prevLevel = gamification.level ?? 1;
@@ -715,8 +710,6 @@ export async function completeInterview(
       },
       score7dAgo,
     );
-
-    const streak = updateStreak(tx, db, uid, gamification, now);
 
     const minutes = Math.round(durationSec / 60);
     const prevStats = statsSnap.exists
@@ -848,7 +841,6 @@ export async function completeInterview(
       newLevel: resolveLevel(runningXP).level,
       levelUp: levelInfo.levelUp || resolveLevel(runningXP).level > prevLevel,
       updatedSkills,
-      streakCount: streak.streakCount,
       readinessScore,
       scoreImprovement,
     };

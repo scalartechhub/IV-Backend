@@ -1,5 +1,5 @@
 /**
- * Date helpers for streak / weekly stats.
+ * Date helpers for weekly stats.
  * All calendar dates use UTC unless otherwise noted.
  */
 

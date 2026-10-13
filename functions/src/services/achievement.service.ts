@@ -89,7 +89,6 @@ export function computeMetricValue(
   opts: CheckAchievementsOptions,
 ): number {
   const interviews = user.stats?.totalInterviews ?? 0;
-  const streak = user.gamification?.streakCount ?? 0;
   const overall = opts.overallScore ?? 0;
 
   switch (metric) {
@@ -98,8 +97,6 @@ export function computeMetricValue(
     case 'successful_interviews':
       // Absolute counter — safe if checkAchievements runs more than once
       return user.stats?.successfulInterviews ?? previousValue;
-    case 'streak_days':
-      return streak;
     case 'highest_score':
       return Math.max(previousValue, overall);
     case 'delivery_score':

@@ -21,9 +21,6 @@ const DEFAULT_GAMIFICATION: UserGamification = {
   levelName: 'Candidate',
   currentXP: 0,
   xpToNextLevel: 500,
-  streakCount: 0,
-  lastActiveDate: '',
-  longestStreak: 0,
 };
 
 const DEFAULT_READINESS: Omit<UserReadiness, 'lastComputedAt'> = {

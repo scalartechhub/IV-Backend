@@ -6,7 +6,6 @@ export type AchievementRarity = 'common' | 'rare' | 'epic' | 'legendary';
 export type AchievementMetric =
   | 'interviews_completed'
   | 'successful_interviews'
-  | 'streak_days'
   | 'highest_score'
   | 'delivery_score'
   | 'content_score'

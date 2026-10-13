@@ -44,10 +44,6 @@ export interface UserGamification {
   levelName: string;
   currentXP: number;
   xpToNextLevel: number;
-  streakCount: number;
-  /** YYYY-MM-DD (UTC) for streak calculation */
-  lastActiveDate: string;
-  longestStreak: number;
 }
 
 /** Nested readiness block on users/{uid}  server-written only */
