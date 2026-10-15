@@ -25,9 +25,21 @@ const MAX_MESSAGE_CHARS = 20_000;
 const clampMessage = (text: string): string =>
   sanitizeLiveTranscript(text).slice(0, MAX_MESSAGE_CHARS);
 
-const timestampMs = (value?: Timestamp | null): number | null => {
+const timestampMs = (value?: unknown): number | null => {
   if (!value) return null;
-  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (typeof (value as any).toMillis === 'function') return (value as any).toMillis();
+  if (typeof (value as any).getTime === 'function') return (value as any).getTime();
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof (value as any)._seconds === 'number') {
+    return (value as any)._seconds * 1000 + Math.floor(((value as any)._nanoseconds ?? 0) / 1e6);
+  }
+  if (typeof (value as any).seconds === 'number') {
+    return (value as any).seconds * 1000 + Math.floor(((value as any).nanoseconds ?? 0) / 1e6);
+  }
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
   return null;
 };
 
@@ -39,19 +51,30 @@ const durationSecondsFor = (interview: Pick<InterviewDoc, 'config'>): number => 
 };
 
 export const computeRemainingSeconds = (
-  interview: Pick<InterviewDoc, 'startedAt' | 'config' | 'remainingSeconds'>,
+  interview: Pick<InterviewDoc, 'startedAt' | 'config' | 'remainingSeconds' | 'liveElapsedSec'>,
   nowMs = Date.now(),
 ): number => {
   const durationSeconds = durationSecondsFor(interview);
 
   const startedMs = timestampMs(interview.startedAt ?? null);
   if (startedMs != null) {
-    const elapsed = Math.max(0, Math.floor((nowMs - startedMs) / 1000));
+    const elapsedFromStart = Math.max(0, Math.floor((nowMs - startedMs) / 1000));
+    const elapsedFromPersisted =
+      typeof interview.liveElapsedSec === 'number' && interview.liveElapsedSec >= 0
+        ? interview.liveElapsedSec
+        : typeof interview.remainingSeconds === 'number' && interview.remainingSeconds >= 0
+          ? Math.max(0, durationSeconds - interview.remainingSeconds)
+          : 0;
+    const elapsed = Math.max(elapsedFromStart, elapsedFromPersisted);
     return Math.max(0, durationSeconds - elapsed);
   }
 
   if (typeof interview.remainingSeconds === 'number' && interview.remainingSeconds >= 0) {
-    return Math.floor(interview.remainingSeconds);
+    return Math.min(durationSeconds, Math.floor(interview.remainingSeconds));
+  }
+
+  if (typeof interview.liveElapsedSec === 'number' && interview.liveElapsedSec >= 0) {
+    return Math.max(0, durationSeconds - Math.floor(interview.liveElapsedSec));
   }
 
   return durationSeconds;
@@ -61,11 +84,9 @@ export const computeLiveElapsedSec = (
   interview: Pick<InterviewDoc, 'startedAt' | 'config' | 'remainingSeconds' | 'liveElapsedSec'>,
   nowMs = Date.now(),
 ): number => {
-  if (typeof interview.liveElapsedSec === 'number' && interview.liveElapsedSec >= 0) {
-    return Math.floor(interview.liveElapsedSec);
-  }
   const durationSeconds = durationSecondsFor(interview);
-  return Math.max(0, durationSeconds - computeRemainingSeconds(interview, nowMs));
+  const remaining = computeRemainingSeconds(interview, nowMs);
+  return Math.max(0, Math.min(durationSeconds, durationSeconds - remaining));
 };
 
 export const resolveResumeMode = (
@@ -158,6 +179,7 @@ export const syncInterviewTimer = async (
 /** Marks interview in_progress and sets timer fields. Always syncs timer to Firestore. */
 export const ensureInterviewLiveStarted = async (
   interviewId: string,
+  markStarted = false,
 ): Promise<{ interview: InterviewDoc; created: boolean }> => {
   const db = ensureAdmin();
   const ref = interviewRef(db, interviewId);
@@ -175,12 +197,29 @@ export const ensureInterviewLiveStarted = async (
     }
 
     const now = Timestamp.now();
-    const startedAt = interview.startedAt ?? now;
-    const timer = buildTimerPatch({ ...interview, startedAt }, now);
+    const shouldStartTimer =
+      markStarted ||
+      Boolean(interview.startedAt) ||
+      Boolean(interview.conversation?.length);
+    const startedAt = shouldStartTimer ? (interview.startedAt ?? now) : null;
+    const timer = startedAt
+      ? buildTimerPatch({ ...interview, startedAt }, now)
+      : {
+          remainingSeconds:
+            typeof interview.remainingSeconds === 'number' &&
+            interview.remainingSeconds >= 0
+              ? interview.remainingSeconds
+              : durationSecondsFor(interview),
+          liveElapsedSec:
+            typeof interview.liveElapsedSec === 'number' &&
+            interview.liveElapsedSec >= 0
+              ? interview.liveElapsedSec
+              : 0,
+        };
 
     const patch: Partial<InterviewDoc> = {
       status: 'in_progress',
-      startedAt,
+      ...(startedAt ? { startedAt } : {}),
       remainingSeconds: timer.remainingSeconds,
       liveElapsedSec: timer.liveElapsedSec,
       conversation: interview.conversation ?? [],
@@ -191,7 +230,7 @@ export const ensureInterviewLiveStarted = async (
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    const created = !interview.startedAt;
+    const created = !interview.startedAt && Boolean(startedAt);
     return {
       interview: { ...interview, ...patch, updatedAt: now },
       created,

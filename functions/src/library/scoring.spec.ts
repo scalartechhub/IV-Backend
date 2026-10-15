@@ -2,10 +2,16 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   applyCoverageAdjustment,
+  applyStrictAccuracyAdjustment,
+  cleanStrengths,
+  cleanWeaknesses,
   computeCoverageMetrics,
+  countCandidateAnswers,
   countCandidateAnswersFromTranscript,
   coverageMultiplier,
   expectedQuestionCount,
+  isNonAnswerOrFiller,
+  isParrotingQuestion,
   type ScoreInterviewResult,
 } from './scoring';
 
@@ -136,3 +142,122 @@ describe('applyCoverageAdjustment', () => {
     ]);
   });
 });
+
+describe('applyStrictAccuracyAdjustment', () => {
+  it('strictly caps scores when candidate has 0 strong topics (all off-topic / weak)', () => {
+    const failingScores: ScoreInterviewResult = {
+      ...baseScores(),
+      overallScore: 95, // Hallucinated high score
+      technicalScore: 100,
+      problemSolvingScore: 98,
+      codingScore: 90,
+      topicOutcomes: [
+        { topic: 'React hooks', status: 'weak' },
+        { topic: 'Async JavaScript', status: 'weak' },
+        { topic: 'State management', status: 'weak' },
+      ],
+    };
+
+    const adjusted = applyStrictAccuracyAdjustment(failingScores);
+
+    assert.ok(adjusted.technicalScore <= 10, `technicalScore should be <= 10, got ${adjusted.technicalScore}`);
+    assert.ok(adjusted.problemSolvingScore <= 10, `problemSolvingScore should be <= 10, got ${adjusted.problemSolvingScore}`);
+    assert.ok(adjusted.overallScore <= 15, `overallScore should be <= 15, got ${adjusted.overallScore}`);
+    assert.ok((adjusted.codingScore ?? 0) <= 10, `codingScore should be <= 10, got ${adjusted.codingScore}`);
+    assert.ok(adjusted.skillDeltas.technical <= -5);
+    assert.ok(adjusted.skillDeltas.problemSolving <= -5);
+    assert.ok(adjusted.weaknesses.some((w) => /off-topic|irrelevant|non-answers/i.test(w)));
+  });
+
+  it('caps mixed performance proportional to strong topic ratio', () => {
+    const mixedScores: ScoreInterviewResult = {
+      ...baseScores(),
+      overallScore: 95,
+      technicalScore: 95,
+      problemSolvingScore: 95,
+      topicOutcomes: [
+        { topic: 'React hooks', status: 'strong' },
+        { topic: 'Async JavaScript', status: 'weak' },
+        { topic: 'State management', status: 'weak' },
+        { topic: 'CSS Grid', status: 'weak' },
+      ], // 1 of 4 strong = 25% -> max allowed technical ~ 15 + 0.25*85 = 36
+    };
+
+    const adjusted = applyStrictAccuracyAdjustment(mixedScores);
+    assert.ok(adjusted.technicalScore <= 40, `technicalScore should be <= 40, got ${adjusted.technicalScore}`);
+    assert.ok(adjusted.overallScore <= 50, `overallScore should be <= 50, got ${adjusted.overallScore}`);
+  });
+});
+
+describe('anti-parroting and non-answer detection', () => {
+  it('detects evasive or filler non-answers', () => {
+    assert.equal(isNonAnswerOrFiller("I don't know"), true);
+    assert.equal(isNonAnswerOrFiller('no idea'), true);
+    assert.equal(isNonAnswerOrFiller('skip'), true);
+    assert.equal(isNonAnswerOrFiller('Pass.'), true);
+    assert.equal(isNonAnswerOrFiller('Can you explain dependency injection in Angular?'), false);
+  });
+
+  it('detects parroted questions', () => {
+    const question = 'Can you explain how closures work in JavaScript?';
+    assert.equal(isParrotingQuestion('Can you explain how closures work in JavaScript?', question), true);
+    assert.equal(isParrotingQuestion('explain how closures work in javascript', question), true);
+    assert.equal(
+      isParrotingQuestion('A closure is a function that retains access to its outer scope variables.', question),
+      false,
+    );
+  });
+
+  it('does not count parroted or filler responses in countCandidateAnswers', () => {
+    const conversation = [
+      { role: 'assistant', text: 'Can you explain how closures work in JavaScript?' },
+      { role: 'candidate', text: 'Can you explain how closures work in JavaScript?' }, // parroted
+      { role: 'assistant', text: 'What is the purpose of useEffect?' },
+      { role: 'candidate', text: 'I do not know' }, // non-answer
+      { role: 'assistant', text: 'Tell me about SQL indexing.' },
+      { role: 'candidate', text: 'Indexes speed up query read times using B-trees.' }, // genuine answer
+    ] as any;
+
+    assert.equal(countCandidateAnswers(conversation), 1);
+  });
+});
+
+describe('cleanStrengths and cleanWeaknesses', () => {
+  it('filters out robotic or patronizing strengths and replaces with professional ones', () => {
+    const result = cleanStrengths(['Attended the interview session']);
+    assert.equal(result.some((s) => /attended/i.test(s)), false);
+    assert.ok(result.length >= 2);
+    assert.ok(result.some((s) => /communication|engagement/i.test(s)));
+  });
+
+  it('preserves genuine strengths', () => {
+    const genuine = [
+      'Strong explanation of asynchronous JavaScript',
+      'Good familiarity with React hooks',
+    ];
+    const result = cleanStrengths(genuine);
+    assert.deepEqual(result, genuine);
+  });
+
+  it('deduplicates repetitive snippet and off-topic weaknesses', () => {
+    const rawWeaknesses = [
+      'Incomplete code-snippet coverage: asked 1 of 2 required code-snippet questions.',
+      'Provided off-topic, irrelevant, or non-answers to technical questions.',
+      "Parroted and echoed the interviewer's questions instead of providing solutions.",
+      'Failed to demonstrate any technical depth in Angular, Node.js, Firestore, or system design.',
+      'Too few code-snippet questions were asked/answered',
+    ];
+
+    const cleaned = cleanWeaknesses(rawWeaknesses);
+
+    // Only 1 snippet note should exist
+    assert.equal(cleaned.filter((w) => /snippet/i.test(w)).length, 1);
+    // Only 1 off-topic/parroted note should exist
+    assert.equal(cleaned.filter((w) => /off-topic|parroted/i.test(w)).length, 1);
+    // Technical depth note should be preserved
+    assert.ok(cleaned.some((w) => /technical depth/i.test(w)));
+    // Max 4 items
+    assert.ok(cleaned.length <= 4);
+  });
+});
+

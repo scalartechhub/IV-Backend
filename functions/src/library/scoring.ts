@@ -58,6 +58,31 @@ Respond ONLY with valid JSON matching this shape:
 }
 skillDeltas should be small integers typically in [-8, +8]. No markdown.
 
+Strict Answer Evaluation & Scoring Mandates (CRITICAL):
+- Strictly grade candidate answers based on FACTUAL TECHNICAL ACCURACY, DIRECT RELEVANCE to the question asked, DEPTH, and PROBLEM-SOLVING.
+- DO NOT award scores merely for talking, politeness, length of response, or confident tone if the content is incorrect, off-topic, evasive, or repetitive.
+- Off-topic / Irrelevant / Nonsense / Random responses: If the candidate answered with something unrelated to the technical question asked (e.g. talking about unrelated topics, random banter, gibberish, filler, or avoiding the question), that question is completely FAILED (0 points).
+- Parroting / Echoing the question: If the candidate simply repeats or paraphrases the interviewer's question back instead of providing an actual solution, award 0 points.
+- If the candidate provided off-topic, irrelevant, or non-answers to most or all questions:
+  * technicalScore MUST BE 0-15 (strictly failing, never 70-100 or 5/5).
+  * problemSolvingScore MUST BE 0-15 (strictly failing).
+  * overallScore MUST BE 0-20.
+  * codingScore (if applicable) MUST BE 0-15.
+  * Under NO circumstances should an off-topic or non-responsive candidate receive a high rating.
+
+Feedback Guidelines (mandatory):
+- strengths: List 2–3 genuine, professional strengths observed during the session. If technical answers were weak or off-topic, focus on positive behavioral or communication attributes (e.g. "Maintained a professional, respectful tone throughout the interview", "Willingness to engage and respond to live prompts", "Clear voice delivery"). NEVER output condescending, generic or robotic one-liners like "Attended the interview session" or "Showed up".
+- weaknesses: List 2–3 concise, constructive areas for improvement. Focus on specific technical concepts or interview techniques (e.g. "Direct answer alignment: Ensure responses directly address the technical question asked rather than speaking broadly or deflecting", "Conceptual depth: Strengthen foundational understanding of core role technologies"). Do NOT repeat the exact same point in different words, and avoid aggressive or repetitive phrasing.
+- recommendations: Provide 2–3 actionable, encouraging, and concrete learning steps (e.g. practicing structured answer frameworks, reviewing specific documentation or code architectures, hands-on debugging exercises).
+
+- Strict Score Anchors for technicalScore & problemSolvingScore:
+  * 0–19: Off-topic answers, nonsense, repeated questions back, non-answers, or completely wrong technical claims.
+  * 20–39: Severe technical misunderstandings, confused fundamentals, or superficial buzzwords without answering.
+  * 40–59: Partially correct but shallow, vague, or missing key technical concepts.
+  * 60–74: Competent basic understanding, mostly correct with minor omissions.
+  * 75–89: Solid, relevant, accurate answers with clear technical reasoning and examples.
+  * 90–100: Exceptional, authoritative, in-depth mastery and precise trade-offs. Reserve 90+ ONLY for truly expert responses.
+
 Coverage rules (mandatory):
 - Score against the FULL planned session (durationMinutes), not only answered turns.
 - Few strong answers in a short time must NOT produce a high overallScore.
@@ -69,8 +94,13 @@ topicOutcomes rules (mandatory):
 - List 3-8 concise, specific concept/topic names actually discussed in the transcript
   (e.g. "useEffect cleanup", "closures", "REST API design", "SQL joins" — not vague labels like "JavaScript" alone).
 - Classify each as "strong" (candidate answered confidently and correctly) or "weak"
-  (struggled, vague, incorrect, or avoided the question).
+  (struggled, vague, incorrect, off-topic, or avoided the question).
 - Only include topics that were actually asked about — do not invent topics.
+- Every topic where the candidate gave an irrelevant, off-topic, incorrect, or evasive answer MUST have status "weak".
+- If the candidate failed all technical topics, ALL topicOutcomes MUST have status "weak".
+
+skillDeltas rules (mandatory):
+- If candidate performance was poor or answers were off-topic, skill deltas for technical and problemSolving MUST be negative (e.g. -5 to -8), NOT positive.
 
 isTechDomainInterview rule (mandatory):
 - Decide whether this interview is for a technology/software/IT/coding-engineering role, based on
@@ -83,9 +113,7 @@ Code-snippet questions (only relevant when isTechDomainInterview is true):
   questions. Grade the candidate's ability to trace/explain/debug code specifically, and factor
   that into codingScore (include codingScore whenever isTechDomainInterview is true).
 - sessionMeta.codeSnippetQuestionsAsked / codeSnippetQuestionsRequired tell you how many were
-  actually asked vs required. If asked < required, treat it as incomplete coverage: mention it in
-  weaknesses (e.g. "Too few code-snippet questions were asked/answered") and do not award a high
-  codingScore or overallScore purely on conceptual answers.`;
+  actually asked vs required. If asked < required, factor that into codingScore and overallScore.`;
 
 /** ~1 question per 3 minutes; clamp to a sensible interview range. */
 export function expectedQuestionCount(durationMinutes: number): number {
@@ -97,14 +125,47 @@ function isMeaningfulTurn(text: string | undefined): boolean {
   return (text ?? '').trim().length >= 8;
 }
 
+/** Check if candidate text is a generic refusal, evasion, or filler rather than an answer. */
+export function isNonAnswerOrFiller(text: string | undefined): boolean {
+  if (!text) return true;
+  const t = text.trim().toLowerCase().replace(/[.,!?;:]+$/, '');
+  return (
+    /^(i (don'?t|do not) know( anything)?|no idea|no clue|skip|pass|repeat the question|can you repeat|i am not sure|not sure|next question|nothing|no answer|idk|n\/a)$/i.test(t)
+  );
+}
+
+/** Check if candidate text simply parrots or echoes the assistant's previous question. */
+export function isParrotingQuestion(candidateText: string | undefined, assistantText: string | undefined): boolean {
+  if (!candidateText || !assistantText) return false;
+  const c = candidateText.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const a = assistantText.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!c || !a) return false;
+  if (c === a) return true;
+  if (c.length >= 15 && (a.includes(c) || c.includes(a))) return true;
+  return false;
+}
+
 /** Count non-trivial candidate answer turns from persisted conversation. */
 export function countCandidateAnswers(
   conversation: InterviewConversationMessage[] | undefined,
 ): number {
   if (!conversation?.length) return 0;
-  return conversation.filter(
-    (m) => m.role === 'candidate' && isMeaningfulTurn(m.text),
-  ).length;
+  let count = 0;
+  let lastAssistantText = '';
+  for (const m of conversation) {
+    if (m.role === 'assistant') {
+      lastAssistantText = m.text;
+    } else if (m.role === 'candidate') {
+      if (
+        isMeaningfulTurn(m.text) &&
+        !isNonAnswerOrFiller(m.text) &&
+        !isParrotingQuestion(m.text, lastAssistantText)
+      ) {
+        count += 1;
+      }
+    }
+  }
+  return count;
 }
 
 /** Count interviewer turns (proxy for questions asked). */
@@ -125,10 +186,19 @@ export function countCandidateAnswersFromTranscript(transcript: string): number 
   if (!transcript?.trim()) return 0;
   const lines = transcript.split(/\r?\n/);
   let count = 0;
+  let lastInterviewerText = '';
   for (const line of lines) {
-    if (/^\s*(Candidate|User|Applicant)\s*:/i.test(line)) {
+    if (/^\s*(Interviewer|AI|System)\s*:/i.test(line)) {
+      lastInterviewerText = line.replace(/^\s*(Interviewer|AI|System)\s*:/i, '');
+    } else if (/^\s*(Candidate|User|Applicant)\s*:/i.test(line)) {
       const body = line.replace(/^\s*(Candidate|User|Applicant)\s*:/i, '');
-      if (isMeaningfulTurn(body)) count += 1;
+      if (
+        isMeaningfulTurn(body) &&
+        !isNonAnswerOrFiller(body) &&
+        !isParrotingQuestion(body, lastInterviewerText)
+      ) {
+        count += 1;
+      }
     }
   }
   return count;
@@ -302,14 +372,155 @@ export function applySnippetCoverageAdjustment(
   const adjustedOverall = clampScore(scores.overallScore * overallMultiplier);
 
   const note = `Incomplete code-snippet coverage: asked ${asked} of ${required} required code-snippet question${required === 1 ? '' : 's'}.`;
-  const alreadyNoted = scores.weaknesses.some((w) => /code-snippet coverage/i.test(w));
+  // Filter out any duplicate / generic snippet notes previously emitted by LLM
+  const remainingWeaknesses = (scores.weaknesses ?? []).filter(
+    (w) => !/code-?snippet|snippet question/i.test(w),
+  );
 
   return {
     ...scores,
     overallScore: adjustedOverall,
     codingScore: adjustedCoding,
-    weaknesses: alreadyNoted ? scores.weaknesses : [note, ...scores.weaknesses].slice(0, 6),
+    weaknesses: [note, ...remainingWeaknesses].slice(0, 6),
   };
+}
+
+/**
+ * Third deterministic pass: ties technicalScore, problemSolvingScore, and codingScore
+ * directly to the candidate's actual topic outcomes and penalizes off-topic/non-answers.
+ * Prevents LLM hallucination from awarding 100 or passing scores when answers were off-topic or weak.
+ */
+export function applyStrictAccuracyAdjustment(
+  scores: ScoreInterviewResult,
+): ScoreInterviewResult {
+  const topics = scores.topicOutcomes ?? [];
+  if (!topics.length) {
+    return scores;
+  }
+
+  const strongCount = topics.filter((t) => t.status === 'strong').length;
+  const totalTopics = topics.length;
+  const strongRatio = strongCount / totalTopics;
+
+  // Case 1: Candidate failed all evaluated topics (0 strong answers).
+  // Irrelevant, off-topic, or non-answers must never yield passing or high scores.
+  if (strongCount === 0) {
+    const cappedTech = Math.min(scores.technicalScore, 10);
+    const cappedProblem = Math.min(scores.problemSolvingScore, 10);
+    const cappedOverall = Math.min(scores.overallScore, 15);
+    const cappedCoding =
+      scores.codingScore !== undefined
+        ? Math.min(scores.codingScore, 10)
+        : undefined;
+
+    const weakness = 'Direct answer alignment: Ensure responses directly address the technical questions rather than deflecting or speaking off-topic.';
+    const alreadyNoted = scores.weaknesses.some((w) =>
+      /off-topic|irrelevant|non-answers|struggled across|direct answer alignment/i.test(w),
+    );
+
+    return {
+      ...scores,
+      overallScore: cappedOverall,
+      technicalScore: cappedTech,
+      problemSolvingScore: cappedProblem,
+      ...(cappedCoding !== undefined ? { codingScore: cappedCoding } : {}),
+      skillDeltas: {
+        ...scores.skillDeltas,
+        technical: Math.min(scores.skillDeltas.technical ?? 0, -6),
+        problemSolving: Math.min(scores.skillDeltas.problemSolving ?? 0, -6),
+      },
+      weaknesses: alreadyNoted ? scores.weaknesses : [weakness, ...scores.weaknesses].slice(0, 6),
+    };
+  }
+
+  // Case 2: Candidate had mixed performance.
+  // Cap technicalScore and problemSolvingScore so they cannot wildly exceed demonstrated topic mastery.
+  const maxAllowedTech = Math.round(15 + strongRatio * 85);
+  const cappedTech = Math.min(scores.technicalScore, maxAllowedTech);
+  const cappedProblem = Math.min(scores.problemSolvingScore, Math.min(100, maxAllowedTech + 10));
+  const maxAllowedOverall = Math.min(100, Math.round(maxAllowedTech * 1.15));
+  const cappedOverall = Math.min(scores.overallScore, maxAllowedOverall);
+
+  return {
+    ...scores,
+    overallScore: cappedOverall,
+    technicalScore: cappedTech,
+    problemSolvingScore: cappedProblem,
+  };
+}
+
+const DISALLOWED_STRENGTH_PATTERNS = [
+  /attended (the )?interview/i,
+  /showed up/i,
+  /basic (interview )?presence/i,
+  /basic participation/i,
+  /logged in/i,
+  /completed the session/i,
+];
+
+/** Remove condescending/robotic one-liners and guarantee constructive professional strengths. */
+export function cleanStrengths(strengths: string[] | undefined): string[] {
+  const filtered = (strengths ?? [])
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && !DISALLOWED_STRENGTH_PATTERNS.some((p) => p.test(s)));
+
+  if (filtered.length >= 2) {
+    return Array.from(new Set(filtered)).slice(0, 3);
+  }
+
+  const constructiveDefaults = [
+    'Maintained a professional, respectful communication tone throughout the dialogue',
+    'Demonstrated active engagement and willingness to participate in live technical questioning',
+  ];
+
+  return Array.from(new Set([...filtered, ...constructiveDefaults])).slice(0, 3);
+}
+
+/** Deduplicate overlapping coverage and off-topic notes into clean, distinct constructive points. */
+export function cleanWeaknesses(weaknesses: string[] | undefined): string[] {
+  const result: string[] = [];
+  let hasSnippetNote = false;
+  let hasCoverageNote = false;
+  let hasOffTopicNote = false;
+
+  for (const w of weaknesses ?? []) {
+    const text = w.trim();
+    if (!text) continue;
+
+    // Code snippet notes: keep at most one detailed metric note
+    if (/code-?snippet|snippet question/i.test(text)) {
+      if (!hasSnippetNote) {
+        result.push(text);
+        hasSnippetNote = true;
+      }
+      continue;
+    }
+
+    // Session coverage notes: keep at most one
+    if (/incomplete coverage|few questions|ended early|early exit/i.test(text)) {
+      if (!hasCoverageNote) {
+        result.push(text);
+        hasCoverageNote = true;
+      }
+      continue;
+    }
+
+    // Off-topic / irrelevance / parroting notes: keep at most one consolidated point
+    if (/off-topic|irrelevant|parroted|echoed|non-answers|direct answer alignment/i.test(text)) {
+      if (!hasOffTopicNote) {
+        result.push(text);
+        hasOffTopicNote = true;
+      }
+      continue;
+    }
+
+    // Domain / conceptual technical weaknesses: avoid exact duplicates
+    if (!result.some((existing) => existing.toLowerCase() === text.toLowerCase())) {
+      result.push(text);
+    }
+  }
+
+  return result.slice(0, 4);
 }
 
 /** Drop keys whose value is `undefined` so Firestore writes do not fail. */
@@ -392,12 +603,20 @@ export async function scoreInterview(params: {
     questionsAsked,
   });
 
-  return omitUndefinedScoreFields(
-    applySnippetCoverageAdjustment(coverageAdjusted, {
-      codeSnippetQuestionsAsked,
-      codeSnippetQuestionsRequired,
-    }),
-  );
+  const accuracyAdjusted = applyStrictAccuracyAdjustment(coverageAdjusted);
+
+  const snippetAdjusted = applySnippetCoverageAdjustment(accuracyAdjusted, {
+    codeSnippetQuestionsAsked,
+    codeSnippetQuestionsRequired,
+  });
+
+  const finalized: ScoreInterviewResult = {
+    ...snippetAdjusted,
+    strengths: cleanStrengths(snippetAdjusted.strengths),
+    weaknesses: cleanWeaknesses(snippetAdjusted.weaknesses),
+  };
+
+  return omitUndefinedScoreFields(finalized);
 }
 
 /**

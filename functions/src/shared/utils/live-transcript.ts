@@ -10,6 +10,7 @@ export const sanitizeLiveTranscript = (text: string): string =>
     .replace(/<\/?(?:noise|inaudible|unk|unknown|silence|other)\s*\/?>/gi, " ")
     .replace(/\[(?:noise|inaudible|unk|unknown|silence|other)\]/gi, " ")
     .replace(/\((?:noise|inaudible|unk|unknown|silence|other)\)/gi, " ")
+    .replace(/[\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B00-\u0B7F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0D80-\u0DFF\u0600-\u06FF\u0750-\u077F]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -28,9 +29,11 @@ const INDIC_OR_NON_LATIN_SCRIPT =
 export const isLatinEnglishCaption = (text: string): boolean => {
   const cleaned = text.replace(/\s+/g, "");
   if (!cleaned) return false;
+  const latinCount = (cleaned.match(/[\u0000-\u024F\u1E00-\u1EFF]/g) ?? []).length;
+  if (latinCount / cleaned.length >= 0.5) return true;
   if (INDIC_OR_NON_LATIN_SCRIPT.test(cleaned)) return false;
   const nonLatin = (cleaned.match(/[^\u0000-\u024F\u1E00-\u1EFF]/g) ?? []).length;
-  return nonLatin / cleaned.length < 0.15;
+  return nonLatin / cleaned.length < 0.2;
 };
 
 /** Prefer cleaned output transcription, then model text, then structured tool question text. */

@@ -293,7 +293,13 @@ export function buildLiveConnectConfig(
   return {
     responseModalities: [Modality.AUDIO],
     systemInstruction: systemInstructions,
-    speechConfig: { languageCode: 'en-US' },
+    speechConfig: {
+      voiceConfig: {
+        prebuiltVoiceConfig: {
+          voiceName: firestoreConfigService.getGenAIConfig().voiceName || 'Charon',
+        },
+      },
+    },
     inputAudioTranscription: {
       languageHints: { languageCodes: ['en-US'] },
     },
@@ -305,6 +311,9 @@ export function buildLiveConnectConfig(
     realtimeInputConfig: {
       automaticActivityDetection: { disabled: true },
     },
+    // Gemini 2.5+ models enable thinking by default which adds seconds of latency before speaking.
+    // Explicitly disable thinking budget so the interviewer speaks promptly without deliberation delay.
+    thinkingConfig: { thinkingBudget: 0 },
     ...(functionDeclarations?.length ? { tools: [{ functionDeclarations }] } : {}),
   };
 }

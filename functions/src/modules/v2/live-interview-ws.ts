@@ -42,6 +42,7 @@ import {
   appendAssistantTurn,
   appendCandidateTurn,
   awaitPersistQueue,
+  computeLiveElapsedSec,
   computeRemainingSeconds,
   ensureInterviewLiveStarted,
   resolveResumeMode,
@@ -208,6 +209,9 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
     /** Caption text from the browser STT — forwarded to Gemini if audio alone is insufficient. */
     let pendingCandidateText = '';
     let receivedUserAudioThisTurn = false;
+    let userAudioChunksCount = 0;
+    let userAudioBytesTotal = 0;
+    let userAudioSampleBase64 = '';
     /** Set after activityEnd until the model produces the next assistant turn. */
     let awaitingAiResponse = false;
     let latestInterview: InterviewDoc | null = null;
@@ -218,11 +222,22 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
     let codeSnippetQuestionsAsked = 0;
     /** Ensures the mid-call snippet reminder nudge is only sent once per connection. */
     let snippetReminderSent = false;
+    /** Ensures the 3-minute remaining wrap-up prompt is only sent once per connection. */
+    let timeWrapReminderSent = false;
 
     const clearKickoffRetry = (): void => {
       if (kickoffRetryTimer) {
         clearTimeout(kickoffRetryTimer);
         kickoffRetryTimer = null;
+      }
+    };
+
+    let aiResponseWatchdogTimer: NodeJS.Timeout | null = null;
+
+    const clearAiResponseWatchdog = (): void => {
+      if (aiResponseWatchdogTimer != null) {
+        clearTimeout(aiResponseWatchdogTimer);
+        aiResponseWatchdogTimer = null;
       }
     };
 
@@ -253,6 +268,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       if (closed) return;
       closed = true;
       clearKickoffRetry();
+      clearAiResponseWatchdog();
       clearTimerTick();
       clearPingTimer();
       userTurnOpen = false;
@@ -337,9 +353,29 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
 
       const started = await ensureInterviewLiveStarted(interviewId);
       let interview = started.interview;
+
+      let candidateName = interview.candidateName?.trim() || '';
+      if (!candidateName || /^(candidate|user|anonymous|guest|null|undefined)$/i.test(candidateName)) {
+        try {
+          const userSnap = await db.collection('users').doc(uid).get();
+          const userData = userSnap.data();
+          candidateName =
+            userData?.displayName?.trim() ||
+            userData?.name?.trim() ||
+            userData?.profile?.fullName?.trim() ||
+            '';
+        } catch {
+          // ignore lookup error
+        }
+      }
+
+      const remainingSeconds = computeRemainingSeconds(interview);
+      const liveElapsedSec = computeLiveElapsedSec(interview);
       interview = {
         ...interview,
-        remainingSeconds: computeRemainingSeconds(interview),
+        ...(candidateName ? { candidateName } : {}),
+        remainingSeconds,
+        liveElapsedSec,
       };
       latestInterview = interview;
       codeSnippetQuestionsAsked = interview.codeSnippetQuestionsAsked ?? 0;
@@ -418,7 +454,11 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       };
 
       const resumeMode = resolveResumeMode(interview);
-      const isResume = resumeMode !== 'fresh';
+      const isAlreadyStarted =
+        Boolean(interview.startedAt) ||
+        (interview.liveElapsedSec ?? 0) > 0 ||
+        Boolean(interview.conversation?.length);
+      const isResume = resumeMode !== 'fresh' || isAlreadyStarted;
       const conversation = interview.conversation ?? [];
 
       const baseInstructions =
@@ -435,8 +475,8 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       const sessionPayload = {
         conversation: toClientConversation(conversation),
         lastSpeaker: (interview.lastSpeaker ?? null) as InterviewConversationRole | null,
-        remainingSeconds: interview.remainingSeconds ?? computeRemainingSeconds(interview),
-        liveElapsedSec: interview.liveElapsedSec,
+        remainingSeconds: computeRemainingSeconds(interview),
+        liveElapsedSec: computeLiveElapsedSec(interview),
         durationMinutes: interview.config.durationMinutes,
         resumeMode,
       };
@@ -446,39 +486,64 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
         ...sessionPayload,
       });
 
-      timerTickId = setInterval(() => {
-        const remaining = broadcastTimer();
-        if (remaining <= 0) {
-          sendJson(clientSocket, { type: 'time_expired' });
-          return;
-        }
+      const startTimerTicker = (): void => {
+        if (timerTickId) return;
+        timerTickId = setInterval(() => {
+          const remaining = broadcastTimer();
+          if (remaining <= 0) {
+            sendJson(clientSocket, { type: 'time_expired' });
+            return;
+          }
 
-        // One-shot safety-net reminder past the session's midpoint if the snippet-question
-        // minimum (see CODE SNIPPET QUESTIONS in interview-prompt.ts) has not yet been met.
-        // Sent as context only (turnComplete: false) so it never interrupts the live turn-taking.
-        if (!snippetReminderSent && geminiSession) {
-          const durationMinutes = latestInterview?.config.durationMinutes ?? interview.config.durationMinutes;
-          const totalSec = Math.max(1, durationMinutes * 60);
-          const required = requiredSnippetQuestionCount(durationMinutes);
-          const pastMidpoint = remaining <= totalSec * 0.45;
-          if (pastMidpoint && codeSnippetQuestionsAsked < required) {
-            snippetReminderSent = true;
-            const isJdInterview = Boolean(
-              latestInterview?.config.jobDescriptionText?.trim() ??
-                interview.config.jobDescriptionText?.trim(),
-            );
-            const reminderText = isJdInterview
-              ? `(Interviewer reminder — not spoken to candidate) So far you have asked ` +
-                `${codeSnippetQuestionsAsked} code-snippet question(s) out of the ${required} ` +
-                'required for this JD-based technical interview. Use present_code_snippet to show ' +
-                'code on screen — NEVER ask the candidate to write or type code (no code editor). ' +
-                'Ask them to explain, debug, or reason about the snippet verbally.'
-              : `(Interviewer reminder — not spoken to candidate) So far you have asked ` +
-                `${codeSnippetQuestionsAsked} code-snippet question(s) out of the ${required} ` +
-                'required for technical/IT interviews (see CODE SNIPPET QUESTIONS rule). ' +
-                'If this is a technology/software/IT-role interview, plan to ask one soon via ' +
-                'the present_code_snippet tool before you run out of time. Ignore this note ' +
-                'entirely if this is not a technical/IT interview.';
+          // One-shot safety-net reminder past the session's midpoint if the snippet-question
+          // minimum (see CODE SNIPPET QUESTIONS in interview-prompt.ts) has not yet been met.
+          // Sent as context only (turnComplete: false) so it never interrupts the live turn-taking.
+          if (!snippetReminderSent && geminiSession) {
+            const durationMinutes = latestInterview?.config.durationMinutes ?? interview.config.durationMinutes;
+            const totalSec = Math.max(1, durationMinutes * 60);
+            const required = requiredSnippetQuestionCount(durationMinutes);
+            const pastMidpoint = remaining <= totalSec * 0.45;
+            if (pastMidpoint && codeSnippetQuestionsAsked < required) {
+              snippetReminderSent = true;
+              const isJdInterview = Boolean(
+                latestInterview?.config.jobDescriptionText?.trim() ??
+                  interview.config.jobDescriptionText?.trim(),
+              );
+              const reminderText = isJdInterview
+                ? `(Interviewer reminder — not spoken to candidate) So far you have asked ` +
+                  `${codeSnippetQuestionsAsked} code-snippet question(s) out of the ${required} ` +
+                  'required for this JD-based technical interview. Use present_code_snippet to show ' +
+                  'code on screen — NEVER ask the candidate to write or type code (no code editor). ' +
+                  'Ask them to explain, debug, or reason about the snippet verbally.'
+                : `(Interviewer reminder — not spoken to candidate) So far you have asked ` +
+                  `${codeSnippetQuestionsAsked} code-snippet question(s) out of the ${required} ` +
+                  'required for technical/IT interviews (see CODE SNIPPET QUESTIONS rule). ' +
+                  'If this is a technology/software/IT-role interview, plan to ask one soon via ' +
+                  'the present_code_snippet tool before you run out of time. Ignore this note ' +
+                  'entirely if this is not a technical/IT interview.';
+              try {
+                geminiSession.sendClientContent({
+                  turns: [
+                    {
+                      role: 'user',
+                      parts: [
+                        {
+                          text: reminderText,
+                        },
+                      ],
+                    },
+                  ],
+                  turnComplete: false,
+                });
+              } catch (error) {
+                logger.warn(`[v2-live-interview] snippet reminder failed interviewId=${interviewId}`, error);
+              }
+            }
+          }
+
+          // When remaining time is under 3 minutes (180s), send one-shot wrap-up reminder to Gemini
+          if (remaining > 0 && remaining <= 180 && !timeWrapReminderSent && geminiSession) {
+            timeWrapReminderSent = true;
             try {
               geminiSession.sendClientContent({
                 turns: [
@@ -486,7 +551,11 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
                     role: 'user',
                     parts: [
                       {
-                        text: reminderText,
+                        text:
+                          '(Interviewer time wrap mandate — do NOT read this prompt aloud) Less than 3 minutes remain. ' +
+                          'Do NOT ask any new technical questions. In your very next turn, say: ' +
+                          '"I am done from my end due to time limitation. Do you have any questions for me? If not, then we can stop the interview." ' +
+                          'If the candidate has no questions or says no, thank them warmly and conclude the interview.',
                       },
                     ],
                   },
@@ -494,12 +563,16 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
                 turnComplete: false,
               });
             } catch (error) {
-              logger.warn(`[v2-live-interview] snippet reminder failed interviewId=${interviewId}`, error);
+              logger.warn(`[v2-live-interview] time wrap reminder failed interviewId=${interviewId}`, error);
             }
           }
-        }
-      }, 15_000);
-      broadcastTimer();
+        }, 5_000);
+        broadcastTimer();
+      };
+
+      if (isResume || isAlreadyStarted) {
+        startTimerTicker();
+      }
 
       let aiTranscriptBuffer = '';
       /** Accumulated Gemini inputTranscription for the open candidate turn (live UI captions). */
@@ -560,18 +633,50 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
 
         // Live candidate captions from Gemini (complements browser Web Speech for long answers).
         // Drop Telugu/Hindi phonetic misdetections — only relay Latin English to the UI.
-        if (serverContent.inputTranscription?.text && userTurnOpen) {
-          userTranscriptBuffer += serverContent.inputTranscription.text;
-          const text = sanitizeLiveTranscript(userTranscriptBuffer);
+        const geminiInputText = serverContent.inputTranscription?.text;
+        const geminiInterimText = serverContent.interimInputTranscription?.text;
+        if (geminiInputText || geminiInterimText) {
+          if (geminiInputText) {
+            userTranscriptBuffer = [userTranscriptBuffer, geminiInputText].filter(Boolean).join(' ').trim();
+          }
+          const fullRaw = [userTranscriptBuffer, geminiInterimText].filter(Boolean).join(' ').trim();
+          const text = sanitizeLiveTranscript(fullRaw);
           if (text && isLatinEnglishCaption(text)) {
-            sendJson(clientSocket, { type: 'transcript', role: 'user', text, final: false });
+            sendJson(clientSocket, {
+              type: 'transcript',
+              role: 'user',
+              text,
+              stableText: sanitizeLiveTranscript(userTranscriptBuffer),
+              interimText: sanitizeLiveTranscript(geminiInterimText ?? ''),
+              final: false,
+            });
           }
         }
 
+        const onFirstAiSignal = (): void => {
+          if (firstAiSignalReceived) return;
+          firstAiSignalReceived = true;
+          clearKickoffRetry();
+          if (!latestInterview?.startedAt) {
+            enqueuePersist(async () => {
+              const started = await ensureInterviewLiveStarted(interviewId, true);
+              if (latestInterview) {
+                latestInterview = {
+                  ...latestInterview,
+                  startedAt: started.interview.startedAt,
+                  remainingSeconds: started.interview.remainingSeconds,
+                  liveElapsedSec: started.interview.liveElapsedSec,
+                };
+              }
+            });
+          }
+          startTimerTicker();
+        };
+
         if (serverContent.outputTranscription?.text) {
           if (!userTurnOpen) {
-            firstAiSignalReceived = true;
-            clearKickoffRetry();
+            clearAiResponseWatchdog();
+            onFirstAiSignal();
             aiTranscriptBuffer += serverContent.outputTranscription.text;
             const text = sanitizeLiveTranscript(aiTranscriptBuffer);
             if (text) {
@@ -589,8 +694,8 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
           if (userTurnOpen) {
             continue;
           }
-          firstAiSignalReceived = true;
-          clearKickoffRetry();
+          clearAiResponseWatchdog();
+          onFirstAiSignal();
           sendJson(clientSocket, {
             type: 'audio',
             data,
@@ -599,6 +704,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
         }
 
         if (serverContent.turnComplete) {
+          clearAiResponseWatchdog();
           if (userTurnOpen) {
             aiTranscriptBuffer = '';
             return;
@@ -626,6 +732,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
               `[v2-live-interview] empty AI turn after candidate answer, nudging interviewId=${interviewId}`,
             );
             awaitingAiResponse = false;
+            clearAiResponseWatchdog();
             try {
               geminiSession.sendClientContent({
                 turns: [
@@ -641,6 +748,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
                 ],
                 turnComplete: true,
               });
+              geminiSession.sendRealtimeInput({ activityEnd: {} });
             } catch (error) {
               logger.warn(
                 `[v2-live-interview] next-question nudge failed interviewId=${interviewId}`,
@@ -670,6 +778,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
           );
           if (!kickoffText) return;
 
+          userTurnOpen = false;
           geminiSession.sendClientContent({
             turns: [
               {
@@ -679,6 +788,11 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
             ],
             turnComplete: true,
           });
+          try {
+            geminiSession.sendRealtimeInput({ activityEnd: {} });
+          } catch {
+            // ignore
+          }
           logger.info(
             `[v2-live-interview] kickoff sent interviewId=${interviewId} attempt=${kickoffAttempts} mode=${resumeMode}`,
           );
@@ -692,7 +806,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
           kickoffRetryTimer = null;
           if (!firstAiSignalReceived && geminiSession) {
             logger.warn(
-              `[v2-live-interview] no opening response yet, retrying kickoff interviewId=${interviewId}`,
+              `[v2-live-interview] no opening response yet, retrying kickoff interviewId=${interviewId} attempt=${kickoffAttempts + 1}`,
             );
             sendKickoff();
           }
@@ -752,6 +866,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
 
         if (message.type === 'userTurnFinal' && message.text?.trim()) {
           pendingCandidateText = message.text.trim();
+          logger.info(`[v2-live-interview] 🎙️ Client Answer Transcript (userTurnFinal) interviewId=${interviewId}: "${pendingCandidateText}"`);
           persistCandidateText(pendingCandidateText);
           return;
         }
@@ -759,6 +874,9 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
         if (message.type === 'activityStart') {
           pendingCandidateText = '';
           receivedUserAudioThisTurn = false;
+          userAudioChunksCount = 0;
+          userAudioBytesTotal = 0;
+          userAudioSampleBase64 = '';
           userTurnOpen = true;
           aiTranscriptBuffer = '';
           userTranscriptBuffer = '';
@@ -772,19 +890,31 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
 
         if (message.type === 'activityEnd') {
           userTurnOpen = false;
-          // Flush remaining Gemini caption only when it is Latin English (not Telugu/Hindi).
+          // Capture Gemini audio transcription for comparison
           const geminiCaption = sanitizeLiveTranscript(userTranscriptBuffer);
           userTranscriptBuffer = '';
+
+          let captionText = pendingCandidateText;
+          pendingCandidateText = '';
+
+          // If client-side Web Speech did not yield caption, use Gemini's audio transcription
+          if (!captionText && geminiCaption && isLatinEnglishCaption(geminiCaption)) {
+            captionText = geminiCaption;
+            persistCandidateText(geminiCaption);
+          }
+
+          const durationSec = (userAudioBytesTotal / 32000).toFixed(2);
+          logger.info(`[v2-live-interview] Turn comparison interviewId=${interviewId} client="${captionText}" gemini="${geminiCaption}" audioBytes=${userAudioBytesTotal} audioChunks=${userAudioChunksCount} durationSec=${durationSec}`);
+
           if (geminiCaption && isLatinEnglishCaption(geminiCaption)) {
             sendJson(clientSocket, {
               type: 'transcript',
               role: 'user',
               text: geminiCaption,
-              final: false,
+              final: true,
             });
           }
-          const captionText = pendingCandidateText;
-          pendingCandidateText = '';
+
           awaitingAiResponse = true;
           try {
             geminiSession.sendRealtimeInput({ activityEnd: {} });
@@ -792,11 +922,20 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
             logger.warn(`[v2-live-interview] activityEnd failed interviewId=${interviewId}`, error);
           }
           if (captionText && !receivedUserAudioThisTurn) {
+            const remainingSecs = broadcastTimer();
+            const shouldWrap = remainingSecs > 0 && remainingSecs <= 180 && !timeWrapReminderSent;
+            if (shouldWrap) {
+              timeWrapReminderSent = true;
+            }
+            const textToSend = shouldWrap
+              ? `${captionText}\n\n(Time is under 3 minutes — do not ask new questions. State: "I am done from my end due to time limitation. Do you have any questions for me? If not, then we can stop the interview.")`
+              : captionText;
             try {
               geminiSession.sendClientContent({
-                turns: [{ role: 'user', parts: [{ text: captionText }] }],
+                turns: [{ role: 'user', parts: [{ text: textToSend }] }],
                 turnComplete: true,
               });
+              geminiSession.sendRealtimeInput({ activityEnd: {} });
             } catch (error) {
               logger.warn(
                 `[v2-live-interview] candidate caption forward failed interviewId=${interviewId}`,
@@ -804,12 +943,77 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
               );
             }
           }
+
+          clearAiResponseWatchdog();
+          aiResponseWatchdogTimer = setTimeout(() => {
+            aiResponseWatchdogTimer = null;
+            if (awaitingAiResponse && geminiSession) {
+              logger.warn(
+                `[v2-live-interview] AI response latency watchdog fired (2800ms), nudging interviewId=${interviewId}`,
+              );
+              try {
+                const remainingSecs = broadcastTimer();
+                const isUnder3Min = remainingSecs > 0 && remainingSecs <= 180 && !timeWrapReminderSent;
+                let nudgePrompt: string;
+                if (isUnder3Min) {
+                  timeWrapReminderSent = true;
+                  nudgePrompt =
+                    'Under 3 minutes remain. Wrap up now without asking any new questions: ' +
+                    'say "I am done from my end due to time limitation. Do you have any questions for me? If not, then we can stop the interview."';
+                } else {
+                  nudgePrompt = captionText
+                    ? `The candidate has submitted their answer: "${captionText}". Acknowledge briefly and ask your next interview question now without delay. Do NOT reveal or explain the answer.`
+                    : 'The candidate has finished their answer. Acknowledge briefly and ask your next interview question now without delay. Do NOT reveal or explain the answer.';
+                }
+                geminiSession.sendClientContent({
+                  turns: [
+                    {
+                      role: 'user',
+                      parts: [
+                        {
+                          text: nudgePrompt,
+                        },
+                      ],
+                    },
+                  ],
+                  turnComplete: true,
+                });
+                geminiSession.sendRealtimeInput({ activityEnd: {} });
+              } catch (error) {
+                logger.warn(
+                  `[v2-live-interview] latency watchdog nudge failed interviewId=${interviewId}`,
+                  error,
+                );
+              }
+            }
+          }, 2800);
+
           return;
         }
 
         if (message.type === 'audio' && message.data) {
+          if (!userTurnOpen && !awaitingAiResponse) {
+            userTurnOpen = true;
+            receivedUserAudioThisTurn = false;
+            userAudioChunksCount = 0;
+            userAudioBytesTotal = 0;
+            userAudioSampleBase64 = '';
+            aiTranscriptBuffer = '';
+            userTranscriptBuffer = '';
+            try {
+              geminiSession.sendRealtimeInput({ activityStart: {} });
+            } catch (error) {
+              logger.warn(`[v2-live-interview] auto-activityStart failed interviewId=${interviewId}`, error);
+            }
+          }
           if (userTurnOpen) {
             receivedUserAudioThisTurn = true;
+            userAudioChunksCount++;
+            const byteLen = Math.round((message.data.length * 3) / 4);
+            userAudioBytesTotal += byteLen;
+            if (!userAudioSampleBase64) {
+              userAudioSampleBase64 = message.data.slice(0, 100);
+            }
             geminiSession.sendRealtimeInput({
               audio: { data: message.data, mimeType: message.mimeType ?? 'audio/pcm;rate=16000' },
             });
