@@ -10,6 +10,11 @@ export const isCloudRuntime = (): boolean => {
   if (process.env.RENDER === 'true' || Boolean(process.env.RENDER_SERVICE_ID)) {
     return false;
   }
-  return Boolean(process.env.K_SERVICE) || Boolean(process.env.FUNCTIONS_EMULATOR);
+  return (
+    Boolean(process.env.K_SERVICE) ||
+    Boolean(process.env.FUNCTION_NAME) ||
+    Boolean(process.env.FUNCTION_TARGET) ||
+    Boolean(process.env.FUNCTIONS_EMULATOR)
+  );
 };
 

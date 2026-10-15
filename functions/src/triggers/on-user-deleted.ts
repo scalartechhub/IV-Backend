@@ -13,6 +13,10 @@ import { logger } from "../shared/logger";
 import { withTeamsAlert } from "../shared/with-teams-alert";
 
 export const onUserDeleted = functions
+  .runWith({
+    memory: "512MB",
+    timeoutSeconds: 300,
+  })
   .region("us-central1")
   .auth.user()
   .onDelete(

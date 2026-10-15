@@ -61,10 +61,14 @@ const refreshPublicIp = (): void => {
   }
 };
 
-// Prefetch host public IP on startup
-refreshPublicIp();
-// Refresh every 6 hours
-setInterval(refreshPublicIp, 6 * 60 * 60 * 1000).unref();
+import { isCloudRuntime } from "../../shared/runtime";
+
+// Prefetch host public IP on startup in local development only
+if (!isCloudRuntime()) {
+  refreshPublicIp();
+  // Refresh every 6 hours
+  setInterval(refreshPublicIp, 6 * 60 * 60 * 1000).unref();
+}
 
 /**
  * Extracts the real client IP address from the Express request.
