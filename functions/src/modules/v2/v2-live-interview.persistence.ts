@@ -460,6 +460,110 @@ export const appendCandidateTurn = async (
   return result;
 };
 
+/**
+ * Replace the short live caption with the transcript of the audio that was actually sent.
+ * Finds the candidate line that stored `previousText`, even after the next question was saved.
+ */
+export const reviseCandidateAnswer = async (
+  interviewId: string,
+  previousText: string,
+  nextText: string,
+): Promise<{
+  conversation: InterviewConversationMessage[];
+  lastSpeaker: InterviewConversationRole;
+  remainingSeconds: number;
+  liveElapsedSec: number;
+} | null> => {
+  const messageText = clampMessage(nextText);
+  const previous = clampMessage(previousText);
+  if (!messageText || messageText === previous) return null;
+
+  const db = ensureAdmin();
+  const ref = interviewRef(db, interviewId);
+
+  const result = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new AppError(404, 'Interview not found.');
+
+    const interview = snap.data() as InterviewDoc;
+    if (interview.status === 'completed') return null;
+
+    const now = Timestamp.now();
+    const timer = buildTimerPatch(interview, now);
+    const conversation = [...(interview.conversation ?? [])];
+
+    let index = -1;
+    if (previous) {
+      for (let i = conversation.length - 1; i >= 0; i--) {
+        if (conversation[i].role === 'candidate' && conversation[i].text.trim() === previous) {
+          index = i;
+          break;
+        }
+      }
+    } else {
+      const last = conversation[conversation.length - 1];
+      if (last?.role === 'candidate' && last.text.trim().length < 80 && last.text.trim().length < messageText.length) {
+        index = conversation.length - 1;
+      }
+    }
+
+    let nextConversation: InterviewConversationMessage[];
+    if (index >= 0) {
+      nextConversation = conversation.map((entry, entryIndex) =>
+        entryIndex === index ? { ...entry, text: messageText, createdAt: now } : entry,
+      );
+    } else if (!previous && conversation[conversation.length - 1]?.role === 'assistant') {
+      const last = conversation[conversation.length - 1];
+      nextConversation = [
+        ...conversation.slice(0, -1),
+        {
+          id: `m-${randomUUID()}-c`,
+          role: 'candidate',
+          text: messageText,
+          createdAt: now,
+        },
+        last,
+      ];
+    } else if (!previous) {
+      nextConversation = [
+        ...conversation,
+        {
+          id: `m-${randomUUID()}-c`,
+          role: 'candidate',
+          text: messageText,
+          createdAt: now,
+        },
+      ];
+    } else {
+      return null;
+    }
+
+    assertConversationFitsDocument(nextConversation);
+    tx.update(ref, {
+      conversation: nextConversation,
+      lastSpeaker: nextConversation[nextConversation.length - 1]?.role === 'assistant'
+        ? 'assistant'
+        : 'candidate',
+      remainingSeconds: timer.remainingSeconds,
+      liveElapsedSec: timer.liveElapsedSec,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return {
+      conversation: nextConversation,
+      lastSpeaker: (nextConversation[nextConversation.length - 1]?.role ?? 'candidate') as InterviewConversationRole,
+      remainingSeconds: timer.remainingSeconds,
+      liveElapsedSec: timer.liveElapsedSec,
+    };
+  });
+
+  if (!result) return null;
+  logger.info(
+    `[v2-live-interview] candidate answer revised interviewId=${interviewId} messages=${result.conversation.length}`,
+  );
+  return result;
+};
+
 /** Wait for queued live-session writes before disconnect (best-effort). */
 export const awaitPersistQueue = (queue: Promise<void>): Promise<void> =>
   queue.catch(() => undefined);

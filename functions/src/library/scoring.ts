@@ -70,10 +70,13 @@ Strict Answer Evaluation & Scoring Mandates (CRITICAL):
   * codingScore (if applicable) MUST BE 0-15.
   * Under NO circumstances should an off-topic or non-responsive candidate receive a high rating.
 
-Feedback Guidelines (mandatory):
-- strengths: List 2–3 genuine, professional strengths observed during the session. If technical answers were weak or off-topic, focus on positive behavioral or communication attributes (e.g. "Maintained a professional, respectful tone throughout the interview", "Willingness to engage and respond to live prompts", "Clear voice delivery"). NEVER output condescending, generic or robotic one-liners like "Attended the interview session" or "Showed up".
-- weaknesses: List 2–3 concise, constructive areas for improvement. Focus on specific technical concepts or interview techniques (e.g. "Direct answer alignment: Ensure responses directly address the technical question asked rather than speaking broadly or deflecting", "Conceptual depth: Strengthen foundational understanding of core role technologies"). Do NOT repeat the exact same point in different words, and avoid aggressive or repetitive phrasing.
-- recommendations: Provide 2–3 actionable, encouraging, and concrete learning steps (e.g. practicing structured answer frameworks, reviewing specific documentation or code architectures, hands-on debugging exercises).
+Feedback Guidelines (mandatory — candidate-facing only):
+- Grade ONLY questions the interviewer actually asked. Never penalize the candidate for topics, formats, or code-snippet questions that were never asked.
+- Never mention interviewer process (e.g. "0 of 2 required code-snippet questions", "snippet coverage", "unasked topics", "incomplete question quota") in strengths, weaknesses, or recommendations.
+- strengths: 2–3 specific things the candidate did well, grounded in the transcript (named topics, examples they gave, communication). No robotic lines like "Attended the interview" or "Showed up".
+- weaknesses: 2–3 topic-level improvement areas from questions they WERE asked (e.g. "HTTP interceptors: explain the request/response pipeline with a concrete example"). Name the topic. Do not write interviewer scorekeeping.
+- recommendations: 2–3 concrete practice steps for those weak topics (docs, a small exercise, how to structure the next answer).
+- overallScore must reflect a blend of technical accuracy, problem solving, communication, confidence, and behavior — not a single harsh cap when they showed any real knowledge.
 
 - Strict Score Anchors for technicalScore & problemSolvingScore:
   * 0–19: Off-topic answers, nonsense, repeated questions back, non-answers, or completely wrong technical claims.
@@ -84,11 +87,9 @@ Feedback Guidelines (mandatory):
   * 90–100: Exceptional, authoritative, in-depth mastery and precise trade-offs. Reserve 90+ ONLY for truly expert responses.
 
 Coverage rules (mandatory):
-- Score against the FULL planned session (durationMinutes), not only answered turns.
-- Few strong answers in a short time must NOT produce a high overallScore.
-- Early user exit with substantial time remaining must lower overallScore and list incomplete coverage as a weakness.
-- Unasked / unanswered topics count as incomplete coverage.
-- High scores require both answer quality AND breadth across the planned interview.
+- Score the candidate against questions they were asked and answered, not against a planned quota of unasked questions.
+- If they answered the questions that were asked, do not lower scores because the interviewer asked fewer questions than durationMinutes might allow.
+- Early user exit (they asked to stop / skip remaining time) may lower overallScore; that is about their engagement, not missing interviewer questions.
 
 topicOutcomes rules (mandatory):
 - List 3-8 concise, specific concept/topic names actually discussed in the transcript
@@ -108,12 +109,9 @@ isTechDomainInterview rule (mandatory):
 - Set true for software/technical roles; set false for non-technical domains (marketing, sales,
   civil/mechanical/other non-software engineering, pure HR/behavioral-only screens).
 
-Code-snippet questions (only relevant when isTechDomainInterview is true):
-- Turns in the transcript marked "[CODE SNIPPET - <language>]" are code-reading/debugging
-  questions. Grade the candidate's ability to trace/explain/debug code specifically, and factor
-  that into codingScore (include codingScore whenever isTechDomainInterview is true).
-- sessionMeta.codeSnippetQuestionsAsked / codeSnippetQuestionsRequired tell you how many were
-  actually asked vs required. If asked < required, factor that into codingScore and overallScore.`;
+Code-snippet questions (only when a snippet actually appeared in the transcript):
+- Turns marked "[CODE SNIPPET - <language>]" are code-reading questions. Grade those answers into codingScore.
+- If NO code snippet was shown in the transcript, do not mention snippets, do not invent a coding-coverage weakness, and do not reduce scores for "missing" snippet questions. sessionMeta snippet counts are interviewer stats, not candidate faults.`;
 
 /** ~1 question per 3 minutes; clamp to a sensible interview range. */
 export function expectedQuestionCount(durationMinutes: number): number {
@@ -281,13 +279,17 @@ export function applyCoverageAdjustment(
   },
 ): ScoreInterviewResult {
   const metrics = computeCoverageMetrics(params);
-  let multiplier = coverageMultiplier(metrics.coverageRatio);
+  const asked = Math.max(0, params.questionsAsked ?? metrics.questionsAsked);
+  const answeredWhatWasAsked =
+    asked > 0 ? Math.min(1, metrics.questionsAnswered / asked) : 1;
+  // Candidate coverage = answers to questions they were given, not interviewer quota.
+  let multiplier = coverageMultiplier(answeredWhatWasAsked);
   let hardCap = 100;
 
-  // Early voluntary exit with lots of time left → strong cap.
+  // Early voluntary exit with lots of time left → engagement cap.
   if (params.endReason === 'user_ended' && metrics.timeRatio < 0.5) {
-    multiplier = Math.min(multiplier, Math.max(0.25, metrics.coverageRatio));
-    hardCap = 50;
+    multiplier = Math.min(multiplier, Math.max(0.35, metrics.timeRatio + 0.15));
+    hardCap = 70;
   }
 
   // connection_lost: still apply coverage (incomplete evidence) but no quit-style cap.
@@ -329,12 +331,22 @@ export function applyCoverageAdjustment(
       : {}),
   };
 
-  const coverageNote = `Incomplete coverage: answered ${metrics.questionsAnswered} of ~${metrics.expectedQuestions} expected questions for a ${params.durationMinutes}-minute interview.`;
+  const leftEarly = params.endReason === 'user_ended' && metrics.timeRatio < 0.5;
+  const skippedAsked =
+    asked > 0 && metrics.questionsAnswered / asked < 0.8;
   const alreadyNoted = adjusted.weaknesses.some((w) =>
-    /incomplete coverage|few questions|ended early|early exit/i.test(w),
+    /ended early|early exit|did not answer|skipped asked/i.test(w),
   );
-  if (metrics.coverageRatio < 0.8 && !alreadyNoted) {
-    adjusted.weaknesses = [coverageNote, ...adjusted.weaknesses].slice(0, 6);
+  if (leftEarly && !alreadyNoted) {
+    adjusted.weaknesses = [
+      'Interview engagement: the session ended before the planned time — work through remaining questions rather than wrapping up early.',
+      ...adjusted.weaknesses,
+    ].slice(0, 6);
+  } else if (skippedAsked && !alreadyNoted) {
+    adjusted.weaknesses = [
+      `Interview engagement: answered ${metrics.questionsAnswered} of ${asked} questions that were asked.`,
+      ...adjusted.weaknesses,
+    ].slice(0, 6);
   }
 
   return omitUndefinedScoreFields(adjusted);
@@ -348,41 +360,17 @@ export function snippetCoverageMultiplier(asked: number, required: number): numb
 }
 
 /**
- * Second, independent deterministic pass (runs after applyCoverageAdjustment): penalizes
- * tech-domain interviews that skipped the required minimum of code-snippet questions
- * (see CODE SNIPPET QUESTIONS in interview-prompt.ts). No-ops for non-tech-domain interviews
- * or when the requirement was met.
+ * Snippet quotas are interviewer process, not candidate performance.
+ * Keep this helper as a no-op so reports never blame the candidate for unasked snippets.
  */
 export function applySnippetCoverageAdjustment(
   scores: ScoreInterviewResult,
-  params: {
+  _params?: {
     codeSnippetQuestionsAsked: number;
     codeSnippetQuestionsRequired: number;
   },
 ): ScoreInterviewResult {
-  if (!scores.isTechDomainInterview) return scores;
-
-  const { codeSnippetQuestionsAsked: asked, codeSnippetQuestionsRequired: required } = params;
-  if (required <= 0 || asked >= required) return scores;
-
-  const multiplier = snippetCoverageMultiplier(asked, required);
-  const baseCoding = scores.codingScore ?? Math.round(scores.technicalScore * 0.8);
-  const adjustedCoding = clampScore(baseCoding * multiplier);
-  const overallMultiplier = 0.85 + 0.15 * (asked / required);
-  const adjustedOverall = clampScore(scores.overallScore * overallMultiplier);
-
-  const note = `Incomplete code-snippet coverage: asked ${asked} of ${required} required code-snippet question${required === 1 ? '' : 's'}.`;
-  // Filter out any duplicate / generic snippet notes previously emitted by LLM
-  const remainingWeaknesses = (scores.weaknesses ?? []).filter(
-    (w) => !/code-?snippet|snippet question/i.test(w),
-  );
-
-  return {
-    ...scores,
-    overallScore: adjustedOverall,
-    codingScore: adjustedCoding,
-    weaknesses: [note, ...remainingWeaknesses].slice(0, 6),
-  };
+  return scores;
 }
 
 /**
@@ -402,21 +390,27 @@ export function applyStrictAccuracyAdjustment(
   const totalTopics = topics.length;
   const strongRatio = strongCount / totalTopics;
 
-  // Case 1: Candidate failed all evaluated topics (0 strong answers).
-  // Irrelevant, off-topic, or non-answers must never yield passing or high scores.
+  // Case 1: No topic was classified strong. Cap technical depth, but keep
+  // communication/confidence/behavior in the overall blend so a struggling
+  // but engaged candidate is not scored as 10–15% overall.
   if (strongCount === 0) {
-    const cappedTech = Math.min(scores.technicalScore, 10);
-    const cappedProblem = Math.min(scores.problemSolvingScore, 10);
-    const cappedOverall = Math.min(scores.overallScore, 15);
+    const cappedTech = Math.min(scores.technicalScore, 35);
+    const cappedProblem = Math.min(scores.problemSolvingScore, 35);
     const cappedCoding =
       scores.codingScore !== undefined
-        ? Math.min(scores.codingScore, 10)
+        ? Math.min(scores.codingScore, 35)
         : undefined;
-
-    const weakness = 'Direct answer alignment: Ensure responses directly address the technical questions rather than deflecting or speaking off-topic.';
-    const alreadyNoted = scores.weaknesses.some((w) =>
-      /off-topic|irrelevant|non-answers|struggled across|direct answer alignment/i.test(w),
+    const communication = scores.communicationScore;
+    const confidence = scores.confidenceScore;
+    const behavior = scores.behaviorScore ?? communication;
+    const blended = clampScore(
+      cappedTech * 0.28 +
+        cappedProblem * 0.22 +
+        communication * 0.2 +
+        confidence * 0.15 +
+        behavior * 0.15,
     );
+    const cappedOverall = Math.min(scores.overallScore, Math.min(45, blended));
 
     return {
       ...scores,
@@ -426,10 +420,9 @@ export function applyStrictAccuracyAdjustment(
       ...(cappedCoding !== undefined ? { codingScore: cappedCoding } : {}),
       skillDeltas: {
         ...scores.skillDeltas,
-        technical: Math.min(scores.skillDeltas.technical ?? 0, -6),
-        problemSolving: Math.min(scores.skillDeltas.problemSolving ?? 0, -6),
+        technical: Math.min(scores.skillDeltas.technical ?? 0, -4),
+        problemSolving: Math.min(scores.skillDeltas.problemSolving ?? 0, -4),
       },
-      weaknesses: alreadyNoted ? scores.weaknesses : [weakness, ...scores.weaknesses].slice(0, 6),
     };
   }
 
@@ -479,7 +472,6 @@ export function cleanStrengths(strengths: string[] | undefined): string[] {
 /** Deduplicate overlapping coverage and off-topic notes into clean, distinct constructive points. */
 export function cleanWeaknesses(weaknesses: string[] | undefined): string[] {
   const result: string[] = [];
-  let hasSnippetNote = false;
   let hasCoverageNote = false;
   let hasOffTopicNote = false;
 
@@ -487,17 +479,17 @@ export function cleanWeaknesses(weaknesses: string[] | undefined): string[] {
     const text = w.trim();
     if (!text) continue;
 
-    // Code snippet notes: keep at most one detailed metric note
-    if (/code-?snippet|snippet question/i.test(text)) {
-      if (!hasSnippetNote) {
-        result.push(text);
-        hasSnippetNote = true;
-      }
+    // Interviewer process / snippet quota is not candidate feedback.
+    if (/code-?snippet|snippet question|asked \d+ of \d+ required/i.test(text)) {
       continue;
     }
 
-    // Session coverage notes: keep at most one
-    if (/incomplete coverage|few questions|ended early|early exit/i.test(text)) {
+    // Planned-quota coverage notes (unasked questions) are not candidate feedback.
+    if (/incomplete coverage|few questions|expected questions for a \d+-minute/i.test(text)) {
+      continue;
+    }
+
+    if (/ended early|early exit|wrap(ping)? up early/i.test(text)) {
       if (!hasCoverageNote) {
         result.push(text);
         hasCoverageNote = true;
@@ -521,6 +513,43 @@ export function cleanWeaknesses(weaknesses: string[] | undefined): string[] {
   }
 
   return result.slice(0, 4);
+}
+
+export function cleanRecommendations(recommendations: string[] | undefined): string[] {
+  return Array.from(
+    new Set(
+      (recommendations ?? [])
+        .map((item) => item.trim())
+        .filter(
+          (item) =>
+            item.length > 0 && !/code-?snippet|snippet question|asked \d+ of \d+ required/i.test(item),
+        ),
+    ),
+  ).slice(0, 3);
+}
+
+/** Prefer named topics the candidate actually struggled with over process notes. */
+export function finalizeCandidateWeaknesses(scores: ScoreInterviewResult): string[] {
+  const fromLlm = cleanWeaknesses(scores.weaknesses);
+  const topicNotes = (scores.topicOutcomes ?? [])
+    .filter((item) => item.status === 'weak' && item.topic.trim())
+    .map(
+      (item) =>
+        `Strengthen ${item.topic.trim()}: answers on this topic were incomplete, vague, or incorrect.`,
+    );
+
+  const merged: string[] = [];
+  for (const note of topicNotes) {
+    const topic = note.replace(/^Strengthen /i, '').split(':')[0].trim().toLowerCase();
+    if (fromLlm.some((item) => item.toLowerCase().includes(topic))) continue;
+    merged.push(note);
+  }
+  for (const item of fromLlm) {
+    if (!merged.some((existing) => existing.toLowerCase() === item.toLowerCase())) {
+      merged.push(item);
+    }
+  }
+  return merged.slice(0, 4);
 }
 
 /** Drop keys whose value is `undefined` so Firestore writes do not fail. */
@@ -613,7 +642,8 @@ export async function scoreInterview(params: {
   const finalized: ScoreInterviewResult = {
     ...snippetAdjusted,
     strengths: cleanStrengths(snippetAdjusted.strengths),
-    weaknesses: cleanWeaknesses(snippetAdjusted.weaknesses),
+    weaknesses: finalizeCandidateWeaknesses(snippetAdjusted),
+    recommendations: cleanRecommendations(snippetAdjusted.recommendations),
   };
 
   return omitUndefinedScoreFields(finalized);

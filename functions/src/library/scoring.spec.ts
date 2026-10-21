@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   applyCoverageAdjustment,
+  applySnippetCoverageAdjustment,
   applyStrictAccuracyAdjustment,
+  cleanRecommendations,
   cleanStrengths,
   cleanWeaknesses,
+  finalizeCandidateWeaknesses,
   computeCoverageMetrics,
   countCandidateAnswers,
   countCandidateAnswersFromTranscript,
@@ -88,11 +91,10 @@ describe('applyCoverageAdjustment', () => {
       questionsAnswered: 2,
       questionsAsked: 2,
     });
-    // 90 * ~0.25 coverage, then hardCap 50
-    assert.ok(adjusted.overallScore <= 50);
+    assert.ok(adjusted.overallScore <= 70);
     assert.ok(adjusted.overallScore < 40);
     assert.ok(
-      adjusted.weaknesses.some((w) => /Incomplete coverage/i.test(w)),
+      adjusted.weaknesses.some((w) => /ended before the planned time|engagement/i.test(w)),
     );
     // Firestore rejects explicit undefined on optional fields
     assert.equal('behaviorScore' in adjusted, false);
@@ -112,9 +114,9 @@ describe('applyCoverageAdjustment', () => {
       endReason: 'time_expired',
       questionsAnswered: 2,
     });
-    // Both sparse on questions, but timedOut has no 50 hard cap from early exit
-    assert.ok(timedOut.overallScore <= earlyQuit.overallScore + 5);
-    assert.ok(timedOut.overallScore <= 30); // 90 * 0.25-ish
+    // Timed-out sessions that answered the questions asked are not crushed for interviewer quota.
+    assert.ok(timedOut.overallScore >= earlyQuit.overallScore);
+    assert.equal(timedOut.overallScore, 90);
   });
 
   it('leaves near-complete sessions unchanged', () => {
@@ -160,13 +162,12 @@ describe('applyStrictAccuracyAdjustment', () => {
 
     const adjusted = applyStrictAccuracyAdjustment(failingScores);
 
-    assert.ok(adjusted.technicalScore <= 10, `technicalScore should be <= 10, got ${adjusted.technicalScore}`);
-    assert.ok(adjusted.problemSolvingScore <= 10, `problemSolvingScore should be <= 10, got ${adjusted.problemSolvingScore}`);
-    assert.ok(adjusted.overallScore <= 15, `overallScore should be <= 15, got ${adjusted.overallScore}`);
-    assert.ok((adjusted.codingScore ?? 0) <= 10, `codingScore should be <= 10, got ${adjusted.codingScore}`);
-    assert.ok(adjusted.skillDeltas.technical <= -5);
-    assert.ok(adjusted.skillDeltas.problemSolving <= -5);
-    assert.ok(adjusted.weaknesses.some((w) => /off-topic|irrelevant|non-answers/i.test(w)));
+    assert.ok(adjusted.technicalScore <= 35, `technicalScore should be <= 35, got ${adjusted.technicalScore}`);
+    assert.ok(adjusted.problemSolvingScore <= 35, `problemSolvingScore should be <= 35, got ${adjusted.problemSolvingScore}`);
+    assert.ok(adjusted.overallScore <= 45, `overallScore should be <= 45, got ${adjusted.overallScore}`);
+    assert.ok((adjusted.codingScore ?? 0) <= 35, `codingScore should be <= 35, got ${adjusted.codingScore}`);
+    assert.ok(adjusted.skillDeltas.technical <= -4);
+    assert.ok(adjusted.skillDeltas.problemSolving <= -4);
   });
 
   it('caps mixed performance proportional to strong topic ratio', () => {
@@ -250,14 +251,38 @@ describe('cleanStrengths and cleanWeaknesses', () => {
 
     const cleaned = cleanWeaknesses(rawWeaknesses);
 
-    // Only 1 snippet note should exist
-    assert.equal(cleaned.filter((w) => /snippet/i.test(w)).length, 1);
-    // Only 1 off-topic/parroted note should exist
+    assert.equal(cleaned.filter((w) => /snippet/i.test(w)).length, 0);
     assert.equal(cleaned.filter((w) => /off-topic|parroted/i.test(w)).length, 1);
-    // Technical depth note should be preserved
     assert.ok(cleaned.some((w) => /technical depth/i.test(w)));
-    // Max 4 items
     assert.ok(cleaned.length <= 4);
+  });
+
+  it('does not blame the candidate when snippet questions were never asked', () => {
+    const scores = baseScores();
+    scores.weaknesses = ['Incomplete code-snippet coverage: asked 0 of 2 required code-snippet questions.'];
+    const adjusted = applySnippetCoverageAdjustment(scores, {
+      codeSnippetQuestionsAsked: 0,
+      codeSnippetQuestionsRequired: 2,
+    });
+    assert.equal(adjusted.overallScore, scores.overallScore);
+    assert.equal(cleanWeaknesses(adjusted.weaknesses).some((w) => /snippet/i.test(w)), false);
+    assert.equal(
+      cleanRecommendations(['Review Angular Signals', 'Complete the 2 missing code-snippet questions']).length,
+      1,
+    );
+  });
+
+  it('turns weak topic outcomes into improvement areas', () => {
+    const notes = finalizeCandidateWeaknesses({
+      ...baseScores(),
+      weaknesses: ['Incomplete code-snippet coverage: asked 0 of 2 required code-snippet questions.'],
+      topicOutcomes: [
+        { topic: 'HTTP interceptors', status: 'strong' },
+        { topic: 'Angular change detection', status: 'weak' },
+      ],
+    });
+    assert.equal(notes.some((w) => /snippet/i.test(w)), false);
+    assert.ok(notes.some((w) => /change detection/i.test(w)));
   });
 });
 

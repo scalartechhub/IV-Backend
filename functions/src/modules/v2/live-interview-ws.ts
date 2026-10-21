@@ -6,9 +6,9 @@
  * On reconnect the AI re-asks the last pending question or generates the next one.
  *
  * Turn-taking is client-controlled (automatic VAD disabled): the browser sends activityStart /
- * activityEnd so long answers are not cut off mid-pause. User captions for the UI come from
- * browser speech recognition plus Gemini inputTranscription (Latin/English only — Indic-script
- * misdetections are dropped so Telugu/Hindi never replaces English on screen).
+ * activityEnd so long answers are not cut off mid-pause. The browser owns live Your Answer
+ * captions (Web Speech). Gemini inputTranscription is kept for the model and as a persist
+ * fallback when the client sent no userTurnFinal. Firestore stores only the submitted/final answer.
  */
 
 import { URL } from 'url';
@@ -30,6 +30,7 @@ import {
   buildLiveConnectConfig,
   getDefaultLiveModel,
   getClient,
+  transcribeInterviewAudio,
 } from '../../library/gemini-client';
 import { buildInterviewSystemInstructions } from '../../services/interview-prompt';
 import {
@@ -41,6 +42,7 @@ import {
 import {
   appendAssistantTurn,
   appendCandidateTurn,
+  reviseCandidateAnswer,
   awaitPersistQueue,
   computeLiveElapsedSec,
   computeRemainingSeconds,
@@ -54,8 +56,11 @@ import {
 } from './v2-live-interview.prompt';
 import { compressConversation, getReplayTurns } from '../live-interview/context-manager';
 import {
+  appendTranscriptChunk,
+  captionCoversAudio,
   containsLiveTranscriptArtifacts,
   isLatinEnglishCaption,
+  preferRicherCaption,
   resolveAssistantTranscript,
   sanitizeLiveTranscript,
 } from '../../shared/utils/live-transcript';
@@ -106,6 +111,16 @@ const sendJson = (socket: WebSocket, payload: Record<string, unknown>): void => 
   if (socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(payload));
   }
+};
+
+/** True when the interviewer turn already asked something the candidate must answer. */
+const looksLikeInterviewQuestion = (text: string): boolean => {
+  const t = text.trim();
+  if (!t) return false;
+  if (t.includes('?')) return true;
+  return /(?:^|[.!] )\s*(?:what|why|how|when|where|which|tell me|explain|walk me|describe|can you|could you|would you|have you)\b/i.test(
+    ` ${t}`,
+  );
 };
 
 const parseClientMessage = (raw: RawData): V2LiveClientMessage | null => {
@@ -214,6 +229,8 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
     let userAudioSampleBase64 = '';
     /** Set after activityEnd until the model produces the next assistant turn. */
     let awaitingAiResponse = false;
+    /** After a delivered question, drop further AI speech until the candidate submits. */
+    let awaitingCandidateAnswer = false;
     let latestInterview: InterviewDoc | null = null;
     let persistQueue: Promise<void> = Promise.resolve();
     /** Snippet captured via present_code_snippet, attached to the assistant turn once its transcript arrives. */
@@ -575,8 +592,96 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       }
 
       let aiTranscriptBuffer = '';
-      /** Accumulated Gemini inputTranscription for the open candidate turn (live UI captions). */
+      /** Accumulated Gemini inputTranscription for persist fallback when the client sent no caption. */
       let userTranscriptBuffer = '';
+      /** PCM16 16 kHz audio for the open candidate turn, used when the live caption is only a fragment. */
+      let userPcmChunks: Buffer[] = [];
+      let userPcmBytes = 0;
+      const MAX_USER_PCM_BYTES = 16000 * 2 * 90;
+      let captionRefineToken = 0;
+      let captionRefineTimer: ReturnType<typeof setTimeout> | null = null;
+      let activeClose: {
+        token: number;
+        transcript: string;
+        clientCaption: string;
+        pcm: Buffer;
+      } | null = null;
+
+      const publishRevisedAnswer = (previousText: string, nextText: string): void => {
+        if (!nextText || nextText === previousText) return;
+        // Never replace an existing user answer with unrelated hallucinated text
+        if (previousText && !nextText.toLowerCase().includes(previousText.toLowerCase())) return;
+        sendJson(clientSocket, {
+          type: 'transcript',
+          role: 'user',
+          text: nextText,
+          final: true,
+        });
+        enqueuePersist(async () => {
+          const result = await reviseCandidateAnswer(interviewId, previousText, nextText);
+          if (!result) return;
+          latestInterview = {
+            ...(latestInterview ?? interview),
+            conversation: result.conversation,
+            lastSpeaker: result.lastSpeaker,
+            remainingSeconds: result.remainingSeconds,
+            liveElapsedSec: result.liveElapsedSec,
+          };
+          sendJson(clientSocket, {
+            type: 'conversation_updated',
+            conversation: toClientConversation(result.conversation),
+            lastSpeaker: result.lastSpeaker,
+            remainingSeconds: result.remainingSeconds,
+          });
+        });
+      };
+
+      const armCaptionRefine = (clientCaption: string, pcm: Buffer): void => {
+        // If client already transcribed the user's speech, do NOT second-guess or overwrite with LLM audio generation
+        if (clientCaption?.trim()) return;
+        const token = ++captionRefineToken;
+        const closeState = {
+          token,
+          transcript: userTranscriptBuffer,
+          clientCaption,
+          pcm,
+        };
+        activeClose = closeState;
+        const run = async (): Promise<void> => {
+          let chosen = preferRicherCaption(
+            closeState.clientCaption,
+            isLatinEnglishCaption(closeState.transcript) ? sanitizeLiveTranscript(closeState.transcript) : '',
+          );
+          const durationSec = closeState.pcm.length / 32000;
+          if (!captionCoversAudio(chosen, durationSec) && closeState.pcm.length >= 16000 * 2) {
+            try {
+              const heard = sanitizeLiveTranscript(await transcribeInterviewAudio(closeState.pcm));
+              if (heard && isLatinEnglishCaption(heard)) {
+                chosen = preferRicherCaption(chosen, heard);
+              }
+              logger.info(
+                `[v2-live-interview] audio transcript interviewId=${interviewId} durationSec=${durationSec.toFixed(1)} live="${closeState.clientCaption}" gemini="${sanitizeLiveTranscript(closeState.transcript)}" heard="${heard}" chosen="${chosen}"`,
+              );
+            } catch (error) {
+              logger.warn(
+                `[v2-live-interview] audio transcript failed interviewId=${interviewId}`,
+                error,
+              );
+            }
+          }
+          if (activeClose === closeState) {
+            activeClose = null;
+            if (!userTurnOpen) userTranscriptBuffer = '';
+          }
+          if (chosen && chosen !== closeState.clientCaption) {
+            publishRevisedAnswer(closeState.clientCaption, chosen);
+          }
+        };
+        captionRefineTimer = setTimeout(() => {
+          captionRefineTimer = null;
+          void run();
+        }, 1400);
+      };
 
       const handleToolCall = (functionCalls: NonNullable<LiveServerMessage['toolCall']>['functionCalls']): void => {
         if (!geminiSession || !functionCalls?.length) return;
@@ -625,31 +730,23 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
         if (!serverContent) return;
 
         if (serverContent.interrupted) {
-          aiTranscriptBuffer = '';
-          userTranscriptBuffer = '';
+          // Keep buffers. Clearing them dropped the question/answer that was already spoken.
           sendJson(clientSocket, { type: 'interrupted' });
           return;
         }
 
-        // Live candidate captions from Gemini (complements browser Web Speech for long answers).
-        // Drop Telugu/Hindi phonetic misdetections — only relay Latin English to the UI.
+        // Keep Gemini inputTranscription for persist fallback. Do not push it to the live box.
         const geminiInputText = serverContent.inputTranscription?.text;
         const geminiInterimText = serverContent.interimInputTranscription?.text;
         if (geminiInputText || geminiInterimText) {
           if (geminiInputText) {
-            userTranscriptBuffer = [userTranscriptBuffer, geminiInputText].filter(Boolean).join(' ').trim();
+            userTranscriptBuffer = appendTranscriptChunk(userTranscriptBuffer, geminiInputText);
           }
-          const fullRaw = [userTranscriptBuffer, geminiInterimText].filter(Boolean).join(' ').trim();
-          const text = sanitizeLiveTranscript(fullRaw);
-          if (text && isLatinEnglishCaption(text)) {
-            sendJson(clientSocket, {
-              type: 'transcript',
-              role: 'user',
-              text,
-              stableText: sanitizeLiveTranscript(userTranscriptBuffer),
-              interimText: sanitizeLiveTranscript(geminiInterimText ?? ''),
-              final: false,
-            });
+          const fullRaw = geminiInterimText
+            ? appendTranscriptChunk(userTranscriptBuffer, geminiInterimText)
+            : userTranscriptBuffer;
+          if (activeClose && !userTurnOpen) {
+            activeClose.transcript = fullRaw;
           }
         }
 
@@ -673,17 +770,22 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
           startTimerTicker();
         };
 
+        const holdNextQuestion = awaitingCandidateAnswer && !awaitingAiResponse;
+
         if (serverContent.outputTranscription?.text) {
-          if (!userTurnOpen) {
+          // Keep assembling the question even if a user turn opened early; otherwise the
+          // final interviewer line is wiped and the spoken question no longer matches the UI.
+          if (!holdNextQuestion && (!userTurnOpen || !receivedUserAudioThisTurn)) {
             clearAiResponseWatchdog();
             onFirstAiSignal();
-            aiTranscriptBuffer += serverContent.outputTranscription.text;
+            aiTranscriptBuffer = appendTranscriptChunk(
+              aiTranscriptBuffer,
+              serverContent.outputTranscription.text,
+            );
             const text = sanitizeLiveTranscript(aiTranscriptBuffer);
             if (text) {
               sendJson(clientSocket, { type: 'transcript', role: 'ai', text, final: false });
             }
-          } else {
-            aiTranscriptBuffer = '';
           }
         }
 
@@ -691,7 +793,8 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
         for (const part of parts) {
           const data = part.inlineData?.data;
           if (!data) continue;
-          if (userTurnOpen) {
+          // Hold AI audio after a delivered question until Submit, and while the candidate is speaking.
+          if (holdNextQuestion || (userTurnOpen && receivedUserAudioThisTurn)) {
             continue;
           }
           clearAiResponseWatchdog();
@@ -705,7 +808,11 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
 
         if (serverContent.turnComplete) {
           clearAiResponseWatchdog();
-          if (userTurnOpen) {
+          if (holdNextQuestion || (userTurnOpen && receivedUserAudioThisTurn)) {
+            // Drop extra interviewer turns until the candidate submits.
+            logger.info(
+              `[v2-live-interview] dropped extra AI turn while waiting for submit interviewId=${interviewId}`,
+            );
             aiTranscriptBuffer = '';
             return;
           }
@@ -727,6 +834,9 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
             sendJson(clientSocket, { type: 'transcript', role: 'ai', text: aiText, final: true });
             persistAssistantText(aiText);
             awaitingAiResponse = false;
+            if (looksLikeInterviewQuestion(aiText)) {
+              awaitingCandidateAnswer = true;
+            }
           } else if (awaitingAiResponse && geminiSession) {
             logger.warn(
               `[v2-live-interview] empty AI turn after candidate answer, nudging interviewId=${interviewId}`,
@@ -741,7 +851,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
                     parts: [
                       {
                         text:
-                          'The candidate has finished their answer. Acknowledge briefly and ask your next interview question now.',
+                          'The candidate has finished their answer. Follow up interactively: acknowledge one specific thing they said, then ask ONE deeper question about that same point. Do not switch to an unrelated new topic.',
                       },
                     ],
                   },
@@ -877,9 +987,11 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
           userAudioChunksCount = 0;
           userAudioBytesTotal = 0;
           userAudioSampleBase64 = '';
+          userPcmChunks = [];
+          userPcmBytes = 0;
           userTurnOpen = true;
-          aiTranscriptBuffer = '';
           userTranscriptBuffer = '';
+          if (activeClose) activeClose = null;
           try {
             geminiSession.sendRealtimeInput({ activityStart: {} });
           } catch (error) {
@@ -890,32 +1002,46 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
 
         if (message.type === 'activityEnd') {
           userTurnOpen = false;
-          // Capture Gemini audio transcription for comparison
+          // Live inputTranscription often arrives just after activityEnd. Keep the buffer
+          // and the PCM so a fragment can be replaced with the words that were spoken.
+          const pcm = userPcmChunks.length ? Buffer.concat(userPcmChunks) : Buffer.alloc(0);
+          userPcmChunks = [];
+          userPcmBytes = 0;
           const geminiCaption = sanitizeLiveTranscript(userTranscriptBuffer);
-          userTranscriptBuffer = '';
 
-          let captionText = pendingCandidateText;
+          const clientCaption = pendingCandidateText?.trim() ?? '';
           pendingCandidateText = '';
 
-          // If client-side Web Speech did not yield caption, use Gemini's audio transcription
-          if (!captionText && geminiCaption && isLatinEnglishCaption(geminiCaption)) {
-            captionText = geminiCaption;
-            persistCandidateText(geminiCaption);
+          // Client userTurnFinal is authoritative. Gemini is persist fallback only (no Web Speech).
+          let captionText = clientCaption;
+          if (!captionText) {
+            captionText =
+              geminiCaption && isLatinEnglishCaption(geminiCaption) ? geminiCaption : '';
+          }
+          const audioSec = pcm.length / 32000;
+          if (captionText && captionText !== clientCaption) {
+            persistCandidateText(captionText);
           }
 
           const durationSec = (userAudioBytesTotal / 32000).toFixed(2);
-          logger.info(`[v2-live-interview] Turn comparison interviewId=${interviewId} client="${captionText}" gemini="${geminiCaption}" audioBytes=${userAudioBytesTotal} audioChunks=${userAudioChunksCount} durationSec=${durationSec}`);
+          logger.info(`[v2-live-interview] Turn comparison interviewId=${interviewId} client="${clientCaption}" gemini="${geminiCaption}" chosen="${captionText}" audioBytes=${userAudioBytesTotal} audioChunks=${userAudioChunksCount} durationSec=${durationSec}`);
+          if (!clientCaption && !captionCoversAudio(captionText, audioSec)) {
+            armCaptionRefine(captionText, pcm);
+          } else {
+            userTranscriptBuffer = '';
+          }
 
-          if (geminiCaption && isLatinEnglishCaption(geminiCaption)) {
+          if (captionText && !clientCaption) {
             sendJson(clientSocket, {
               type: 'transcript',
               role: 'user',
-              text: geminiCaption,
+              text: captionText,
               final: true,
             });
           }
 
           awaitingAiResponse = true;
+          awaitingCandidateAnswer = false;
           try {
             geminiSession.sendRealtimeInput({ activityEnd: {} });
           } catch (error) {
@@ -929,7 +1055,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
             }
             const textToSend = shouldWrap
               ? `${captionText}\n\n(Time is under 3 minutes — do not ask new questions. State: "I am done from my end due to time limitation. Do you have any questions for me? If not, then we can stop the interview.")`
-              : captionText;
+              : `${captionText}\n\n(Interviewer instruction — do not read aloud) Follow up on this answer. Name a specific point they made, then ask one deeper question about that same point. Do not jump to an unrelated topic.`;
             try {
               geminiSession.sendClientContent({
                 turns: [{ role: 'user', parts: [{ text: textToSend }] }],
@@ -962,8 +1088,8 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
                     'say "I am done from my end due to time limitation. Do you have any questions for me? If not, then we can stop the interview."';
                 } else {
                   nudgePrompt = captionText
-                    ? `The candidate has submitted their answer: "${captionText}". Acknowledge briefly and ask your next interview question now without delay. Do NOT reveal or explain the answer.`
-                    : 'The candidate has finished their answer. Acknowledge briefly and ask your next interview question now without delay. Do NOT reveal or explain the answer.';
+                    ? `The candidate has submitted their answer: "${captionText}". Follow up interactively without delay: react to a specific point in that answer, then ask ONE deeper question on that same point. Do NOT switch topics. Do NOT reveal or explain the answer.`
+                    : 'The candidate has finished their answer. Follow up interactively without delay on what they just said. Do NOT switch to an unrelated new question. Do NOT reveal or explain the answer.';
                 }
                 geminiSession.sendClientContent({
                   turns: [
@@ -998,7 +1124,8 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
             userAudioChunksCount = 0;
             userAudioBytesTotal = 0;
             userAudioSampleBase64 = '';
-            aiTranscriptBuffer = '';
+            userPcmChunks = [];
+            userPcmBytes = 0;
             userTranscriptBuffer = '';
             try {
               geminiSession.sendRealtimeInput({ activityStart: {} });
@@ -1009,8 +1136,13 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
           if (userTurnOpen) {
             receivedUserAudioThisTurn = true;
             userAudioChunksCount++;
-            const byteLen = Math.round((message.data.length * 3) / 4);
+            const chunk = Buffer.from(message.data, 'base64');
+            const byteLen = chunk.length;
             userAudioBytesTotal += byteLen;
+            if (userPcmBytes + chunk.length <= MAX_USER_PCM_BYTES) {
+              userPcmChunks.push(chunk);
+              userPcmBytes += chunk.length;
+            }
             if (!userAudioSampleBase64) {
               userAudioSampleBase64 = message.data.slice(0, 100);
             }

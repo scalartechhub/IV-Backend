@@ -36,6 +36,18 @@ async function startServer() {
     setupV2LiveInterviewWebSocket(server);
   });
 
+  server.on("error", (err: any) => {
+    if (err.code === "EADDRINUSE") {
+      logger.error(
+        `Port ${appConfig.port} is already in use by another process. Please terminate the process holding port ${appConfig.port} and restart.`
+      );
+      process.exit(1);
+    } else {
+      logger.error("HTTP server error:", err);
+      process.exit(1);
+    }
+  });
+
   return server;
 }
 

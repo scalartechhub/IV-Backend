@@ -225,7 +225,7 @@ export const formatCompressedContextForPrompt = (
   // Questions-asked list
   if (compressed.questionsAsked.length > 0) {
     sections.push(
-      `\nQuestions already asked (${compressed.questionsAsked.length} total — do NOT repeat these):`,
+      `\nQuestions already asked (${compressed.questionsAsked.length} total — do NOT re-ask these verbatim. Deeper follow-ups on the candidate's last answer are required and are not repeats):`,
     );
     for (let i = 0; i < compressed.questionsAsked.length; i++) {
       sections.push(`${i + 1}. ${truncateText(compressed.questionsAsked[i], QUESTION_LIST_MAX_CHARS)}`);
