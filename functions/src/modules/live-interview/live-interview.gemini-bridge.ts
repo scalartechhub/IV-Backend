@@ -5,7 +5,7 @@ import { logger } from "../../shared/logger";
 import {
   buildLiveInterviewSystemInstruction,
   buildResumeKickoffText,
-} from "./live-interview.prompt";
+} from "../../prompts/interview/legacy-live-interview.prompt";
 import type { Interview } from "../interview/interview.types";
 import type {
   BrowserWebSocket,

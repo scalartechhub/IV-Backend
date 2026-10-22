@@ -5,10 +5,10 @@
  * Persists conversation turns to Firestore mid-call so page refresh can resume timer + context.
  * On reconnect the AI re-asks the last pending question or generates the next one.
  *
- * Turn-taking is client-controlled (automatic VAD disabled): the browser sends activityStart /
- * activityEnd so long answers are not cut off mid-pause. The browser owns live Your Answer
- * captions (Web Speech). Gemini inputTranscription is kept for the model and as a persist
- * fallback when the client sent no userTurnFinal. Firestore stores only the submitted/final answer.
+ * Turn-taking is client-controlled: the browser sends activityStart / activityEnd so long answers
+ * are not cut off mid-pause. Candidate audio is NOT streamed to Gemini — each submitted answer is
+ * sent as one text turn (browser caption, or a transcription of the buffered audio when the
+ * caption is empty) so the interviewer replies exactly once, to the words the candidate saw.
  */
 
 import { URL } from 'url';
@@ -32,7 +32,7 @@ import {
   getClient,
   transcribeInterviewAudio,
 } from '../../library/gemini-client';
-import { buildInterviewSystemInstructions } from '../../services/interview-prompt';
+import { buildInterviewSystemInstructions } from '../../prompts/interview/interview-system.prompt';
 import {
   buildCodeSnippetTool,
   PRESENT_CODE_SNIPPET_TOOL_NAME,
@@ -42,8 +42,8 @@ import {
 import {
   appendAssistantTurn,
   appendCandidateTurn,
-  reviseCandidateAnswer,
   awaitPersistQueue,
+  reviseCandidateAnswer,
   computeLiveElapsedSec,
   computeRemainingSeconds,
   ensureInterviewLiveStarted,
@@ -51,16 +51,26 @@ import {
   syncInterviewTimer,
 } from './v2-live-interview.persistence';
 import {
+  buildInteractiveFollowUpDirector,
+  buildMissingQuestionNudge,
+  buildPrematureWrapCorrection,
   buildResumeKickoffText,
   buildResumeSystemInstruction,
-} from './v2-live-interview.prompt';
-import { compressConversation, getReplayTurns } from '../live-interview/context-manager';
+  buildSnippetReminder,
+  buildSpeakNowFollowUp,
+  buildTimeWrapDirector,
+  resolveDirectorContext,
+  resolveQuestionSource,
+  TIME_WRAP_MANDATE,
+} from '../../prompts/interview/live-session.prompt';
+import { decideAiTurn } from './ai-turn';
+import { candidateWantsToEnd, classifyCandidateAnswer, describeAnswerSignal } from './answer-signals';
 import {
   appendTranscriptChunk,
-  captionCoversAudio,
+  captionLooksIncomplete,
   containsLiveTranscriptArtifacts,
+  estimateSpeechSec,
   isLatinEnglishCaption,
-  preferRicherCaption,
   resolveAssistantTranscript,
   sanitizeLiveTranscript,
 } from '../../shared/utils/live-transcript';
@@ -73,6 +83,13 @@ const V2_LIVE_WS_PATHS = new Set([
 ]);
 
 const NON_LIVE_STATUSES = new Set<InterviewStatus>(['completed', 'abandoned', 'expired']);
+
+/** The interviewer only wraps up once this little time is left. */
+const WRAP_UP_SEC = 120;
+/** After time is up, give the browser this long to end the session itself. */
+const TIME_EXPIRED_CLOSE_GRACE_MS = 15_000;
+const PREMATURE_WRAP_PATTERN =
+  /\b(time limitation|done from my end|out of time|running out of time|that concludes|conclude (the|our) interview|end (the|our) interview)\b/i;
 
 const ALLOWED_ORIGIN_PATTERNS = [
   'app.interviewup.ai',
@@ -105,6 +122,7 @@ type V2LiveClientMessage =
   | { type: 'activityStart' }
   | { type: 'activityEnd' }
   | { type: 'userTurnFinal'; text: string }
+  | { type: 'retryResponse' }
   | { type: 'end' };
 
 const sendJson = (socket: WebSocket, payload: Record<string, unknown>): void => {
@@ -226,7 +244,6 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
     let receivedUserAudioThisTurn = false;
     let userAudioChunksCount = 0;
     let userAudioBytesTotal = 0;
-    let userAudioSampleBase64 = '';
     /** Set after activityEnd until the model produces the next assistant turn. */
     let awaitingAiResponse = false;
     /** After a delivered question, drop further AI speech until the candidate submits. */
@@ -241,6 +258,12 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
     let snippetReminderSent = false;
     /** Ensures the 3-minute remaining wrap-up prompt is only sent once per connection. */
     let timeWrapReminderSent = false;
+    /** Director for the current answer; reused by the empty-turn and latency nudges. */
+    let currentFollowUpDirector = '';
+    /** One "you forgot to ask a question" nudge per candidate answer. */
+    let missingQuestionNudgeSent = false;
+    /** Last answer asked to finish, so an early closing line is legitimate. */
+    let candidateAskedToEnd = false;
 
     const clearKickoffRetry = (): void => {
       if (kickoffRetryTimer) {
@@ -250,6 +273,30 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
     };
 
     let aiResponseWatchdogTimer: NodeJS.Timeout | null = null;
+    /** True from sendClientContent until that generation's turnComplete. A second prompt here closes Gemini. */
+    let modelTurnInFlight = false;
+    let modelTurnStartedAt = 0;
+    let openingInFlight = false;
+    let kickoffAttempts = 0;
+    let silentReplyRetries = 0;
+    let replyWatchExtensions = 0;
+    let geminiGeneration = 0;
+    let geminiReconnects = 0;
+    /** Groups one interviewer reply so a late chunk cannot paint over the next turn. */
+    let speechTurn = 0;
+    let speechTurnOpen = false;
+    const currentSpeechTurn = (): number => {
+      if (!speechTurnOpen) {
+        speechTurn += 1;
+        speechTurnOpen = true;
+      }
+      return speechTurn;
+    };
+    const closeSpeechTurn = (): void => {
+      speechTurnOpen = false;
+    };
+    const MAX_KICKOFF_ATTEMPTS = 4;
+    const MAX_GEMINI_RECONNECTS = 2;
 
     const clearAiResponseWatchdog = (): void => {
       if (aiResponseWatchdogTimer != null) {
@@ -416,7 +463,17 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
           liveElapsedSec,
         });
         enqueuePersist(async () => {
-          const timer = await syncInterviewTimer(interviewId);
+          let timer: Awaited<ReturnType<typeof syncInterviewTimer>>;
+          try {
+            timer = await syncInterviewTimer(interviewId);
+          } catch (error) {
+            if (error instanceof Error && /already completed/i.test(error.message)) {
+              logger.info(`[v2-live-interview] interview completed, closing live session interviewId=${interviewId}`);
+              closeAll('interview_completed');
+              return;
+            }
+            throw error;
+          }
           if (latestInterview) {
             latestInterview = {
               ...latestInterview,
@@ -454,6 +511,26 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       persistCandidateText = (answer: string): void => {
         enqueuePersist(async () => {
           const result = await appendCandidateTurn(interviewId, answer);
+          latestInterview = {
+            ...(latestInterview ?? interview),
+            conversation: result.conversation,
+            lastSpeaker: result.lastSpeaker,
+            remainingSeconds: result.remainingSeconds,
+            liveElapsedSec: result.liveElapsedSec,
+          };
+          sendJson(clientSocket, {
+            type: 'conversation_updated',
+            conversation: toClientConversation(result.conversation),
+            lastSpeaker: result.lastSpeaker,
+            remainingSeconds: result.remainingSeconds,
+          });
+        });
+      };
+
+      const reviseCandidateText = (previousText: string, nextText: string): void => {
+        enqueuePersist(async () => {
+          const result = await reviseCandidateAnswer(interviewId, previousText, nextText);
+          if (!result) return;
           latestInterview = {
             ...(latestInterview ?? interview),
             conversation: result.conversation,
@@ -508,14 +585,17 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
         timerTickId = setInterval(() => {
           const remaining = broadcastTimer();
           if (remaining <= 0) {
+            clearTimerTick();
+            logger.info(`[v2-live-interview] time expired interviewId=${interviewId}`);
             sendJson(clientSocket, { type: 'time_expired' });
+            setTimeout(() => closeAll('time_expired'), TIME_EXPIRED_CLOSE_GRACE_MS);
             return;
           }
 
           // One-shot safety-net reminder past the session's midpoint if the snippet-question
           // minimum (see CODE SNIPPET QUESTIONS in interview-prompt.ts) has not yet been met.
           // Sent as context only (turnComplete: false) so it never interrupts the live turn-taking.
-          if (!snippetReminderSent && geminiSession) {
+          if (!snippetReminderSent && geminiSession && !modelTurnInFlight) {
             const durationMinutes = latestInterview?.config.durationMinutes ?? interview.config.durationMinutes;
             const totalSec = Math.max(1, durationMinutes * 60);
             const required = requiredSnippetQuestionCount(durationMinutes);
@@ -526,18 +606,11 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
                 latestInterview?.config.jobDescriptionText?.trim() ??
                   interview.config.jobDescriptionText?.trim(),
               );
-              const reminderText = isJdInterview
-                ? `(Interviewer reminder — not spoken to candidate) So far you have asked ` +
-                  `${codeSnippetQuestionsAsked} code-snippet question(s) out of the ${required} ` +
-                  'required for this JD-based technical interview. Use present_code_snippet to show ' +
-                  'code on screen — NEVER ask the candidate to write or type code (no code editor). ' +
-                  'Ask them to explain, debug, or reason about the snippet verbally.'
-                : `(Interviewer reminder — not spoken to candidate) So far you have asked ` +
-                  `${codeSnippetQuestionsAsked} code-snippet question(s) out of the ${required} ` +
-                  'required for technical/IT interviews (see CODE SNIPPET QUESTIONS rule). ' +
-                  'If this is a technology/software/IT-role interview, plan to ask one soon via ' +
-                  'the present_code_snippet tool before you run out of time. Ignore this note ' +
-                  'entirely if this is not a technical/IT interview.';
+              const reminderText = buildSnippetReminder({
+                asked: codeSnippetQuestionsAsked,
+                required,
+                isJdInterview,
+              });
               try {
                 geminiSession.sendClientContent({
                   turns: [
@@ -558,23 +631,14 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
             }
           }
 
-          // When remaining time is under 3 minutes (180s), send one-shot wrap-up reminder to Gemini
-          if (remaining > 0 && remaining <= 180 && !timeWrapReminderSent && geminiSession) {
+          if (remaining > 0 && remaining <= WRAP_UP_SEC && !timeWrapReminderSent && geminiSession && !modelTurnInFlight) {
             timeWrapReminderSent = true;
             try {
               geminiSession.sendClientContent({
                 turns: [
                   {
                     role: 'user',
-                    parts: [
-                      {
-                        text:
-                          '(Interviewer time wrap mandate — do NOT read this prompt aloud) Less than 3 minutes remain. ' +
-                          'Do NOT ask any new technical questions. In your very next turn, say: ' +
-                          '"I am done from my end due to time limitation. Do you have any questions for me? If not, then we can stop the interview." ' +
-                          'If the candidate has no questions or says no, thank them warmly and conclude the interview.',
-                      },
-                    ],
+                    parts: [{ text: TIME_WRAP_MANDATE }],
                   },
                 ],
                 turnComplete: false,
@@ -592,97 +656,10 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       }
 
       let aiTranscriptBuffer = '';
-      /** Accumulated Gemini inputTranscription for persist fallback when the client sent no caption. */
-      let userTranscriptBuffer = '';
-      /** PCM16 16 kHz audio for the open candidate turn, used when the live caption is only a fragment. */
+      /** PCM16 16 kHz audio for the open candidate turn, transcribed when the client sent no caption. */
       let userPcmChunks: Buffer[] = [];
       let userPcmBytes = 0;
       const MAX_USER_PCM_BYTES = 16000 * 2 * 90;
-      let captionRefineToken = 0;
-      let captionRefineTimer: ReturnType<typeof setTimeout> | null = null;
-      let activeClose: {
-        token: number;
-        transcript: string;
-        clientCaption: string;
-        pcm: Buffer;
-      } | null = null;
-
-      const publishRevisedAnswer = (previousText: string, nextText: string): void => {
-        if (!nextText || nextText === previousText) return;
-        // Never replace an existing user answer with unrelated hallucinated text
-        if (previousText && !nextText.toLowerCase().includes(previousText.toLowerCase())) return;
-        sendJson(clientSocket, {
-          type: 'transcript',
-          role: 'user',
-          text: nextText,
-          final: true,
-        });
-        enqueuePersist(async () => {
-          const result = await reviseCandidateAnswer(interviewId, previousText, nextText);
-          if (!result) return;
-          latestInterview = {
-            ...(latestInterview ?? interview),
-            conversation: result.conversation,
-            lastSpeaker: result.lastSpeaker,
-            remainingSeconds: result.remainingSeconds,
-            liveElapsedSec: result.liveElapsedSec,
-          };
-          sendJson(clientSocket, {
-            type: 'conversation_updated',
-            conversation: toClientConversation(result.conversation),
-            lastSpeaker: result.lastSpeaker,
-            remainingSeconds: result.remainingSeconds,
-          });
-        });
-      };
-
-      const armCaptionRefine = (clientCaption: string, pcm: Buffer): void => {
-        // If client already transcribed the user's speech, do NOT second-guess or overwrite with LLM audio generation
-        if (clientCaption?.trim()) return;
-        const token = ++captionRefineToken;
-        const closeState = {
-          token,
-          transcript: userTranscriptBuffer,
-          clientCaption,
-          pcm,
-        };
-        activeClose = closeState;
-        const run = async (): Promise<void> => {
-          let chosen = preferRicherCaption(
-            closeState.clientCaption,
-            isLatinEnglishCaption(closeState.transcript) ? sanitizeLiveTranscript(closeState.transcript) : '',
-          );
-          const durationSec = closeState.pcm.length / 32000;
-          if (!captionCoversAudio(chosen, durationSec) && closeState.pcm.length >= 16000 * 2) {
-            try {
-              const heard = sanitizeLiveTranscript(await transcribeInterviewAudio(closeState.pcm));
-              if (heard && isLatinEnglishCaption(heard)) {
-                chosen = preferRicherCaption(chosen, heard);
-              }
-              logger.info(
-                `[v2-live-interview] audio transcript interviewId=${interviewId} durationSec=${durationSec.toFixed(1)} live="${closeState.clientCaption}" gemini="${sanitizeLiveTranscript(closeState.transcript)}" heard="${heard}" chosen="${chosen}"`,
-              );
-            } catch (error) {
-              logger.warn(
-                `[v2-live-interview] audio transcript failed interviewId=${interviewId}`,
-                error,
-              );
-            }
-          }
-          if (activeClose === closeState) {
-            activeClose = null;
-            if (!userTurnOpen) userTranscriptBuffer = '';
-          }
-          if (chosen && chosen !== closeState.clientCaption) {
-            publishRevisedAnswer(closeState.clientCaption, chosen);
-          }
-        };
-        captionRefineTimer = setTimeout(() => {
-          captionRefineTimer = null;
-          void run();
-        }, 1400);
-      };
-
       const handleToolCall = (functionCalls: NonNullable<LiveServerMessage['toolCall']>['functionCalls']): void => {
         if (!geminiSession || !functionCalls?.length) return;
 
@@ -721,6 +698,13 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
         }
       };
 
+      let sendModelPrompt: (text: string) => boolean = () => false;
+      let sendKickoff: () => void = () => undefined;
+      let armReplyWatchdog: () => void = () => undefined;
+      let recoverSilentReply: () => void = () => undefined;
+      let reconnectGemini: (reason: string) => void = () => undefined;
+      let openGeminiSession: () => Promise<void> = async () => undefined;
+
       const handleGeminiMessage = (message: LiveServerMessage): void => {
         if (message.toolCall?.functionCalls?.length) {
           handleToolCall(message.toolCall.functionCalls);
@@ -735,24 +719,11 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
           return;
         }
 
-        // Keep Gemini inputTranscription for persist fallback. Do not push it to the live box.
-        const geminiInputText = serverContent.inputTranscription?.text;
-        const geminiInterimText = serverContent.interimInputTranscription?.text;
-        if (geminiInputText || geminiInterimText) {
-          if (geminiInputText) {
-            userTranscriptBuffer = appendTranscriptChunk(userTranscriptBuffer, geminiInputText);
-          }
-          const fullRaw = geminiInterimText
-            ? appendTranscriptChunk(userTranscriptBuffer, geminiInterimText)
-            : userTranscriptBuffer;
-          if (activeClose && !userTurnOpen) {
-            activeClose.transcript = fullRaw;
-          }
-        }
-
         const onFirstAiSignal = (): void => {
           if (firstAiSignalReceived) return;
           firstAiSignalReceived = true;
+          geminiReconnects = 0;
+          silentReplyRetries = 0;
           clearKickoffRetry();
           if (!latestInterview?.startedAt) {
             enqueuePersist(async () => {
@@ -771,20 +742,29 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
         };
 
         const holdNextQuestion = awaitingCandidateAnswer && !awaitingAiResponse;
+        // Resume opens the mic immediately. Until the first interviewer words of this
+        // connection are delivered, that open mic must not swallow the re-asked question.
+        const suppressAi =
+          firstAiSignalReceived &&
+          (holdNextQuestion || (userTurnOpen && receivedUserAudioThisTurn));
 
         if (serverContent.outputTranscription?.text) {
           // Keep assembling the question even if a user turn opened early; otherwise the
           // final interviewer line is wiped and the spoken question no longer matches the UI.
-          if (!holdNextQuestion && (!userTurnOpen || !receivedUserAudioThisTurn)) {
+          const chunk = serverContent.outputTranscription.text;
+          if (!suppressAi) {
             clearAiResponseWatchdog();
             onFirstAiSignal();
-            aiTranscriptBuffer = appendTranscriptChunk(
-              aiTranscriptBuffer,
-              serverContent.outputTranscription.text,
-            );
+            aiTranscriptBuffer = appendTranscriptChunk(aiTranscriptBuffer, chunk);
             const text = sanitizeLiveTranscript(aiTranscriptBuffer);
             if (text) {
-              sendJson(clientSocket, { type: 'transcript', role: 'ai', text, final: false });
+              sendJson(clientSocket, {
+                type: 'transcript',
+                role: 'ai',
+                text,
+                final: false,
+                turnId: currentSpeechTurn(),
+              });
             }
           }
         }
@@ -794,7 +774,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
           const data = part.inlineData?.data;
           if (!data) continue;
           // Hold AI audio after a delivered question until Submit, and while the candidate is speaking.
-          if (holdNextQuestion || (userTurnOpen && receivedUserAudioThisTurn)) {
+          if (suppressAi) {
             continue;
           }
           clearAiResponseWatchdog();
@@ -803,19 +783,14 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
             type: 'audio',
             data,
             mimeType: part.inlineData?.mimeType ?? 'audio/pcm;rate=24000',
+            turnId: currentSpeechTurn(),
           });
         }
 
         if (serverContent.turnComplete) {
           clearAiResponseWatchdog();
-          if (holdNextQuestion || (userTurnOpen && receivedUserAudioThisTurn)) {
-            // Drop extra interviewer turns until the candidate submits.
-            logger.info(
-              `[v2-live-interview] dropped extra AI turn while waiting for submit interviewId=${interviewId}`,
-            );
-            aiTranscriptBuffer = '';
-            return;
-          }
+          modelTurnInFlight = false;
+          openingInFlight = false;
           let aiText = resolveAssistantTranscript({
             outputTranscription: aiTranscriptBuffer,
             modelTurnText: parts
@@ -830,145 +805,391 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
               `[v2-live-interview] stripped ctrl artifacts from AI transcript interviewId=${interviewId}`,
             );
           }
+          const remainingNow = computeRemainingSeconds(latestInterview ?? interview);
+          const decision = decideAiTurn({
+            text: aiText,
+            suppressed: suppressAi,
+            firstSignalReceived: firstAiSignalReceived,
+            awaitingReply: awaitingAiResponse,
+            looksLikeQuestion: looksLikeInterviewQuestion(aiText),
+            alreadyNudged: missingQuestionNudgeSent,
+            timeWrapSent: timeWrapReminderSent,
+            prematureWrap:
+              !!aiText &&
+              !timeWrapReminderSent &&
+              !candidateAskedToEnd &&
+              remainingNow > WRAP_UP_SEC &&
+              PREMATURE_WRAP_PATTERN.test(aiText),
+            canPrompt: !!geminiSession,
+          });
+          if (decision.action === 'drop') {
+            // One interviewer response per answer. Extra turns wait until Submit.
+            logger.info(
+              `[v2-live-interview] dropped extra AI turn while waiting for submit interviewId=${interviewId}`,
+            );
+            aiTranscriptBuffer = '';
+            return;
+          }
+          if (decision.action === 'ignore_empty') {
+            // A blank turnComplete is the model finishing without speech. The microphone
+            // stays closed, and a new prompt is sent only after this generation has ended.
+            logger.warn(
+              `[v2-live-interview] empty AI turn interviewId=${interviewId} opening=${!firstAiSignalReceived} awaitingReply=${awaitingAiResponse}`,
+            );
+            aiTranscriptBuffer = '';
+            if (!firstAiSignalReceived) {
+              clearKickoffRetry();
+              kickoffRetryTimer = setTimeout(() => {
+                kickoffRetryTimer = null;
+                sendKickoff();
+              }, 600);
+            } else {
+              recoverSilentReply();
+            }
+            return;
+          }
           if (aiText) {
-            sendJson(clientSocket, { type: 'transcript', role: 'ai', text: aiText, final: true });
+            sendJson(clientSocket, {
+              type: 'transcript',
+              role: 'ai',
+              text: aiText,
+              final: true,
+              turnId: currentSpeechTurn(),
+            });
             persistAssistantText(aiText);
             awaitingAiResponse = false;
-            if (looksLikeInterviewQuestion(aiText)) {
-              awaitingCandidateAnswer = true;
-            }
-          } else if (awaitingAiResponse && geminiSession) {
-            logger.warn(
-              `[v2-live-interview] empty AI turn after candidate answer, nudging interviewId=${interviewId}`,
-            );
-            awaitingAiResponse = false;
-            clearAiResponseWatchdog();
-            try {
-              geminiSession.sendClientContent({
-                turns: [
-                  {
-                    role: 'user',
-                    parts: [
-                      {
-                        text:
-                          'The candidate has finished their answer. Follow up interactively: acknowledge one specific thing they said, then ask ONE deeper question about that same point. Do not switch to an unrelated new topic.',
-                      },
-                    ],
-                  },
-                ],
-                turnComplete: true,
-              });
-              geminiSession.sendRealtimeInput({ activityEnd: {} });
-            } catch (error) {
+            if (decision.action === 'correct_wrap') {
               logger.warn(
-                `[v2-live-interview] next-question nudge failed interviewId=${interviewId}`,
-                error,
+                `[v2-live-interview] premature wrap-up with ${remainingNow}s left, correcting interviewId=${interviewId}`,
               );
+              awaitingAiResponse = true;
+              sendModelPrompt(buildPrematureWrapCorrection(Math.floor(remainingNow / 60)));
+              armReplyWatchdog();
+              aiTranscriptBuffer = '';
+              return;
+            }
+            if (decision.action === 'nudge_for_question') {
+              missingQuestionNudgeSent = true;
+              awaitingAiResponse = true;
+              logger.warn(
+                `[v2-live-interview] AI reply had no question, nudging interviewId=${interviewId}`,
+              );
+              sendModelPrompt(buildMissingQuestionNudge());
+              armReplyWatchdog();
+              aiTranscriptBuffer = '';
+              return;
+            }
+            if (decision.action === 'deliver' && decision.awaitAnswer) {
+              // This reply is the one turn. Wait for Submit instead of speaking another question.
+              awaitingCandidateAnswer = true;
             }
           }
           aiTranscriptBuffer = '';
-          sendJson(clientSocket, { type: 'turnComplete' });
+          closeSpeechTurn();
+          sendJson(clientSocket, { type: 'turnComplete', turnId: speechTurn });
         }
       };
 
-      let kickoffAttempts = 0;
-      const MAX_KICKOFF_ATTEMPTS = 3;
+      const lastAssistantQuestionText = (): string =>
+        [...((latestInterview ?? interview).conversation ?? [])]
+          .reverse()
+          .find((entry) => entry.role === 'assistant')?.text ?? '';
 
-      const sendKickoff = (): void => {
-        if (!geminiSession || firstAiSignalReceived) return;
-        kickoffAttempts += 1;
+      sendModelPrompt = (text: string): boolean => {
+        const prompt = text.trim();
+        if (!prompt || !geminiSession || closed) return false;
+        // Overlapping client content is what closes the Gemini socket mid-interview.
+        if (modelTurnInFlight) {
+          logger.warn(`[v2-live-interview] skipped overlapping prompt interviewId=${interviewId}`);
+          return false;
+        }
         try {
-          const lastAssistantQuestion = [...(interview.conversation ?? [])]
-            .reverse()
-            .find((entry) => entry.role === 'assistant')?.text;
-          const kickoffText = buildResumeKickoffText(
-            resumeMode,
-            lastAssistantQuestion,
-            latestInterview || interview,
-          );
-          if (!kickoffText) return;
-
-          userTurnOpen = false;
           geminiSession.sendClientContent({
-            turns: [
-              {
-                role: 'user',
-                parts: [{ text: kickoffText }],
-              },
-            ],
+            turns: [{ role: 'user', parts: [{ text: prompt }] }],
             turnComplete: true,
           });
-          try {
-            geminiSession.sendRealtimeInput({ activityEnd: {} });
-          } catch {
-            // ignore
-          }
-          logger.info(
-            `[v2-live-interview] kickoff sent interviewId=${interviewId} attempt=${kickoffAttempts} mode=${resumeMode}`,
-          );
+          modelTurnInFlight = true;
+          modelTurnStartedAt = Date.now();
+          return true;
         } catch (error) {
-          logger.warn(`[v2-live-interview] kickoff failed interviewId=${interviewId}`, error);
+          modelTurnInFlight = false;
+          logger.warn(`[v2-live-interview] prompt failed interviewId=${interviewId}`, error);
+          return false;
         }
-
-        clearKickoffRetry();
-        if (kickoffAttempts >= MAX_KICKOFF_ATTEMPTS) return;
-        kickoffRetryTimer = setTimeout(() => {
-          kickoffRetryTimer = null;
-          if (!firstAiSignalReceived && geminiSession) {
-            logger.warn(
-              `[v2-live-interview] no opening response yet, retrying kickoff interviewId=${interviewId} attempt=${kickoffAttempts + 1}`,
-            );
-            sendKickoff();
-          }
-        }, 5000);
       };
 
-      geminiSession = await getClient().live.connect({
-        model,
-        config: buildLiveConnectConfig(systemInstructions, [buildCodeSnippetTool()]),
-        callbacks: {
-          onopen: () => {
-            logger.info(`[v2-live-interview] Gemini session open interviewId=${interviewId}`);
-            sendJson(clientSocket, { type: 'open' });
-          },
-          onmessage: handleGeminiMessage,
-          onerror: (event) => {
-            const message =
-              event instanceof ErrorEvent && event.error instanceof Error
-                ? event.error.message
-                : 'Live interview connection error.';
-            logger.error('[v2-live-interview] Gemini error', message);
-            sendJson(clientSocket, { type: 'error', message });
-          },
-          onclose: () => {
-            logger.info(`[v2-live-interview] Gemini session closed interviewId=${interviewId}`);
-            closeAll('gemini_closed');
-          },
-        },
-      });
-
-      if (isResume && interview.conversation?.length) {
-        try {
-          // Use rolling context: only replay recent turns to reduce context usage.
-          // Older conversation is already compressed into the system instruction.
-          const compressed = compressConversation(interview.conversation);
-          const replayTurns = getReplayTurns(compressed);
-
-          if (replayTurns.length > 0) {
-            await geminiSession.sendClientContent({
-              turns: replayTurns,
-              turnComplete: false,
-            });
+      armReplyWatchdog = (): void => {
+        clearAiResponseWatchdog();
+        aiResponseWatchdogTimer = setTimeout(() => {
+          aiResponseWatchdogTimer = null;
+          if (!awaitingAiResponse || !geminiSession || closed) return;
+          if (modelTurnInFlight) {
+            if (replyWatchExtensions < 1) {
+              replyWatchExtensions += 1;
+              logger.warn(
+                `[v2-live-interview] reply still generating, waiting longer interviewId=${interviewId}`,
+              );
+              armReplyWatchdog();
+              return;
+            }
+            logger.warn(`[v2-live-interview] reply hung, reconnecting interviewId=${interviewId}`);
+            modelTurnInFlight = false;
+            reconnectGemini('reply_hung');
+            return;
           }
-        } catch (error) {
+          recoverSilentReply();
+        }, 16_000);
+      };
+
+      recoverSilentReply = (): void => {
+        if (closed || !awaitingAiResponse) return;
+        if (silentReplyRetries >= 1) {
+          reconnectGemini('silent_reply');
+          return;
+        }
+        silentReplyRetries += 1;
+        const doc = latestInterview ?? interview;
+        const { lastQuestion } = resolveDirectorContext(doc.conversation);
+        const answer = [...(doc.conversation ?? [])]
+          .reverse()
+          .find((entry) => entry.role === 'candidate')?.text;
+        logger.warn(`[v2-live-interview] empty AI reply, asking it to speak interviewId=${interviewId}`);
+        if (sendModelPrompt(buildSpeakNowFollowUp(doc, lastQuestion, answer))) {
+          armReplyWatchdog();
+        }
+      };
+
+      sendKickoff = (): void => {
+        if (!geminiSession || firstAiSignalReceived || closed || openingInFlight || modelTurnInFlight) return;
+        if (kickoffAttempts >= MAX_KICKOFF_ATTEMPTS) {
+          reconnectGemini('kickoff_exhausted');
+          return;
+        }
+        kickoffAttempts += 1;
+        const kickoffText = buildResumeKickoffText(
+          resumeMode,
+          lastAssistantQuestionText(),
+          latestInterview || interview,
+          kickoffAttempts,
+        );
+        if (!kickoffText) return;
+        userTurnOpen = false;
+        openingInFlight = true;
+        if (!sendModelPrompt(kickoffText)) {
+          openingInFlight = false;
+          return;
+        }
+        logger.info(
+          `[v2-live-interview] kickoff sent interviewId=${interviewId} attempt=${kickoffAttempts} mode=${resumeMode}`,
+        );
+        clearKickoffRetry();
+        kickoffRetryTimer = setTimeout(() => {
+          kickoffRetryTimer = null;
+          if (firstAiSignalReceived || !geminiSession || closed) return;
+          if (modelTurnInFlight) {
+            logger.warn(`[v2-live-interview] opening hung, reconnecting interviewId=${interviewId}`);
+            openingInFlight = false;
+            modelTurnInFlight = false;
+            reconnectGemini('opening_hung');
+            return;
+          }
+          openingInFlight = false;
           logger.warn(
-            `[v2-live-interview] conversation replay failed interviewId=${interviewId}`,
-            error,
+            `[v2-live-interview] no opening response yet, retrying kickoff interviewId=${interviewId} attempt=${kickoffAttempts + 1}`,
+          );
+          sendKickoff();
+        }, 18_000);
+      };
+
+      reconnectGemini = (reason: string): void => {
+        if (closed) return;
+        if (clientSocket.readyState !== WebSocket.OPEN) {
+          closeAll('gemini_closed');
+          return;
+        }
+        if (geminiReconnects >= MAX_GEMINI_RECONNECTS) {
+          logger.warn(
+            `[v2-live-interview] Gemini reconnects exhausted interviewId=${interviewId} reason=${reason}`,
+          );
+          closeAll('gemini_closed');
+          return;
+        }
+        geminiReconnects += 1;
+        logger.warn(
+          `[v2-live-interview] reconnecting Gemini interviewId=${interviewId} reason=${reason} attempt=${geminiReconnects}`,
+        );
+        kickoffAttempts = 0;
+        openingInFlight = false;
+        modelTurnInFlight = false;
+        silentReplyRetries = 0;
+        replyWatchExtensions = 0;
+        clearKickoffRetry();
+        clearAiResponseWatchdog();
+        void openGeminiSession().catch((error) => {
+          logger.error(`[v2-live-interview] Gemini reconnect failed interviewId=${interviewId}`, error);
+          closeAll('gemini_closed');
+        });
+      };
+
+      openGeminiSession = async (): Promise<void> => {
+        const generation = ++geminiGeneration;
+        const previous = geminiSession;
+        geminiSession = null;
+        try {
+          previous?.close();
+        } catch {
+          // already closed
+        }
+
+        const session = await getClient().live.connect({
+          model,
+          config: buildLiveConnectConfig(systemInstructions, [buildCodeSnippetTool()]),
+          callbacks: {
+            onopen: () => {
+              if (generation !== geminiGeneration) return;
+              logger.info(`[v2-live-interview] Gemini session open interviewId=${interviewId}`);
+              if (geminiReconnects === 0) {
+                sendJson(clientSocket, { type: 'open' });
+              }
+            },
+            onmessage: (message) => {
+              if (generation !== geminiGeneration) return;
+              handleGeminiMessage(message);
+            },
+            onerror: (event) => {
+              if (generation !== geminiGeneration) return;
+              const message =
+                event instanceof ErrorEvent && event.error instanceof Error
+                  ? event.error.message
+                  : 'Live interview connection error.';
+              logger.error('[v2-live-interview] Gemini error', message);
+            },
+            onclose: () => {
+              if (generation !== geminiGeneration || closed) return;
+              logger.info(`[v2-live-interview] Gemini session closed interviewId=${interviewId}`);
+              reconnectGemini('gemini_closed');
+            },
+          },
+        });
+
+        if (generation !== geminiGeneration || closed) {
+          try {
+            session.close();
+          } catch {
+            // already closed
+          }
+          return;
+        }
+        geminiSession = session;
+
+        // Saved conversation already lives in the system instruction. Replaying it as
+        // client content made the first turn complete with no audio.
+        if (!firstAiSignalReceived) {
+          sendKickoff();
+          return;
+        }
+        if (awaitingAiResponse) {
+          const doc = latestInterview ?? interview;
+          const { lastQuestion } = resolveDirectorContext(doc.conversation);
+          const answer = [...(doc.conversation ?? [])]
+            .reverse()
+            .find((entry) => entry.role === 'candidate')?.text;
+          sendModelPrompt(buildSpeakNowFollowUp(doc, lastQuestion, answer) || currentFollowUpDirector);
+          armReplyWatchdog();
+          return;
+        }
+        awaitingCandidateAnswer = false;
+        awaitingAiResponse = true;
+        const replay = buildResumeKickoffText(
+          'await_candidate',
+          lastAssistantQuestionText(),
+          latestInterview || interview,
+          3,
+        );
+        if (replay) sendModelPrompt(replay);
+      };
+
+      await openGeminiSession();
+
+      const respondToCandidateAnswer = async (clientCaption: string, pcm: Buffer): Promise<void> => {
+        let captionText = clientCaption;
+        const speechSec = pcm.length > 0 ? estimateSpeechSec(pcm) : 0;
+        // Near-silence with no caption was being transcribed into a made-up answer, which
+        // then collided with the interviewer's in-flight turn and produced an empty reply.
+        if (!captionText.trim() && speechSec < 0.4) {
+          logger.warn(
+            `[v2-live-interview] ignored silent answer interviewId=${interviewId} speechSec=${speechSec.toFixed(2)}`,
+          );
+          awaitingAiResponse = false;
+          if (firstAiSignalReceived) {
+            awaitingCandidateAnswer = true;
+            sendJson(clientSocket, { type: 'listen_again' });
+          }
+          return;
+        }
+        clearKickoffRetry();
+        if (pcm.length > 0 && speechSec >= 0.4 && captionLooksIncomplete(clientCaption, speechSec)) {
+          let heard = '';
+          try {
+            const timeoutMs = Math.min(12_000, 4_500 + speechSec * 100);
+            heard = sanitizeLiveTranscript(await transcribeInterviewAudio(pcm, 16000, timeoutMs));
+          } catch (error) {
+            logger.warn(`[v2-live-interview] answer transcription failed interviewId=${interviewId}`, error);
+          }
+          const wordCount = (text: string): number => text.split(/\s+/).filter(Boolean).length;
+          if (heard && isLatinEnglishCaption(heard) && wordCount(heard) > wordCount(clientCaption)) {
+            captionText = heard;
+            sendJson(clientSocket, {
+              type: 'transcript',
+              role: 'user',
+              text: captionText,
+              final: true,
+              revised: true,
+            });
+            if (clientCaption) {
+              reviseCandidateText(clientCaption, captionText);
+            } else {
+              persistCandidateText(captionText);
+            }
+          }
+          logger.info(
+            `[v2-live-interview] caption check interviewId=${interviewId} speechSec=${speechSec.toFixed(1)} client="${clientCaption}" heard="${heard}" used=${captionText === clientCaption ? 'client' : 'audio'}`,
           );
         }
-      }
+        if (closed || !geminiSession) return;
 
-      sendKickoff();
+        const { lastQuestion, recent } = resolveDirectorContext(
+          (latestInterview ?? interview).conversation,
+        );
+        const answerSignal = classifyCandidateAnswer(lastQuestion, captionText);
+        candidateAskedToEnd = candidateWantsToEnd(captionText);
+        logger.info(
+          `[v2-live-interview] candidate answer interviewId=${interviewId} source=${captionText === clientCaption ? 'client' : 'audio'} signal=${answerSignal} speechSec=${speechSec.toFixed(1)} text="${captionText}"`,
+        );
+
+        const remainingSecs = broadcastTimer();
+        const shouldWrap = remainingSecs > 0 && remainingSecs <= WRAP_UP_SEC && !timeWrapReminderSent;
+        const followUpDirector = shouldWrap
+          ? buildTimeWrapDirector(captionText)
+          : buildInteractiveFollowUpDirector({
+              lastQuestion,
+              candidateText: captionText,
+              recent,
+              signalNote: describeAnswerSignal(answerSignal),
+              questionSource: resolveQuestionSource(latestInterview ?? interview),
+            });
+        currentFollowUpDirector = followUpDirector;
+        silentReplyRetries = 0;
+        replyWatchExtensions = 0;
+        if (shouldWrap) {
+          timeWrapReminderSent = true;
+        }
+
+        if (!sendModelPrompt(followUpDirector)) {
+          logger.warn(`[v2-live-interview] follow-up director was not sent interviewId=${interviewId}`);
+        }
+        armReplyWatchdog();
+      };
 
       clientSocket.on('message', (raw) => {
         const message = parseClientMessage(raw);
@@ -986,170 +1207,73 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
           receivedUserAudioThisTurn = false;
           userAudioChunksCount = 0;
           userAudioBytesTotal = 0;
-          userAudioSampleBase64 = '';
           userPcmChunks = [];
           userPcmBytes = 0;
           userTurnOpen = true;
-          userTranscriptBuffer = '';
-          if (activeClose) activeClose = null;
-          try {
-            geminiSession.sendRealtimeInput({ activityStart: {} });
-          } catch (error) {
-            logger.warn(`[v2-live-interview] activityStart failed interviewId=${interviewId}`, error);
-          }
           return;
         }
 
         if (message.type === 'activityEnd') {
           userTurnOpen = false;
-          // Live inputTranscription often arrives just after activityEnd. Keep the buffer
-          // and the PCM so a fragment can be replaced with the words that were spoken.
           const pcm = userPcmChunks.length ? Buffer.concat(userPcmChunks) : Buffer.alloc(0);
           userPcmChunks = [];
           userPcmBytes = 0;
-          const geminiCaption = sanitizeLiveTranscript(userTranscriptBuffer);
-
           const clientCaption = pendingCandidateText?.trim() ?? '';
           pendingCandidateText = '';
 
-          // Client userTurnFinal is authoritative. Gemini is persist fallback only (no Web Speech).
-          let captionText = clientCaption;
-          if (!captionText) {
-            captionText =
-              geminiCaption && isLatinEnglishCaption(geminiCaption) ? geminiCaption : '';
-          }
-          const audioSec = pcm.length / 32000;
-          if (captionText && captionText !== clientCaption) {
-            persistCandidateText(captionText);
-          }
-
-          const durationSec = (userAudioBytesTotal / 32000).toFixed(2);
-          logger.info(`[v2-live-interview] Turn comparison interviewId=${interviewId} client="${clientCaption}" gemini="${geminiCaption}" chosen="${captionText}" audioBytes=${userAudioBytesTotal} audioChunks=${userAudioChunksCount} durationSec=${durationSec}`);
-          if (!clientCaption && !captionCoversAudio(captionText, audioSec)) {
-            armCaptionRefine(captionText, pcm);
-          } else {
-            userTranscriptBuffer = '';
-          }
-
-          if (captionText && !clientCaption) {
-            sendJson(clientSocket, {
-              type: 'transcript',
-              role: 'user',
-              text: captionText,
-              final: true,
-            });
-          }
-
           awaitingAiResponse = true;
           awaitingCandidateAnswer = false;
-          try {
-            geminiSession.sendRealtimeInput({ activityEnd: {} });
-          } catch (error) {
-            logger.warn(`[v2-live-interview] activityEnd failed interviewId=${interviewId}`, error);
-          }
-          if (captionText && !receivedUserAudioThisTurn) {
-            const remainingSecs = broadcastTimer();
-            const shouldWrap = remainingSecs > 0 && remainingSecs <= 180 && !timeWrapReminderSent;
-            if (shouldWrap) {
-              timeWrapReminderSent = true;
-            }
-            const textToSend = shouldWrap
-              ? `${captionText}\n\n(Time is under 3 minutes — do not ask new questions. State: "I am done from my end due to time limitation. Do you have any questions for me? If not, then we can stop the interview.")`
-              : `${captionText}\n\n(Interviewer instruction — do not read aloud) Follow up on this answer. Name a specific point they made, then ask one deeper question about that same point. Do not jump to an unrelated topic.`;
-            try {
-              geminiSession.sendClientContent({
-                turns: [{ role: 'user', parts: [{ text: textToSend }] }],
-                turnComplete: true,
-              });
-              geminiSession.sendRealtimeInput({ activityEnd: {} });
-            } catch (error) {
-              logger.warn(
-                `[v2-live-interview] candidate caption forward failed interviewId=${interviewId}`,
-                error,
-              );
-            }
-          }
-
-          clearAiResponseWatchdog();
-          aiResponseWatchdogTimer = setTimeout(() => {
-            aiResponseWatchdogTimer = null;
-            if (awaitingAiResponse && geminiSession) {
-              logger.warn(
-                `[v2-live-interview] AI response latency watchdog fired (2800ms), nudging interviewId=${interviewId}`,
-              );
-              try {
-                const remainingSecs = broadcastTimer();
-                const isUnder3Min = remainingSecs > 0 && remainingSecs <= 180 && !timeWrapReminderSent;
-                let nudgePrompt: string;
-                if (isUnder3Min) {
-                  timeWrapReminderSent = true;
-                  nudgePrompt =
-                    'Under 3 minutes remain. Wrap up now without asking any new questions: ' +
-                    'say "I am done from my end due to time limitation. Do you have any questions for me? If not, then we can stop the interview."';
-                } else {
-                  nudgePrompt = captionText
-                    ? `The candidate has submitted their answer: "${captionText}". Follow up interactively without delay: react to a specific point in that answer, then ask ONE deeper question on that same point. Do NOT switch topics. Do NOT reveal or explain the answer.`
-                    : 'The candidate has finished their answer. Follow up interactively without delay on what they just said. Do NOT switch to an unrelated new question. Do NOT reveal or explain the answer.';
-                }
-                geminiSession.sendClientContent({
-                  turns: [
-                    {
-                      role: 'user',
-                      parts: [
-                        {
-                          text: nudgePrompt,
-                        },
-                      ],
-                    },
-                  ],
-                  turnComplete: true,
-                });
-                geminiSession.sendRealtimeInput({ activityEnd: {} });
-              } catch (error) {
-                logger.warn(
-                  `[v2-live-interview] latency watchdog nudge failed interviewId=${interviewId}`,
-                  error,
-                );
-              }
-            }
-          }, 2800);
-
+          missingQuestionNudgeSent = false;
+          void respondToCandidateAnswer(clientCaption, pcm);
           return;
         }
 
         if (message.type === 'audio' && message.data) {
+          // Audio is buffered for transcription only. Gemini receives the answer as text so it
+          // replies exactly once, to the same words the candidate sees in "Your Answer".
           if (!userTurnOpen && !awaitingAiResponse) {
             userTurnOpen = true;
             receivedUserAudioThisTurn = false;
             userAudioChunksCount = 0;
             userAudioBytesTotal = 0;
-            userAudioSampleBase64 = '';
             userPcmChunks = [];
             userPcmBytes = 0;
-            userTranscriptBuffer = '';
-            try {
-              geminiSession.sendRealtimeInput({ activityStart: {} });
-            } catch (error) {
-              logger.warn(`[v2-live-interview] auto-activityStart failed interviewId=${interviewId}`, error);
-            }
           }
           if (userTurnOpen) {
             receivedUserAudioThisTurn = true;
             userAudioChunksCount++;
             const chunk = Buffer.from(message.data, 'base64');
-            const byteLen = chunk.length;
-            userAudioBytesTotal += byteLen;
+            userAudioBytesTotal += chunk.length;
             if (userPcmBytes + chunk.length <= MAX_USER_PCM_BYTES) {
               userPcmChunks.push(chunk);
               userPcmBytes += chunk.length;
             }
-            if (!userAudioSampleBase64) {
-              userAudioSampleBase64 = message.data.slice(0, 100);
-            }
-            geminiSession.sendRealtimeInput({
-              audio: { data: message.data, mimeType: message.mimeType ?? 'audio/pcm;rate=16000' },
-            });
           }
+          return;
+        }
+
+        if (message.type === 'retryResponse') {
+          logger.warn(`[v2-live-interview] client requested reply retry interviewId=${interviewId}`);
+          if (modelTurnInFlight && Date.now() - modelTurnStartedAt < 20_000) {
+            return;
+          }
+          if (!firstAiSignalReceived) {
+            openingInFlight = false;
+            modelTurnInFlight = false;
+            clearKickoffRetry();
+            if (kickoffAttempts >= MAX_KICKOFF_ATTEMPTS) {
+              kickoffAttempts = MAX_KICKOFF_ATTEMPTS - 1;
+            }
+            sendKickoff();
+            return;
+          }
+          if (awaitingCandidateAnswer && !awaitingAiResponse) {
+            return;
+          }
+          modelTurnInFlight = false;
+          awaitingAiResponse = true;
+          silentReplyRetries = 0;
+          recoverSilentReply();
           return;
         }
 

@@ -3,7 +3,7 @@
  * Returns STRICT JSON only — no markdown, no fences, no prose.
  */
 
-import type { ResumeAnalysis } from '../../../interfaces/resume.interface';
+import type { ResumeAnalysis } from '../../interfaces/resume.interface';
 
 export function buildResumeOnboardingSystemInstruction(): string {
   return `You are an expert career coach and interview preparation architect.

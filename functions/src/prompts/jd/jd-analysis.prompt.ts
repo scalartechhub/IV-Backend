@@ -1,4 +1,4 @@
-import type { InterviewDifficulty, InterviewMode } from '../../../interfaces/interview.interface';
+import type { InterviewDifficulty, InterviewMode } from '../../interfaces/interview.interface';
 
 export interface JdAnalysisOptionalContext {
   company?: string;

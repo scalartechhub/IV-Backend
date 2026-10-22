@@ -15,7 +15,7 @@ import {
   buildQaOnboardingSystemInstruction,
   buildQaOnboardingUserPrompt,
   type QaOnboardingAnswers,
-} from '../modules/interview/prompts/qa-onboarding.prompt';
+} from '../prompts/onboarding/qa-onboarding.prompt';
 import { AppError } from '../shared/utils';
 import { logger } from '../shared/logger';
 import { ensureAdmin } from '../utils/callable-auth';

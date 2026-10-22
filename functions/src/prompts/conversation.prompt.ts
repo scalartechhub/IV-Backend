@@ -1,5 +1,3 @@
-// backend/src/utils/prompts.ts
-
 export interface Topic {
   id: string;
   title: string;

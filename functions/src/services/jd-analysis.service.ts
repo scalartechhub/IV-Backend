@@ -5,7 +5,7 @@ import {
   buildJdOcrPrompt,
   type JdAnalysisOptionalContext,
   type JdAnalysisResult,
-} from '../modules/interview/prompts/jd-analysis.prompt';
+} from '../prompts/jd/jd-analysis.prompt';
 import type { InterviewDifficulty, InterviewMode } from '../interfaces/interview.interface';
 import { logger } from '../shared/logger';
 import { AppError } from '../shared/utils';

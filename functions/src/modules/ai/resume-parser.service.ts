@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { aiService } from "./ai.service";
-import { buildResumeParserPrompt } from "../interview/prompts/resume-parser.prompt";
-import { buildResumeScorecardPrompt } from "../interview/prompts/resume-scorecard.prompt";
+import { buildResumeParserPrompt } from "../../prompts/resume/resume-parser.prompt";
+import { buildResumeScorecardPrompt } from "../../prompts/resume/resume-scorecard.prompt";
 import { logger } from "../../shared/logger";
 import { AppError } from "../../shared/utils";
 import { extractPdfText } from "../../shared/utils/pdf";

@@ -5,6 +5,7 @@
 
 import { GoogleGenAI, Modality, type FunctionDeclaration } from '@google/genai';
 import { firestoreConfigService } from '../config/firestore-config.service';
+import { TRANSCRIBE_ANSWER_PROMPT } from '../prompts/interview/transcription.prompt';
 
 import { AppError, parseModelJson } from '../shared/utils';
 
@@ -361,7 +362,7 @@ export async function transcribeInterviewAudio(
               },
             },
             {
-              text: "Transcribe the candidate's English speech exactly as spoken. Use normal word spacing. Do not summarize, translate, or add commentary. If there is no speech, return an empty string.",
+              text: TRANSCRIBE_ANSWER_PROMPT,
             },
           ],
         },

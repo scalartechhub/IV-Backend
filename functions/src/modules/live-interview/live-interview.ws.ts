@@ -19,7 +19,7 @@ import {
   forwardTextToGemini,
   injectSystemContextToGemini,
 } from "./live-interview.gemini-bridge";
-import { buildTimeUpdateContext } from "./live-interview.prompt";
+import { buildTimeUpdateContext } from "../../prompts/interview/legacy-live-interview.prompt";
 import type {
   LiveClientMessage,
   LiveResumeMode,

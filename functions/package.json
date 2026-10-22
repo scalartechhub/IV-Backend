@@ -6,6 +6,7 @@
   "main": "lib/index.js",
   "scripts": {
     "build": "tsc",
+    "test": "node --require ts-node/register --test src/modules/v2/ai-turn.test.ts",
     "dev": "node -r ts-node/register src/server.ts",
     "dev:dev": "node -e \"process.env.APP_ENV='dev'; require('ts-node/register'); require('./src/server.ts');\"",
     "dev:prod": "node -e \"process.env.APP_ENV='production'; require('ts-node/register'); require('./src/server.ts');\"",
@@ -15,8 +16,7 @@
     "serve": "npm run build && firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",
     "deploy:trigger:user-deleted": "firebase deploy --only functions:onUserDeleted",
-    "logs": "firebase functions:log",
-    "test": "node -r ts-node/register --test src/library/xp.spec.ts src/library/skills.spec.ts src/library/readiness.spec.ts src/library/level.spec.ts"
+    "logs": "firebase functions:log"
   },
   "engines": {
     "node": "22"

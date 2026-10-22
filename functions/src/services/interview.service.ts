@@ -62,7 +62,79 @@ import { ensureUserDefaults } from './schema-defaults';
 import {
   buildInterviewSystemInstructions,
   buildResumeContextFromAnalysis,
-} from './interview-prompt';
+  OPENING_ANGLES,
+} from '../prompts/interview/interview-system.prompt';
+
+const PREVIOUS_INTERVIEWS_SCANNED = 15;
+const PREVIOUS_QUESTIONS_LIMIT = 30;
+const PREVIOUS_QUESTION_CHARS = 220;
+
+const normalizeSubject = (value?: string): string => (value ?? '').trim().toLowerCase();
+
+/**
+ * Same interview: a posted job stays its own interview (jdId).
+ * Every other start path is linked by target role, so Quick start, a recommendation,
+ * a company card, and a custom topic for "Full Stack Developer" share one question history.
+ * Topic / technology / skill are only a fallback for older interviews that stored no role.
+ */
+const subjectKey = (mode: InterviewMode, config: Partial<InterviewConfig>): string => {
+  const jd = config.jdId?.trim();
+  if (jd) return `jd:${jd}`;
+  const subject =
+    normalizeSubject(config.targetRole) ||
+    normalizeSubject(config.topic) ||
+    normalizeSubject(config.technologies?.[0]) ||
+    normalizeSubject(config.skills?.[0]);
+  return `${mode}:${subject}`;
+};
+
+/** Pulls the question sentence out of an interviewer turn ("Good point. How would you …?" → "How would you …?"). */
+const extractQuestion = (text: string): string => {
+  // Split only at sentence ends followed by a space so "Node.js" stays intact.
+  const sentences = text.replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s+/);
+  const question = [...sentences].reverse().find((sentence) => sentence.includes('?'))?.trim() ?? '';
+  return question.slice(0, PREVIOUS_QUESTION_CHARS);
+};
+
+/** Interviewer questions from this user's recent sessions on the same subject, newest first. */
+async function loadPreviousQuestions(
+  db: FirebaseFirestore.Firestore,
+  uid: string,
+  mode: InterviewMode,
+  config: Partial<InterviewConfig>,
+): Promise<string[]> {
+  const key = subjectKey(mode, config);
+  try {
+    const snap = await db
+      .collection('interviews')
+      .where('userId', '==', uid)
+      .orderBy('createdAt', 'desc')
+      .limit(PREVIOUS_INTERVIEWS_SCANNED)
+      .select('mode', 'config', 'conversation', 'isDeleted')
+      .get();
+
+    const seen = new Set<string>();
+    const questions: string[] = [];
+    for (const doc of snap.docs) {
+      const data = doc.data() as Partial<InterviewDoc>;
+      if (data.isDeleted || !data.mode || !data.config) continue;
+      if (subjectKey(data.mode, data.config) !== key) continue;
+      for (const entry of data.conversation ?? []) {
+        if (entry.role !== 'assistant' || !entry.text) continue;
+        const question = extractQuestion(entry.text);
+        const normalized = question.toLowerCase();
+        if (!question || seen.has(normalized)) continue;
+        seen.add(normalized);
+        questions.push(question);
+        if (questions.length >= PREVIOUS_QUESTIONS_LIMIT) return questions;
+      }
+    }
+    return questions;
+  } catch (error) {
+    console.warn('[interview] could not load previous questions', error);
+    return [];
+  }
+}
 
 export interface StartInterviewInput {
   mode?: InterviewMode;
@@ -438,12 +510,18 @@ export async function startInterview(
     }
   }
 
-  const topicProfile = await loadTopicProfile(db, uid);
+  const [topicProfile, previousQuestions] = await Promise.all([
+    loadTopicProfile(db, uid),
+    loadPreviousQuestions(db, uid, mode, config),
+  ]);
+  const openingAngle = OPENING_ANGLES[Math.floor(Math.random() * OPENING_ANGLES.length)];
 
   const systemInstructions = buildInterviewSystemInstructions(mode, config, {
     resumeContext: resumeContext || undefined,
     previousWeaknesses,
     topicProfile,
+    previousQuestions,
+    openingAngle,
   });
 
   const geminiSessionConfig = buildGeminiSessionConfig(systemInstructions);

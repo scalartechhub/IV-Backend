@@ -56,6 +56,35 @@ export const appendTranscriptChunk = (buffer: string, chunk: string): string => 
  * True when the caption is long enough to be the speech in this audio.
  * Live captions often keep only a fragment of a long answer.
  */
+/**
+ * RMS floor for a 20 ms frame to count as speech.
+ * 0.015 treated quiet headset audio as silence, so a real answer was never measured.
+ */
+export const SPEECH_FRAME_RMS = 0.008;
+
+/** Seconds of PCM16 mono audio that contain speech (20 ms frames above a loudness floor). */
+export const estimateSpeechSec = (pcm16le: Buffer, sampleRate = 16000): number => {
+  const frameSamples = Math.floor(sampleRate * 0.02);
+  const totalSamples = Math.floor(pcm16le.length / 2);
+  let voicedFrames = 0;
+  for (let start = 0; start + frameSamples <= totalSamples; start += frameSamples) {
+    let sumSquares = 0;
+    for (let i = start; i < start + frameSamples; i++) {
+      const sample = pcm16le.readInt16LE(i * 2) / 32768;
+      sumSquares += sample * sample;
+    }
+    if (Math.sqrt(sumSquares / frameSamples) > SPEECH_FRAME_RMS) voicedFrames++;
+  }
+  return voicedFrames * 0.02;
+};
+
+/** Browser captions often drop chunks of long answers; ~2 words/sec of speech is the floor for a full caption. */
+export const captionLooksIncomplete = (caption: string, speechSec: number): boolean => {
+  const words = caption.trim().split(/\s+/).filter(Boolean).length;
+  if (speechSec < 3) return words === 0;
+  return words < speechSec * 1.2;
+};
+
 export const captionCoversAudio = (text: string, durationSec: number): boolean => {
   const words = text.trim().split(/\s+/).filter(Boolean);
   if (durationSec < 1.5) return words.length > 0;

@@ -1,6 +1,6 @@
 import { aiService } from '../ai/ai.service';
 import { db } from '../../config/firebase';
-import { buildJobDescriptionAnalysisPrompt } from './job-description-analysis.prompt';
+import { buildJobDescriptionAnalysisPrompt } from '../../prompts/jd/job-description-analysis.prompt';
 import type { JobDescription } from '../../interfaces/job-description.interface';
 import { AppError } from '../../shared/utils';
 import { v4 as uuidv4 } from 'uuid';

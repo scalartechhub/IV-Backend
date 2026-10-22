@@ -1,9 +1,9 @@
-import type { Interview, InterviewConversationMessage } from "../interview/interview.types";
-import type { LiveResumeMode } from "./live-interview.types";
+import type { Interview, InterviewConversationMessage } from "../../modules/interview/interview.types";
+import type { LiveResumeMode } from "../../modules/live-interview/live-interview.types";
 import {
   compressConversation,
   formatCompressedContextForPrompt,
-} from "./context-manager";
+} from "../../modules/live-interview/context-manager";
 
 const INTERVIEW_TYPE_LABELS: Record<string, string> = {
   technicalInterview: "Technical Interview",

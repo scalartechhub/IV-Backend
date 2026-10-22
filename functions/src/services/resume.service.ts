@@ -16,15 +16,15 @@ import { generateJson, RESUME_GEMINI_MODEL } from '../library/gemini-client';
 import {
   buildCombinedResumeSystemInstruction,
   buildCombinedResumeUserPrompt,
-} from '../modules/interview/prompts/resume-combined.prompt';
+} from '../prompts/resume/resume-combined.prompt';
 import {
   buildResumeOnboardingSystemInstruction,
   buildResumeOnboardingUserPrompt,
-} from '../modules/interview/prompts/resume-onboarding.prompt';
+} from '../prompts/resume/resume-onboarding.prompt';
 import {
   buildResumeReviewSystemInstruction,
   buildResumeReviewUserPrompt,
-} from '../modules/interview/prompts/resume-review.prompt';
+} from '../prompts/resume/resume-review.prompt';
 import { uploadUserResumeFile } from '../modules/storage/storage.service';
 import { AppError } from '../shared/utils';
 import { logger } from '../shared/logger';
