@@ -244,6 +244,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
     let receivedUserAudioThisTurn = false;
     let userAudioChunksCount = 0;
     let userAudioBytesTotal = 0;
+    let clearLiveTranscribeDebounce = (): void => undefined;
     /** Set after activityEnd until the model produces the next assistant turn. */
     let awaitingAiResponse = false;
     /** After a delivered question, drop further AI speech until the candidate submits. */
@@ -335,6 +336,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       clearAiResponseWatchdog();
       clearTimerTick();
       clearPingTimer();
+      clearLiveTranscribeDebounce();
       userTurnOpen = false;
       try {
         geminiSession?.close();
@@ -660,6 +662,71 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       let userPcmChunks: Buffer[] = [];
       let userPcmBytes = 0;
       const MAX_USER_PCM_BYTES = 16000 * 2 * 90;
+      let liveTranscribeInFlight = false;
+      let lastLiveTranscribeBytes = 0;
+      let liveTranscribeDebounceTimer: NodeJS.Timeout | null = null;
+
+      clearLiveTranscribeDebounce = (): void => {
+        if (liveTranscribeDebounceTimer) {
+          clearTimeout(liveTranscribeDebounceTimer);
+          liveTranscribeDebounceTimer = null;
+        }
+      };
+
+      const triggerLiveChunkTranscription = async (): Promise<void> => {
+        if (!userTurnOpen || liveTranscribeInFlight || closed) return;
+        const bytesSinceLast = userPcmBytes - lastLiveTranscribeBytes;
+        // Require at least ~0.8s of new audio since the last transcription run
+        if (bytesSinceLast < 16000 * 2 * 0.8) return;
+
+        const pcmSnapshot = userPcmChunks.length ? Buffer.concat(userPcmChunks) : Buffer.alloc(0);
+        if (pcmSnapshot.length < 16000 * 2 * 0.5) return;
+
+        liveTranscribeInFlight = true;
+        lastLiveTranscribeBytes = userPcmBytes;
+
+        try {
+          const timeoutMs = 8000;
+          const rawTranscript = await transcribeInterviewAudio(pcmSnapshot, 16000, timeoutMs);
+          const transcript = sanitizeLiveTranscript(rawTranscript);
+          if (transcript && userTurnOpen && !closed) {
+            pendingCandidateText = transcript;
+            sendJson(clientSocket, {
+              type: 'transcript',
+              role: 'user',
+              text: transcript,
+              final: false,
+              live: true,
+            });
+            logger.info(
+              `[v2-live-interview] 🎙️ Live Chunk Transcript interviewId=${interviewId}: "${transcript}"`,
+            );
+          }
+        } catch (err) {
+          logger.warn(`[v2-live-interview] live chunk transcription error interviewId=${interviewId}`, err);
+        } finally {
+          liveTranscribeInFlight = false;
+        }
+      };
+
+      const scheduleLiveChunkTranscription = (): void => {
+        const bytesSinceLast = userPcmBytes - lastLiveTranscribeBytes;
+        if (bytesSinceLast < 16000 * 2 * 0.8) return;
+
+        // If a timer is already counting down, don't keep cancelling it so it can fire regularly while user speaks
+        if (liveTranscribeDebounceTimer !== null) {
+          if (bytesSinceLast >= 16000 * 2 * 2.2 && !liveTranscribeInFlight) {
+            clearLiveTranscribeDebounce();
+            void triggerLiveChunkTranscription();
+          }
+          return;
+        }
+
+        liveTranscribeDebounceTimer = setTimeout(() => {
+          liveTranscribeDebounceTimer = null;
+          void triggerLiveChunkTranscription();
+        }, 600);
+      };
       const handleToolCall = (functionCalls: NonNullable<LiveServerMessage['toolCall']>['functionCalls']): void => {
         if (!geminiSession || !functionCalls?.length) return;
 
@@ -1203,21 +1270,25 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
         }
 
         if (message.type === 'activityStart') {
+          clearLiveTranscribeDebounce();
           pendingCandidateText = '';
           receivedUserAudioThisTurn = false;
           userAudioChunksCount = 0;
           userAudioBytesTotal = 0;
           userPcmChunks = [];
           userPcmBytes = 0;
+          lastLiveTranscribeBytes = 0;
           userTurnOpen = true;
           return;
         }
 
         if (message.type === 'activityEnd') {
+          clearLiveTranscribeDebounce();
           userTurnOpen = false;
           const pcm = userPcmChunks.length ? Buffer.concat(userPcmChunks) : Buffer.alloc(0);
           userPcmChunks = [];
           userPcmBytes = 0;
+          lastLiveTranscribeBytes = 0;
           const clientCaption = pendingCandidateText?.trim() ?? '';
           pendingCandidateText = '';
 
@@ -1238,6 +1309,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
             userAudioBytesTotal = 0;
             userPcmChunks = [];
             userPcmBytes = 0;
+            lastLiveTranscribeBytes = 0;
           }
           if (userTurnOpen) {
             receivedUserAudioThisTurn = true;
@@ -1248,6 +1320,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
               userPcmChunks.push(chunk);
               userPcmBytes += chunk.length;
             }
+            scheduleLiveChunkTranscription();
           }
           return;
         }
