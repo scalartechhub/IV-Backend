@@ -105,6 +105,12 @@ export interface SubscriptionRecord {
   currency: string;
   country?: string;
 
+  /** Set when Razorpay reports payment.failed for this subscription. */
+  lastFailureReason?: string;
+  lastFailureCode?: string;
+  lastFailedPaymentId?: string;
+  lastFailureAt?: string;
+
   currentPeriodStart?: string;
   currentPeriodEnd?: string;
 
@@ -156,6 +162,13 @@ export interface SubscriptionPaymentRecord {
 
   status: PaymentStatus;
   method?: string;
+
+  /** Razorpay payment.failed fields, when present. */
+  errorCode?: string;
+  errorDescription?: string;
+  errorReason?: string;
+  errorSource?: string;
+  errorStep?: string;
 
   createdAt: string;
   updatedAt: string;
