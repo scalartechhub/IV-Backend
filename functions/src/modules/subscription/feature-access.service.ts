@@ -22,6 +22,7 @@ import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
 import type { SubscriptionSummary } from "../payment/payment.model";
 import { getPlanMonthlyLimits } from "../payment/plan.repository";
+import { resolveAnniversaryQuotaPeriod } from "../../utils/date-helpers";
 
 const usersCol = () => db.collection(COLLECTIONS.USERS);
 
@@ -38,17 +39,23 @@ export const resolveEffectivePlanTier = (userData: Record<string, any>): Billing
 
   // 1. New model: subscriptionSummary
   const summary = userData?.subscriptionSummary as SubscriptionSummary | undefined;
-  if (summary && summary.status === SUBSCRIPTION_STATUS.ACTIVE) {
-    // Check if period end has passed on paid plans
+  const summaryStatus = summary?.status;
+  const summaryEntitled =
+    summaryStatus === SUBSCRIPTION_STATUS.ACTIVE ||
+    summaryStatus === SUBSCRIPTION_STATUS.PENDING ||
+    summaryStatus === SUBSCRIPTION_STATUS.HALTED;
+
+  if (summary && summaryEntitled) {
     const periodEndMs = summary.currentPeriodEnd ? new Date(summary.currentPeriodEnd).getTime() : null;
-    if (
-      periodEndMs !== null &&
-      !isNaN(periodEndMs) &&
-      periodEndMs < nowMs &&
-      summary.planId !== PLAN_IDS.FREE &&
-      summary.planId !== "free"
-    ) {
-      // Plan period has expired without renewal — fallback to Free
+    const isFreePlan = summary.planId === PLAN_IDS.FREE || summary.planId === "free";
+    const periodEnded = periodEndMs !== null && !isNaN(periodEndMs) && periodEndMs < nowMs;
+    // Razorpay stays "active" or "pending" while the next charge is in flight.
+    // Do not drop the paid tier on currentPeriodEnd alone; sync downgrades only after Razorpay ends the subscription.
+    const razorpayRenewing =
+      summary.provider === "razorpay" &&
+      (summaryStatus === SUBSCRIPTION_STATUS.ACTIVE || summaryStatus === SUBSCRIPTION_STATUS.PENDING);
+
+    if (!isFreePlan && periodEnded && !razorpayRenewing) {
       return PLAN_IDS.FREE;
     }
 
@@ -120,18 +127,34 @@ interface PeriodInfo {
 }
 
 /**
- * Resolves the active billing cycle period for a user.
- * - Free users: calendar month (e.g. Sep 1 - Sep 30, key: "2026-09").
- * - Paid subscribers (Pro/Elite): their exact subscription billing cycle
- *   (e.g. Sep 22 - Oct 22, key: "cycle_2026-09-22").
+ * Resolves the active quota period for a user.
+ * - Free: calendar month (1st to 1st, key "2026-10").
+ * - Monthly paid: the Razorpay billing cycle (key "cycle_2026-10-27").
+ * - Yearly paid: a month anchored to the purchase day, same as monthly
+ *   (bought 27 Oct → 27 Oct–27 Nov, key "cycle_2026-10-27"). The subscription
+ *   charge itself remains once a year.
  */
 const resolveUserPeriod = (userData: Record<string, any>, tier: BillingPlanId): PeriodInfo => {
   const summary = userData?.subscriptionSummary as SubscriptionSummary | undefined;
   const isPaid = tier !== PLAN_IDS.FREE && summary?.status === SUBSCRIPTION_STATUS.ACTIVE;
+  const planId = String(summary?.planId || "").toLowerCase();
+  const isYearlyPaid =
+    summary?.billingCycle === "yearly" || planId.includes("yearly") || planId.includes("annual");
 
   const now = new Date();
   const calendarStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
   const calendarEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+  if (isPaid && isYearlyPaid && summary?.currentPeriodStart) {
+    const window = resolveAnniversaryQuotaPeriod(summary.currentPeriodStart, now);
+    return {
+      key: window.key,
+      startDate: window.start,
+      startTimestamp: Timestamp.fromDate(window.start),
+      periodStartIso: window.start.toISOString(),
+      periodEndIso: window.end.toISOString(),
+    };
+  }
 
   if (isPaid && summary?.currentPeriodStart) {
     const startDate = new Date(summary.currentPeriodStart);

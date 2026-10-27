@@ -4,7 +4,7 @@
  */
 
 import { createHmac } from "crypto";
-import { Timestamp } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db } from "../../config/firebase";
 import { getRazorpayConfig } from "../../config/razorpay";
 import {
@@ -15,6 +15,7 @@ import type { BillingPlanIdWithCycle } from "../../constants/payment.constants";
 import { COLLECTIONS } from "../../shared/constants";
 import { AppError } from "../../shared/utils";
 import { logger } from "../../shared/logger";
+import { resolveAnniversaryQuotaPeriod, resolveBillingPeriodEnd } from "../../utils/date-helpers";
 import type {
   RazorpayEventRecord,
   SubscriptionPaymentRecord,
@@ -220,9 +221,14 @@ const handleSubscriptionActivated = async (payload: any): Promise<void> => {
   const currentPeriodStart = subEntity.current_start
     ? new Date(subEntity.current_start * 1000).toISOString()
     : undefined;
-  const currentPeriodEnd = subEntity.current_end
+  const gatewayPeriodEnd = subEntity.current_end
     ? new Date(subEntity.current_end * 1000).toISOString()
     : undefined;
+  const currentPeriodEnd = resolveBillingPeriodEnd(
+    subData?.billingCycle,
+    currentPeriodStart,
+    gatewayPeriodEnd,
+  );
 
   await updateSubscriptionAndUser(
     rzpSubId,
@@ -273,12 +279,20 @@ const handleSubscriptionCharged = async (payload: any): Promise<void> => {
   const uid = subEntity.notes?.userId || (await resolveUserIdFromSubscription(rzpSubId));
   if (!uid) return;
 
+  const subDoc = await subsCol().doc(rzpSubId).get();
+  const subData = subDoc.exists ? (subDoc.data() as SubscriptionRecord) : null;
+  const planId = subData?.planId || subEntity.notes?.planId;
+  const planName = subData?.planName || subEntity.notes?.planName;
+  const billingCycle = subData?.billingCycle || "monthly";
+  const tier = planId ? BILLING_PLAN_TO_TIER[planId as BillingPlanIdWithCycle] || "pro" : undefined;
+
   const currentPeriodStart = subEntity.current_start
     ? new Date(subEntity.current_start * 1000).toISOString()
-    : undefined;
-  const currentPeriodEnd = subEntity.current_end
+    : subData?.currentPeriodStart;
+  const gatewayPeriodEnd = subEntity.current_end
     ? new Date(subEntity.current_end * 1000).toISOString()
     : undefined;
+  const currentPeriodEnd = resolveBillingPeriodEnd(billingCycle, currentPeriodStart, gatewayPeriodEnd);
 
   await updateSubscriptionAndUser(
     rzpSubId,
@@ -290,49 +304,67 @@ const handleSubscriptionCharged = async (payload: any): Promise<void> => {
     },
     {
       status: SUBSCRIPTION_STATUS.ACTIVE,
+      provider: "razorpay",
+      razorpaySubscriptionId: rzpSubId,
+      ...(planId ? { planId } : {}),
+      ...(planName ? { planName } : {}),
+      billingCycle,
       currentPeriodStart,
       currentPeriodEnd,
+      ...(subEntity.cancel_at_cycle_end !== undefined
+        ? { cancelAtPeriodEnd: Boolean(subEntity.cancel_at_cycle_end) }
+        : {}),
     }
   );
 
-  // Also update legacy expiresAt
-  if (currentPeriodEnd) {
-    await usersCol().doc(uid).set(
-      {
-        subscription: {
-          status: SUBSCRIPTION_STATUS.ACTIVE,
-          expiresAt: currentPeriodEnd,
-        },
-      },
-      { merge: true }
-    );
-  }
-
-  // Reset monthly usage counters for the new billing period so the user's quota
-  // refreshes at each recurring charge (Razorpay fires this on every successful renewal).
-  const now = new Date();
-  const newMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  // Monthly plans reset on the Razorpay cycle. Yearly plans reset on the purchase-day month.
+  const cycleAnchor = currentPeriodStart || new Date().toISOString();
+  const cycleKey =
+    billingCycle === "yearly"
+      ? resolveAnniversaryQuotaPeriod(cycleAnchor).key
+      : `cycle_${cycleAnchor.slice(0, 10)}`;
   try {
     await usersCol().doc(uid).set(
       {
-        stats: {
-          interviewsCreatedThisMonth: 0,
-          interviewsMonthKey: newMonthKey,
-          resumeAnalysesCreatedThisMonth: 0,
-          resumeAnalysesMonthKey: newMonthKey,
-        },
+        ...(tier
+          ? {
+              planTier: tier,
+              subscription: {
+                plan: tier,
+                status: SUBSCRIPTION_STATUS.ACTIVE,
+                expiresAt: currentPeriodEnd || null,
+              },
+            }
+          : currentPeriodEnd
+            ? {
+                subscription: {
+                  status: SUBSCRIPTION_STATUS.ACTIVE,
+                  expiresAt: currentPeriodEnd,
+                },
+              }
+            : {}),
+        ...(currentPeriodStart
+          ? {
+              stats: {
+                interviewsCreatedThisMonth: 0,
+                interviewsMonthKey: cycleKey,
+                resumeAnalysesCreatedThisMonth: 0,
+                resumeAnalysesMonthKey: cycleKey,
+              },
+            }
+          : {}),
       },
       { merge: true }
     );
   } catch (statsErr: any) {
-    logger.warn("[webhook] Failed to reset monthly stats on subscription.charged", {
+    logger.warn("[webhook] Failed to restore plan and reset usage on subscription.charged", {
       uid,
       rzpSubId,
       error: statsErr.message,
     });
   }
 
-  logger.info("[webhook] Subscription charged (renewed) — monthly stats reset", { uid, rzpSubId });
+  logger.info("[webhook] Subscription charged (renewed) — paid plan restored", { uid, rzpSubId, planId });
 };
 
 const handleSubscriptionPending = async (payload: any): Promise<void> => {
@@ -363,10 +395,17 @@ const handleSubscriptionUpdated = async (payload: any): Promise<void> => {
   const uid = subEntity.notes?.userId || (await resolveUserIdFromSubscription(rzpSubId));
   if (!uid) return;
 
-  const cancelAtPeriodEnd = Boolean(subEntity.cancel_at_cycle_end);
-  const currentPeriodEnd = subEntity.current_end
+  const subDoc = await subsCol().doc(rzpSubId).get();
+  const subData = subDoc.exists ? (subDoc.data() as SubscriptionRecord) : null;
+  const billingCycle = subData?.billingCycle || "monthly";
+  const periodStart = subEntity.current_start
+    ? new Date(subEntity.current_start * 1000).toISOString()
+    : subData?.currentPeriodStart;
+  const gatewayEnd = subEntity.current_end
     ? new Date(subEntity.current_end * 1000).toISOString()
     : undefined;
+  const currentPeriodEnd = resolveBillingPeriodEnd(billingCycle, periodStart, gatewayEnd);
+  const cancelAtPeriodEnd = Boolean(subEntity.cancel_at_cycle_end);
 
   await updateSubscriptionAndUser(
     rzpSubId,
@@ -384,6 +423,66 @@ const handleSubscriptionUpdated = async (payload: any): Promise<void> => {
   logger.info("[webhook] Subscription updated", { uid, rzpSubId, cancelAtPeriodEnd });
 };
 
+/** Keeps a cancelled yearly plan active until one year from its start. */
+const retainYearlyAccess = async (
+  rzpSubId: string,
+  uid: string,
+  subEntity: any,
+  markCancel: boolean,
+): Promise<boolean> => {
+  const subDoc = await subsCol().doc(rzpSubId).get();
+  const subData = subDoc.exists ? (subDoc.data() as SubscriptionRecord) : null;
+  const billingCycle = subData?.billingCycle;
+  if (billingCycle !== "yearly") return false;
+
+  const periodStart = subEntity.current_start
+    ? new Date(subEntity.current_start * 1000).toISOString()
+    : subData?.currentPeriodStart;
+  const gatewayEnd = subEntity.current_end
+    ? new Date(subEntity.current_end * 1000).toISOString()
+    : subData?.currentPeriodEnd;
+  const paidThrough = resolveBillingPeriodEnd("yearly", periodStart, gatewayEnd);
+  if (!paidThrough || new Date(paidThrough).getTime() <= Date.now()) return false;
+
+  await updateSubscriptionAndUser(
+    rzpSubId,
+    uid,
+    {
+      status: SUBSCRIPTION_STATUS.ACTIVE,
+      currentPeriodStart: periodStart,
+      currentPeriodEnd: paidThrough,
+      cancelAtPeriodEnd: markCancel,
+    },
+    {
+      status: SUBSCRIPTION_STATUS.ACTIVE,
+      provider: "razorpay",
+      ...(subData?.planId ? { planId: subData.planId } : {}),
+      ...(subData?.planName ? { planName: subData.planName } : {}),
+      billingCycle: "yearly",
+      razorpaySubscriptionId: rzpSubId,
+      currentPeriodStart: periodStart,
+      currentPeriodEnd: paidThrough,
+      cancelAtPeriodEnd: markCancel,
+    },
+  );
+
+  const tier = subData?.planId
+    ? BILLING_PLAN_TO_TIER[subData.planId as BillingPlanIdWithCycle] || "pro"
+    : "pro";
+  await usersCol().doc(uid).set(
+    {
+      planTier: tier,
+      subscription: {
+        plan: tier,
+        status: SUBSCRIPTION_STATUS.ACTIVE,
+        expiresAt: paidThrough,
+      },
+    },
+    { merge: true },
+  );
+  return true;
+};
+
 const handleSubscriptionHalted = async (payload: any): Promise<void> => {
   const subEntity = extractSubscriptionEntity(payload);
   const rzpSubId = subEntity.id;
@@ -391,6 +490,11 @@ const handleSubscriptionHalted = async (payload: any): Promise<void> => {
 
   const uid = subEntity.notes?.userId || (await resolveUserIdFromSubscription(rzpSubId));
   if (!uid) return;
+
+  if (await retainYearlyAccess(rzpSubId, uid, subEntity, false)) {
+    logger.info("[webhook] Yearly plan halted — paid year kept", { uid, rzpSubId });
+    return;
+  }
 
   const nowMs = Date.now();
   const currentPeriodEndMs = subEntity.current_end ? subEntity.current_end * 1000 : undefined;
@@ -414,6 +518,9 @@ const handleSubscriptionHalted = async (payload: any): Promise<void> => {
           status: SUBSCRIPTION_STATUS.ACTIVE,
           provider: "none",
           cancelAtPeriodEnd: false,
+          razorpaySubscriptionId: FieldValue.delete(),
+          currentPeriodStart: FieldValue.delete(),
+          currentPeriodEnd: FieldValue.delete(),
           updatedAt: now,
         },
         subscription: {
@@ -448,6 +555,11 @@ const handleSubscriptionCancelled = async (payload: any): Promise<void> => {
   const uid = subEntity.notes?.userId || (await resolveUserIdFromSubscription(rzpSubId));
   if (!uid) return;
 
+  if (await retainYearlyAccess(rzpSubId, uid, subEntity, true)) {
+    logger.info("[webhook] Yearly plan cancelled at gateway — paid year kept", { uid, rzpSubId });
+    return;
+  }
+
   const now = new Date().toISOString();
   const batch = db.batch();
 
@@ -470,6 +582,9 @@ const handleSubscriptionCancelled = async (payload: any): Promise<void> => {
         status: SUBSCRIPTION_STATUS.ACTIVE,
         provider: "none",
         cancelAtPeriodEnd: false,
+        razorpaySubscriptionId: FieldValue.delete(),
+        currentPeriodStart: FieldValue.delete(),
+        currentPeriodEnd: FieldValue.delete(),
         updatedAt: now,
       },
       subscription: {
@@ -497,6 +612,11 @@ const handleSubscriptionExpired = async (payload: any): Promise<void> => {
   const uid = subEntity.notes?.userId || (await resolveUserIdFromSubscription(rzpSubId));
   if (!uid) return;
 
+  if (await retainYearlyAccess(rzpSubId, uid, subEntity, true)) {
+    logger.info("[webhook] Yearly plan expired at gateway — paid year kept", { uid, rzpSubId });
+    return;
+  }
+
   const now = new Date().toISOString();
   const batch = db.batch();
 
@@ -518,6 +638,9 @@ const handleSubscriptionExpired = async (payload: any): Promise<void> => {
         status: SUBSCRIPTION_STATUS.ACTIVE,
         provider: "none",
         cancelAtPeriodEnd: false,
+        razorpaySubscriptionId: FieldValue.delete(),
+        currentPeriodStart: FieldValue.delete(),
+        currentPeriodEnd: FieldValue.delete(),
         updatedAt: now,
       },
       subscription: {
@@ -626,13 +749,32 @@ const handlePaymentFailed = async (payload: any): Promise<void> => {
     country,
     status: "failed",
     method: payEntity.method || undefined,
+    errorCode: payEntity.error_code || undefined,
+    errorDescription: payEntity.error_description || undefined,
+    errorReason: payEntity.error_reason || undefined,
+    errorSource: payEntity.error_source || undefined,
+    errorStep: payEntity.error_step || undefined,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
 
   await paymentsCol().doc(paymentId).set(paymentRecord, { merge: true });
 
-  logger.info("[webhook] Payment failed", { uid, paymentId });
+  const failureReason = paymentRecord.errorDescription || paymentRecord.errorReason || paymentRecord.errorCode;
+  if (rzpSubId && failureReason) {
+    await subsCol().doc(rzpSubId).set(
+      {
+        lastFailureReason: failureReason,
+        ...(paymentRecord.errorCode ? { lastFailureCode: paymentRecord.errorCode } : {}),
+        lastFailedPaymentId: paymentId,
+        lastFailureAt: paymentRecord.updatedAt,
+        updatedAt: paymentRecord.updatedAt,
+      },
+      { merge: true }
+    );
+  }
+
+  logger.info("[webhook] Payment failed", { uid, paymentId, failureReason });
 };
 
 const handlePaymentRefunded = async (payload: any): Promise<void> => {
