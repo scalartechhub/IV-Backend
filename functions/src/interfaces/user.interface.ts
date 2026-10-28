@@ -164,6 +164,23 @@ export interface UserDoc {
   skillSignals?: Record<SkillId, number> & { totalScore: number };
   /** Flat readiness used by dashboard / career progress UI */
   readinessScore?: number;
+  /**
+   * Public job-apply form, written by the client onto users/{uid}.jobApplication.
+   * LinkedIn, location, expected rate, and resume file name.
+   */
+  jobApplication?: {
+    linkedin?: string;
+    location?: string;
+    rate?: string;
+    ratePeriod?: string;
+    currency?: string;
+    resumeFileName?: string;
+    /** Apply-form file in Storage. Not the resume-analysis file. */
+    resumeStoragePath?: string;
+    resumeUrl?: string;
+    formSubmitted?: boolean;
+    updatedAt?: string;
+  };
   /** Percentile vs peers ? dashboard ?Ahead of X% of ?? */
   peerComparisonPercent?: number;
   peerRole?: string;
