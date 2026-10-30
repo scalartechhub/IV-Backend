@@ -1,0 +1,30 @@
+---
+description: Firestore Admin SDK, Storage rules, and interview document conventions for IV-Backend.
+globs: storage.rules,firestore.indexes.json,functions/src/interfaces/**/*.ts,functions/src/utils/firestore-refs.ts,functions/src/config/**/*.ts,functions/src/services/interview.service.ts
+alwaysApply: false
+---
+
+# Firebase
+
+Client security rules live in the IV-frontend repo (`firestore.rules`). This repo writes with the Admin SDK.
+
+## Interview document
+
+Path: `interviews/{interviewId}`. Interface: `functions/src/interfaces/interview.interface.ts`.
+
+- Status values: `created`, `device_check`, `in_progress`, `completed`, `abandoned`, `expired`.
+- Modes: `conversational`, `coding`, `behavioral`, `system_design`, `hr`.
+- Live transcript: `conversation[]` (`assistant` or `candidate`), `lastSpeaker`, `codeSnippetQuestionsAsked`, `remainingSeconds`, `liveElapsedSec`.
+- Scores: `results`, written only in `completeInterview`. A second completion returns 412.
+- XP goes through `functions/src/library/xp.ts` (`creditXpInTransaction`). Streak goes through `functions/src/library/streak.ts`.
+
+`completeInterview` runs Gemini scoring before the transaction, then reads every transactional document before any write. Keep that order.
+
+## Indexes, storage, config
+
+- Compound `where` plus `orderBy` needs an entry in `firestore.indexes.json`. Do not deploy indexes unless asked.
+- `storage.rules`: owner path is `users/{userId}/**`. A second match allows any signed-in user to read and write the rest of the bucket. Do not widen that. Ask before editing storage rules.
+- Runtime AI settings load from Firestore `config` via `functions/src/config/firestore-config.service.ts` (`genai`, smtp, razorpay, groq, judge0). Use that service. Do not add a second cache.
+- Refs go through `functions/src/utils/firestore-refs.ts`.
+
+A new field updates this interface and the IV-frontend interface together.

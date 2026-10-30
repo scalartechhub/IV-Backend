@@ -1,0 +1,27 @@
+---
+description: Use when choosing tests or tracing a bug in IV-Backend.
+alwaysApply: false
+---
+
+# Testing and debugging
+
+No ESLint script and no e2e suite.
+
+| Command | Where | What it runs |
+|---|---|---|
+| `npm run build` | repo root | `tsc` in `functions` |
+| `npm test` | `functions` | Node test runner: `src/modules/v2/ai-turn.test.ts` only |
+| `npm run dev` | repo root | REST plus both WebSocket servers |
+
+Run `npm run build` after a TypeScript change. Run `npm test` in `functions` after an `ai-turn.ts` change. Report the command and the exit code. Do not claim a pass without a run.
+
+## Where bugs usually are
+
+- Reply doubled or skipped: `decideAiTurn`, `activityStart` / `activityEnd`, `userTurnFinal`
+- Wrong language or `<ctrl>` tokens: `functions/src/shared/utils/live-transcript.ts` and `INTERVIEW_LANGUAGE_CODES`
+- Timer drift: `WRAP_UP_SEC` (120) versus the client window (150) and `syncInterviewTimer`
+- Complete returns 412: status is already `completed`
+- 401: Bearer token, or the socket `token` query param
+- Empty Gemini session: `config/genai` via `firestore-config.service.ts`. `getDefaultLiveModel` throws 503 when unset
+
+Log with `functions/src/shared/logger`. Include `interviewId`. Omit tokens, raw PCM, and API keys. Extend `ai-turn.test.ts` when you change `decideAiTurn`. Do not add a new test runner.

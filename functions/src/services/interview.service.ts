@@ -419,6 +419,125 @@ async function resolveCandidateInfo(
   return { candidateName: name, candidateEmail: email };
 }
 
+function interviewMatchesAssessment(
+  data: FirebaseFirestore.DocumentData,
+  jdId?: string,
+  interviewLinkId?: string,
+): boolean {
+  if (data.isDeleted) return false;
+  const docJd = String(data.config?.jdId || data.jdId || '');
+  const docLink = String(data.config?.interviewLinkId || data.interviewLinkId || '');
+  return (Boolean(interviewLinkId) && docLink === interviewLinkId) || (Boolean(jdId) && docJd === jdId);
+}
+
+function mapLinkDifficulty(raw: unknown): InterviewDifficulty {
+  const value = String(raw || '').toLowerCase();
+  if (value === 'easy') return 'easy';
+  if (value === 'hard') return 'hard';
+  return 'medium';
+}
+
+function mapLinkMode(raw: unknown): InterviewMode {
+  const value = String(raw || '').toUpperCase();
+  if (value === 'TECHNICAL') return 'coding';
+  if (value === 'BEHAVIORAL') return 'behavioral';
+  return 'conversational';
+}
+
+/**
+ * Applies the admin interview-link settings and rejects a start once maxAttempts is used.
+ * Returns the mode the live session should use.
+ */
+async function applyInterviewLinkOnStart(
+  db: FirebaseFirestore.Firestore,
+  uid: string,
+  config: InterviewConfig,
+  mode: InterviewMode,
+  ids: { jdId?: string; interviewLinkId?: string },
+): Promise<InterviewMode> {
+  const loaded = await loadInterviewLink(db, ids);
+  const link = loaded?.link;
+  const linkDocId = loaded?.id || ids.interviewLinkId;
+  const resolvedJdId = String(link?.jdId || ids.jdId || '').trim() || undefined;
+
+  const maxAttempts = Math.max(1, Number(link?.candidateSettings?.maxAttempts) || 1);
+  if (resolvedJdId || linkDocId) {
+    const existing = await db
+      .collection('interviews')
+      .where('userId', '==', uid)
+      .where('status', '==', 'completed')
+      .orderBy('completedAt', 'desc')
+      .limit(40)
+      .get();
+    const used = existing.docs.filter((doc) =>
+      interviewMatchesAssessment(doc.data(), resolvedJdId, linkDocId),
+    ).length;
+    if (used >= maxAttempts) {
+      throw new AppError(
+        400,
+        `You have used all ${maxAttempts} attempt${maxAttempts === 1 ? '' : 's'} for this interview. Open the link to view your previous score.`,
+      );
+    }
+  }
+
+  if (!link) return mode;
+
+  if (link.candidateSettings?.requireEmailVerification === true) {
+    const authUser = await getAuth().getUser(uid);
+    if (!authUser.emailVerified) {
+      throw new AppError(403, 'Verify your email before starting this interview.');
+    }
+  }
+
+  const status = String(link.status || 'ACTIVE').toUpperCase();
+  if (status !== 'ACTIVE') {
+    throw new AppError(400, `This interview link is ${status.toLowerCase()}.`);
+  }
+  const expiresAt = link.expiresAt?.toDate?.() || (link.expiresAt ? new Date(link.expiresAt) : null);
+  if (expiresAt && !Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
+    throw new AppError(400, 'This interview link has expired.');
+  }
+
+  const duration = Number(link.durationMinutes);
+  if (Number.isFinite(duration) && duration > 0) config.durationMinutes = Math.round(duration);
+  config.difficulty = mapLinkDifficulty(link.difficulty);
+  const settings = link.interviewSettings || {};
+  config.cameraRequired = settings.cameraRequired !== false;
+  config.microphoneRequired = settings.microphoneRequired !== false;
+  config.tabSwitchDetection = settings.tabSwitchDetection !== false;
+  config.autoSubmitOnTimeout = settings.autoSubmitOnTimeout !== false;
+  config.showProgress = settings.showProgress !== false;
+  if (linkDocId) config.interviewLinkId = linkDocId;
+  if (resolvedJdId) config.jdId = resolvedJdId;
+  return mapLinkMode(link.interviewType);
+}
+
+async function loadInterviewLink(
+  db: FirebaseFirestore.Firestore,
+  ids: { jdId?: string; interviewLinkId?: string },
+): Promise<{ link: FirebaseFirestore.DocumentData; id: string } | null> {
+  const collections = ['InterviewLinks', 'interviewLinks'];
+  if (ids.interviewLinkId) {
+    for (const name of collections) {
+      const snap = await db.collection(name).doc(ids.interviewLinkId).get();
+      if (snap.exists) {
+        const data = snap.data();
+        if (data) return { link: data, id: snap.id };
+      }
+    }
+  }
+  if (ids.jdId) {
+    for (const name of collections) {
+      const snap = await db.collection(name).where('jdId', '==', ids.jdId).limit(1).get();
+      if (!snap.empty) {
+        const data = snap.docs[0].data();
+        if (data) return { link: data, id: snap.docs[0].id };
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Create interviews/{id} with status created + Gemini Live session config.
  */
@@ -430,7 +549,7 @@ export async function startInterview(
   await ensureUserDefaults(db, uid);
 
   const resolved = await resolveStartConfig(uid, input);
-  const mode = resolved.mode;
+  let mode = resolved.mode;
   const config = omitUndefinedDeep(resolved.config);
 
   // When an interview is created from a Job Description, the JD is the sole assessment basis.
@@ -449,42 +568,21 @@ export async function startInterview(
     delete config.resumeVersionUsed;
   }
 
-  // Guard: Prevent retaking if candidate already completed this JD assessment or invite
   const targetJdId = config.jdId || input.jdId;
   const targetInviteId = config.inviteId || input.inviteId;
+  const targetLinkId = config.interviewLinkId || input.interviewLinkId;
 
   if (targetInviteId) {
     const inviteDoc = await db.collection('candidateInvites').doc(targetInviteId).get();
-    if (inviteDoc.exists) {
-      const invData = inviteDoc.data()!;
-      if (invData.status === 'COMPLETED') {
-        throw new AppError(400, 'You have already completed this interview assessment.');
-      }
-      if (invData.status === 'REVOKED') {
-        throw new AppError(403, 'This interview invitation was revoked.');
-      }
+    if (inviteDoc.exists && inviteDoc.data()?.status === 'REVOKED') {
+      throw new AppError(403, 'This interview invitation was revoked.');
     }
   }
 
-  if (targetJdId) {
-    const existingJdIv = await db
-      .collection('interviews')
-      .where('userId', '==', uid)
-      .where('status', '==', 'completed')
-      .limit(20)
-      .get();
-
-    const isAlreadyDone = existingJdIv.docs.some((d) => {
-      const dData = d.data();
-      if (dData.isDeleted) return false;
-      const dJdId = dData.config?.jdId || dData.jdId || dData.config?.sourceJdId;
-      return dJdId === targetJdId;
-    });
-
-    if (isAlreadyDone) {
-      throw new AppError(400, 'You have already completed the interview for this position.');
-    }
-  }
+  mode = await applyInterviewLinkOnStart(db, uid, config, mode, {
+    jdId: targetJdId,
+    interviewLinkId: targetLinkId,
+  });
 
   const recent = await db
     .collection('interviews')
@@ -528,15 +626,16 @@ export async function startInterview(
 
   const interviewDocRef = interviewRef(db, db.collection('interviews').doc().id);
   const now = FieldValue.serverTimestamp();
-  const isInterviewInvite = Boolean(
-    config.interviewLinkId ||
-    input.interviewLinkId ||
-    config.inviteId ||
-    input.inviteId ||
-    config.jdId ||
-    input.jdId ||
-    isJdInterview
-  );
+  const resolvedInviteId = config.inviteId || input.inviteId || null;
+  const resolvedLinkId = config.interviewLinkId || input.interviewLinkId || null;
+  const resolvedJdId = config.jdId || input.jdId || null;
+  // invited > interview_link > onboarded (practice / in-app start)
+  const interviewOrigin: 'invited' | 'interview_link' | 'onboarded' = resolvedInviteId
+    ? 'invited'
+    : resolvedLinkId
+      ? 'interview_link'
+      : 'onboarded';
+  const isInterviewInvite = interviewOrigin === 'invited' || interviewOrigin === 'interview_link';
 
   const { candidateName, candidateEmail } = await resolveCandidateInfo(db, uid);
 
@@ -547,9 +646,10 @@ export async function startInterview(
     config,
     isInterviewInvite,
     interviewInvite: isInterviewInvite,
-    interviewLinkId: config.interviewLinkId || input.interviewLinkId || null,
-    inviteId: config.inviteId || input.inviteId || null,
-    jdId: config.jdId || input.jdId || null,
+    interviewOrigin,
+    interviewLinkId: resolvedLinkId,
+    inviteId: resolvedInviteId,
+    jdId: resolvedJdId,
     candidateEmail: candidateEmail || null,
     candidateName: candidateName || null,
     autoEnded: false,

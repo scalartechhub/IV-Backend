@@ -1,0 +1,43 @@
+---
+description: Use when changing the Gemini Live session, question flow, code-snippet tool, scoring, or interview result persistence.
+alwaysApply: false
+---
+
+# AI interview engine
+
+The candidate path is v2. Legacy live code is `functions/src/modules/live-interview/` and `functions/src/prompts/interview/legacy-live-interview.prompt.ts`. Do not change the legacy bridge as part of a v2 task.
+
+## Lifecycle
+
+1. IV-frontend collects config. It does not open Gemini.
+2. `startInterview` checks quota, loads resume context only when setup opted in, loads recent weaknesses, topic profile, and previous questions, then builds instructions with `buildInterviewSystemInstructions`.
+3. It writes `interviews/{id}` with status `created` and cached `aiSession.systemInstructions`. No question list is stored.
+4. `functions/src/modules/v2/live-interview-ws.ts` verifies the ID token and loads the interview. Statuses `completed`, `abandoned`, and `expired` are rejected.
+5. `buildLiveConnectConfig`: audio responses, English (`en-US`) only, automatic VAD off, `thinkingBudget: 0`, voice from `config/genai` (default name `Charon`).
+6. The server sends `LIVE_KICKOFF_MESSAGE` so the interviewer speaks first.
+7. Each candidate answer is one text turn (`userTurnFinal`, or a transcription of buffered PCM when the caption is empty). Candidate PCM is not forwarded as the Gemini turn.
+8. `completeInterview` scores with `functions/src/library/scoring.ts` `scoreInterview`, then one transaction updates the interview, XP, level, skills, readiness, weekly stats, and achievements. A completed interview returns 412.
+
+Refresh recovery uses `conversation`, `remainingSeconds`, and `liveElapsedSec` from `v2-live-interview.persistence.ts`. Read `resolveResumeMode` before changing reconnect copy.
+
+## Conversation control
+
+- `decideAiTurn` in `functions/src/modules/v2/ai-turn.ts`. One interviewer reply per candidate turn. Covered by `ai-turn.test.ts`.
+- End and answer classification: `functions/src/modules/v2/answer-signals.ts`.
+- Code questions: tool `present_code_snippet` in `functions/src/library/code-snippet.ts`. The server emits `{ type: 'code_snippet', code, language, questionText }`.
+- Wrap-up reminder at 120 seconds left (`WRAP_UP_SEC`). The browser uses 150 (`INTERVIEWER_CLOSE_WINDOW_SEC`). Change both together.
+- Prompts: `functions/src/prompts/interview/interview-system.prompt.ts` and `live-session.prompt.ts`. Keep them aligned with `decideAiTurn`.
+
+## Messages
+
+Client: `audio`, `activityStart`, `activityEnd`, `userTurnFinal`, `retryResponse`, `end`.
+
+Server: `open`, `interview_started`, `interview_resumed`, `conversation_updated`, `timer_tick`, `time_expired`, `transcript`, `turnComplete`, `listen_again`, `code_snippet`, `audio`, `interrupted`, `error`, `close`.
+
+Add a type only if IV-frontend `LiveInterviewWsService` handles it too.
+
+## Persistence and reconnect
+
+Use `appendAssistantTurn`, `appendCandidateTurn`, `reviseCandidateAnswer`, `ensureInterviewLiveStarted`, and `syncInterviewTimer`. Gemini reconnects inside the same client socket, cap `MAX_GEMINI_RECONNECTS` (2), then closes with `gemini_closed`. `transcribeInterviewAudio` returns `''` on failure. Keep the previous caption.
+
+After a change to `ai-turn.ts`, run `npm test` in `functions`.

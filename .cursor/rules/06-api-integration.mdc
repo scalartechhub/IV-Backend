@@ -1,0 +1,40 @@
+---
+description: REST contract this API exposes to IV-frontend. Use when adding or changing a route.
+globs: functions/src/app.ts,functions/src/api/**/*.ts,functions/src/modules/**/*routes*.ts,functions/src/modules/**/*controller*.ts,functions/src/middleware/**/*.ts
+alwaysApply: false
+---
+
+# API integration
+
+## Prefix
+
+`functions/src/app.ts` mounts routes at `/api` when `isCloudRuntime()` is false, and at `/` on the Cloud Function named `api`. Clients send `/v2/...` after that base. Do not add a second `/api` inside v2 paths.
+
+## Envelope
+
+`{ success, message, data }` via `sendSuccess` / `sendCreated`. Errors go through `error.middleware.ts` as `{ success: false, message, errors? }`.
+
+## Interview routes (`/v2/interviews`, auth required)
+
+| Method | Path | Role |
+|---|---|---|
+| POST | `/analyze-jd` | JD analysis (AI rate limit) |
+| POST | `/ocr-jd` | JD OCR, 15mb JSON limit |
+| POST | `/start` | Create `interviews/{id}` after `assertInterviewQuota` |
+| POST | `/:id/complete` | Score and persist results |
+| PATCH | `/:id/status` | `created`, `device_check`, `in_progress`, `abandoned`, `expired` |
+| PATCH | `/:id/environment` | Mic, camera, browser, OS, bandwidth |
+| GET | `/` | List, max limit 50 |
+| GET | `/:id` | One document |
+
+`POST /start` calls `recordInterviewUsage` after create so two tabs cannot both pass the quota check. Leave that order in place.
+
+Other v2 mounts are in `functions/src/modules/v2/v2.routes.ts`. Live audio is the WebSocket in `live-interview-ws.ts`, not a REST poll.
+
+## Breaking changes
+
+Ask before renaming a path, status, mode, or response field. Update IV-frontend `v2-api.service.ts` in the same change. The README's old names (`role`, `experience`, `status: started`) are already obsolete. Use the names in `interview.routes.ts`.
+
+## Rate limits
+
+`app.ts` has a global limiter and a tighter AI limiter on start, JD analysis, OCR, complete, resume analysis, onboarding analysis, roadmap regenerate, and coding run/submit. Monitoring quality snapshots and the Razorpay webhook skip the global limiter. A new Gemini route needs the AI limiter.

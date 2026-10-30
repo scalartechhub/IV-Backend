@@ -1,0 +1,35 @@
+---
+description: Use when changing server-side live captions, partial or final transcripts, or audio chunk transcription.
+alwaysApply: false
+---
+
+# Live transcription
+
+Sanitizer: `functions/src/shared/utils/live-transcript.ts`.
+
+IV-frontend has its own copy at `src/app/shared/utils/live-transcript.ts` plus `live-transcript.spec.ts`. A caption-contract change updates both. Do not assume the files are identical.
+
+## What produces text
+
+| Source | When | Treated as |
+|---|---|---|
+| Browser caption on `userTurnFinal` | Candidate submits a turn | The answer text Gemini is prompted with |
+| `transcribeInterviewAudio` on buffered PCM16 16 kHz | Caption missing, or a live chunk during the open turn | Fallback or interim. Prompt: `TRANSCRIBE_ANSWER_PROMPT` |
+| Gemini `outputTranscription` | Interviewer speech | Assistant caption, sanitized before persist and UI |
+| Gemini `inputAudioTranscription` | Enabled on the live config (`en-US`) | Candidate PCM is not forwarded to Gemini, so this is not the candidate caption source |
+
+`buildLiveConnectConfig` pins `languageHints` to `en-US`. Keep that pin.
+
+`transcribeInterviewAudio` wraps PCM as WAV, temperature 0, `thinkingBudget: 0` on Gemini 2.x models, and returns `''` on timeout or error. Default timeout is 4.5s. The live chunk path uses 8s. Chunks wait for about 0.8s of new audio and a 600ms debounce (`scheduleLiveChunkTranscription`). Do not transcribe every PCM frame.
+
+The open-turn buffer caps at 90 seconds (`MAX_USER_PCM_BYTES`). Audio shorter than about 0.35s is not sent to the model.
+
+## Partial vs final
+
+- Interim captions use `{ type: 'transcript', role: 'user', text, final: false, live: true }`.
+- The submitted answer is `userTurnFinal`. `appendCandidateTurn` persists that text.
+- `{ type: 'audio' }` from the client is buffered only. The comment in `live-interview-ws.ts` says Gemini replies once, to the words the candidate saw.
+
+A failed chunk transcription logs a warning and leaves the previous caption. Do not close the socket because one transcription returned `''`.
+
+If `ai-turn.ts` changes, run `npm test` in `functions`. If the sanitizer contract changes, also run the IV-frontend `live-transcript.spec.ts`.

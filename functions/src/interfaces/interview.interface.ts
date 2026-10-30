@@ -59,6 +59,12 @@ export interface InterviewConfig {
   inviteId?: string;
   /** Evaluation focus areas for JD-based interviews */
   focusAreas?: InterviewFocusAreas;
+  /** Copied from the interview link. Undefined means the live session keeps its current defaults. */
+  cameraRequired?: boolean;
+  microphoneRequired?: boolean;
+  tabSwitchDetection?: boolean;
+  autoSubmitOnTimeout?: boolean;
+  showProgress?: boolean;
 }
 
 /** Nested Gemini Live session metadata on interviews/{interviewId} */
@@ -152,6 +158,13 @@ export interface InterviewDoc {
   /** True when this interview originated from an admin interview link or candidate invite */
   isInterviewInvite?: boolean;
   interviewInvite?: boolean;
+  /**
+   * Durable source of the session:
+   * - invited: candidate invite email (`inviteId`)
+   * - interview_link: public / shared Interview Link (link id, no invite)
+   * - onboarded: normal practice / app onboarding flow
+   */
+  interviewOrigin?: 'invited' | 'interview_link' | 'onboarded';
   interviewLinkId?: string | null;
   inviteId?: string | null;
   jdId?: string | null;

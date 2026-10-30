@@ -1,0 +1,16 @@
+---
+description: Use when an IV-Backend change adds Firestore reads or writes, Gemini calls, live-audio work, or list queries.
+alwaysApply: false
+---
+
+# Performance
+
+- `GET /v2/interviews/:id` is one document read. Do not split `conversation` or `results` into extra queries for the report.
+- `completeInterview` scores before the transaction, then reads every transactional document before any write. Keep that order.
+- Live turns go through the queue in `v2-live-interview.persistence.ts`. Do not `await` a new write on the Gemini audio callback in a way that stalls playback.
+- List endpoints cap `limit` at 50. Do not drop the cap.
+- `generateJson` and `transcribeInterviewAudio` set `thinkingBudget: 0` on Gemini 2.x models. Live connect does the same.
+- `generateJson` already walks `fallbackModels` from `config/genai`. Reuse it.
+- Transcribe after about 0.8s of new audio with the existing debounce. The PCM buffer cap is 90s. Drop the buffer after the turn is persisted.
+- A new Gemini route uses the AI limiter in `functions/src/app.ts`.
+- The `api` function is 1GiB and 300 seconds. Long-running voice stays on `functions/src/server.ts`. Do not move the WebSocket handler into `index.ts`.

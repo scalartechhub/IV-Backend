@@ -26,6 +26,7 @@ import reportsRoutes from './reports.routes';
 import inviteRoutes from './invite.routes';
 import interviewInvitesRoutes from './interview-invites.routes';
 import companiesRoutes from '../companies/companies.routes';
+import adminUsersRoutes from './admin-users.routes';
 
 const router = Router();
 
@@ -43,6 +44,7 @@ router.use('/invites', inviteRoutes);
 // ── Authenticated routes ──────────────────────────────────────────────────────
 router.use(verifyToken);
 
+router.use('/admin', adminUsersRoutes);
 router.use('/interviews', interviewRoutes);
 router.use('/jobdescriptionanalysis', jobDescriptionAnalysisRoutes);
 router.use('/practice', practiceRoutes);

@@ -1,0 +1,25 @@
+---
+description: Required sequence for every IV-Backend feature, bug fix, or refactor.
+alwaysApply: true
+---
+
+# Code change workflow
+
+1. **Read the rules that apply.** Overview and these global rules are already in context. Also read architecture, Node, Firebase, API, security, AI interview, transcription, performance, or testing when the task touches that area.
+2. **Inspect the existing implementation.** Open the route, service, prompt, and persistence helper that already own the behavior.
+3. **Trace the flow.** Start → WebSocket → `v2-live-interview.persistence.ts` → `completeInterview` → XP and achievements. The candidate pages that call this live in IV-frontend.
+4. **List the affected files** before editing. A caption-contract change also updates `functions/src/shared/utils/live-transcript.ts` and the copy in IV-frontend. A document field change updates both `InterviewDoc` interfaces.
+5. **Check side effects.** Grep the symbol. Leave `functions/src/modules/live-interview/` unchanged on a v2 task.
+6. **Explain the approach** before a new route, a prompt rewrite, a turn-taking change, or a scoring change.
+7. **Implement inside the current architecture.** Zod `validate`, `asyncHandler`, `sendSuccess` / `sendCreated`, `getClient()` for Gemini.
+8. **Validate** from this repo:
+   - `npm run build`
+   - If `functions/src/modules/v2/ai-turn.ts` changed: `npm test` in `functions`
+9. **Fix errors this change introduced.**
+10. **Report** files, commands, and results. Never report a test or build as successful unless it was executed.
+
+## Ask before proceeding
+
+Stop and ask before renaming an HTTP path, status, mode, or WebSocket `type`, editing Storage rules or indexes, changing token verification, deploying functions or the WebSocket service, or re-enabling a trigger commented out in `functions/src/index.ts`.
+
+Firestore security rules live in the IV-frontend repo (`firestore.rules`), not here.

@@ -1,0 +1,26 @@
+---
+description: Verified IV-Backend architecture. Read before any change in this repo.
+alwaysApply: true
+---
+
+# IV-Backend
+
+Node 22, Express 5, TypeScript, Firebase Admin, Gemini. The candidate UI is the IV-frontend repo. The admin UI is the superAdmin repo. Do not add Angular code here.
+
+`README.md` describes an older interview document (`questions[]`, `report`, two collections, `status: started`). The live shape is `InterviewDoc` in `functions/src/interfaces/interview.interface.ts`. When the README and this code disagree, follow the code.
+
+## Two processes
+
+- `functions/src/index.ts` — Cloud Function `api` (`onRequest`, 1GiB, 300s, `us-central1`). REST only. No WebSocket.
+- `functions/src/server.ts` — local and long-running host. Listens on `appConfig.port` (default 5000), then attaches both WebSocket servers. Production voice is Cloud Run or the host in the frontend `wsApiUrl`.
+
+## Interview path
+
+`POST /v2/interviews/start` writes `interviews/{id}` and a system prompt. Questions are not stored as `questions[]`. The v2 socket is `functions/src/modules/v2/live-interview-ws.ts` at `/ws/v2/interview`. Turns persist on `conversation`. `completeInterview` writes `results`.
+
+`server.ts` still attaches the legacy socket at `/ws/interview` (`functions/src/modules/live-interview/`). The candidate app does not call it. Leave that stack unchanged unless the task is about it.
+
+## Unknown
+
+- `npm test` in `functions` runs only `src/modules/v2/ai-turn.test.ts`. There is no ESLint script and no e2e suite.
+- `groq-sdk` is a dependency and `config/groq` is loaded by `firestore-config.service.ts`. No file under `functions/src` imports `groq-sdk`. Do not add a Groq call without finding an existing caller.

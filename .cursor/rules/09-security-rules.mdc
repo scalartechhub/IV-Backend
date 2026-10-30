@@ -1,0 +1,32 @@
+---
+description: Use when changing IV-Backend auth, secrets, CORS, Storage rules, or WebSocket origin checks.
+globs: functions/src/middleware/auth.middleware.ts,functions/src/config/secrets/**/*.ts,functions/src/config/firebase.ts,storage.rules,functions/src/modules/v2/live-interview-ws.ts,functions/src/app.ts
+alwaysApply: false
+---
+
+# Security
+
+Ask before changing token verification, Storage rules, or anything that rejects existing clients.
+
+## Secrets
+
+- Loaded through `functions/src/config/secrets/secret.service.ts` and `firestore-config.service.ts`. Missing required values throw `SecretValidationError` and the process exits.
+- Never commit `.env`, service-account JSON, or secret values. Never log `Authorization`, the `token` query param, or `GEMINI_API_KEY`.
+- The Gemini client is created only in `functions/src/library/gemini-client.ts`. Responses to the browser carry audio, not the API key.
+
+## Authentication
+
+- REST: `verifyToken` requires `Bearer` and sets `req.user` from `verifyIdToken`. Missing and invalid tokens are 401.
+- Interview routes compare `interview.userId` to `req.user.uid` (403 on mismatch).
+- The v2 socket reads `token` and `interviewId` from the query. `isAllowedOrigin` enforces the allow-list in production. Localhost is allowed when `appConfig.isProduction` is false. A new socket path must verify the token and the interview owner before connecting Gemini.
+- `listAdminUsers` receives `actorUid`. Do not skip that check.
+
+## Authorization data
+
+- Client Firestore rules are in the IV-frontend repo. Do not treat an Admin SDK write as a substitute for tightening those rules.
+- `storage.rules`: do not add another public `allow read, write`. Ask before editing it.
+- Public routes already mounted above `verifyToken` are subscription plans, the Razorpay webhook, `interview-invites`, and `invites`. A new public route must not trust a caller-supplied `userId`.
+
+## Abuse controls
+
+Helmet, CORS allow-list, `trust proxy` 1, global and AI rate limits, Zod body limits (`ocr-jd` is 15mb, other JSON is 1mb). Do not disable these to make a request succeed. `AppError` messages must be safe to show: no stack traces, key prefixes, or other users' document ids.

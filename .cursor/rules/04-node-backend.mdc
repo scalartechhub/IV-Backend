@@ -1,0 +1,48 @@
+---
+description: Node, Express 5, and Firebase Functions conventions for this repo.
+globs: functions/src/**/*.ts
+alwaysApply: false
+---
+
+# Node backend
+
+Runtime is Node 22 (`engines` in `functions/package.json`). Root `package.json` scripts delegate into `functions`.
+
+## Process model
+
+- `functions/src/index.ts` — Cloud Function `api`. Bootstraps once, then forwards to Express. No WebSocket on this export.
+- `functions/src/server.ts` — local and long-running host. Calls `setupLiveInterviewWebSocket` and `setupV2LiveInterviewWebSocket` after `listen`.
+- `functions/src/app.ts` — helmet, CORS, Firestore config refresh, `express.json`, rate limits, routes. On the Cloud Function the prefix is empty because the function name is `api`. Locally the prefix is `/api` (`isCloudRuntime()`).
+
+## Route pattern
+
+```typescript
+router.post(
+  '/start',
+  validate(startBodySchema),
+  asyncHandler(async (req, res) => {
+    const result = await interviewService.startInterview(req.user!.uid, req.body);
+    sendCreated(res, result, 'Interview started');
+  }),
+);
+```
+
+- Validate with Zod via `functions/src/middleware/validation.middleware.ts`.
+- Wrap with `asyncHandler`. Throw `AppError` for expected failures.
+- Respond with `sendSuccess` / `sendCreated` from `functions/src/shared/responses`. Envelope is `{ success, message, data }`.
+- Authenticated v2 routes sit behind `verifyToken` in `v2.routes.ts`. Public exceptions already mounted above it: subscription plans and Razorpay webhook, `interview-invites`, `invites`.
+- New interview routes belong on `functions/src/modules/v2/interview.routes.ts`, mounted at `/v2/interviews`.
+
+## Services
+
+- Interview lifecycle: `functions/src/services/interview.service.ts`.
+- Gemini: `functions/src/library/gemini-client.ts` only. Model names come from Firestore `config/genai` or env (`getDefaultModel`, `getDefaultLiveModel`).
+- Logging: `functions/src/shared/logger`. Do not log tokens or raw audio.
+
+## Commands
+
+- Dev server: `npm run dev` from this repo (default port 5000; the frontend local base is `http://localhost:5000/api`).
+- Compile: `npm run build`.
+- Unit test: `npm test` inside `functions` (`ai-turn.test.ts` only).
+
+Do not deploy (`deploy-functions`, `deploy-websocket`, indexes, storage) unless the task asks for a deploy.

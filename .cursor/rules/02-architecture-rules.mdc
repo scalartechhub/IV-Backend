@@ -1,0 +1,33 @@
+---
+description: Use when adding a module, route, or service in IV-Backend, or when the change belongs in IV-frontend or superAdmin.
+alwaysApply: false
+---
+
+# Architecture
+
+## This repo owns
+
+- REST on the `api` Cloud Function
+- Live Gemini session and transcript persistence
+- Interview create, score, XP, streak, skills, and achievement updates on complete
+- `GET /v2/admin/users` for the superAdmin user list
+
+## This repo does not own
+
+- Candidate or admin screens
+- A Super Admin REST API for a screen that already reads Firestore from superAdmin
+- Re-enabling callables commented out in `functions/src/index.ts` (`onInterviewComplete` and the other unused exports). Active exports are `api`, `onUserDeleted`, `checkExpiredSubscriptions`, `computeCareerProgress`, and `resetWeeklyDeltas`.
+
+## How code is organized
+
+This is not one MVC tree. Follow the module you are editing.
+
+- V2 HTTP: `functions/src/modules/v2/*.routes.ts` validates with Zod, calls a service, responds with `sendSuccess` / `sendCreated`.
+- Auth, coding, and companies use a controller in front of the service. Match that module if you extend it.
+- Gemini goes through `functions/src/library/gemini-client.ts`.
+- Interview writes go through `functions/src/services/interview.service.ts` or `functions/src/modules/v2/v2-live-interview.persistence.ts`.
+- Firestore access uses `firebase-admin` and `functions/src/utils/firestore-refs.ts`.
+
+## Side effects
+
+Changing start config, the system prompt, a socket `type`, `decideAiTurn`, persistence, or `completeInterview` affects the IV-frontend setup, live page, and report. Keep those clients working. Keep v1 (`functions/src/modules/interview`, `functions/src/modules/live-interview`) beside v2. Do not merge them in an unrelated change.

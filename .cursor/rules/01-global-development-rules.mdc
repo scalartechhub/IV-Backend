@@ -1,0 +1,30 @@
+---
+description: Mandatory engineering behavior for every IV-Backend change.
+alwaysApply: true
+---
+
+# Global development rules
+
+Follow `.cursor/rules/12-code-change-workflow.mdc` for the change sequence.
+
+## Before editing
+
+- Read the rule in this folder that matches the task: architecture, Node, Firebase, API, security, AI interview, transcription, performance, or testing.
+- Read the route, service, and prompt that already own the behavior.
+- Reuse `library/gemini-client.ts`, `services/interview.service.ts`, and `modules/v2/v2-live-interview.persistence.ts`. Add a dependency only when those cannot do the job.
+
+## While editing
+
+- Keep the diff limited to the requested behavior.
+- Preserve HTTP paths, status values, WebSocket `type` values, and the `{ success, message, data }` envelope. The IV-frontend `V2ApiService` and `LiveInterviewWsService` already depend on them.
+- Type new catch values as `unknown`. Do not sweep-rewrite existing `any`.
+- Throw `AppError` and let `functions/src/middleware/error.middleware.ts` respond. Do not add empty `catch` blocks.
+- Do not add a Firestore read or write on the Gemini audio callback beyond the persistence queue that already exists.
+- Secrets stay in `.env`, Secret Manager, or Firestore `config/*` loaded by `firestore-config.service.ts`. Do not put `GEMINI_API_KEY` in source, logs, or a response. The browser must not receive it.
+- Keep `thinkingBudget: 0` on the live and JSON paths that already set it. Keep the rate limiters in `functions/src/app.ts`.
+
+## Completion
+
+- Run the build or test named in the workflow rule.
+- Report the commands, exit status, and files changed.
+- If a command was not run, say that. Do not describe an unrun command as a pass.
