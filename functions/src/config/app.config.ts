@@ -7,6 +7,9 @@ import { firestoreConfigService } from "./firestore-config.service";
  */
 export const appConfig = {
   get port(): number {
+    // Cloud Run / containers inject PORT — prefer it over Firestore/local defaults.
+    const fromEnv = Number(process.env.PORT);
+    if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
     return firestoreConfigService.getAppConfigDoc().port || 5000;
   },
   get nodeEnv(): "development" | "production" | "test" {

@@ -26,7 +26,8 @@ async function startServer() {
     process.exit(1);
   }
 
-  const server = app.listen(appConfig.port, () => {
+  // Bind all interfaces so Cloud Run health checks on PORT succeed (not localhost-only).
+  const server = app.listen(appConfig.port, "0.0.0.0", () => {
     logger.info(`Server running on port ${appConfig.port}`);
     logger.info(`Environment: ${appConfig.nodeEnv}`);
     if (!isStorageConfigured()) {

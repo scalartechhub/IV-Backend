@@ -678,11 +678,11 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       const triggerLiveChunkTranscription = async (): Promise<void> => {
         if (!userTurnOpen || liveTranscribeInFlight || closed) return;
         const bytesSinceLast = userPcmBytes - lastLiveTranscribeBytes;
-        // Require at least ~0.8s of new audio since the last transcription run
-        if (bytesSinceLast < 16000 * 2 * 0.8) return;
+        // ~0.5s of new audio — snappier live captions on mobile (no on-device Web Speech).
+        if (bytesSinceLast < 16000 * 2 * 0.5) return;
 
         const pcmSnapshot = userPcmChunks.length ? Buffer.concat(userPcmChunks) : Buffer.alloc(0);
-        if (pcmSnapshot.length < 16000 * 2 * 0.5) return;
+        if (pcmSnapshot.length < 16000 * 2 * 0.35) return;
 
         liveTranscribeInFlight = true;
         lastLiveTranscribeBytes = userPcmBytes;
@@ -713,11 +713,11 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
 
       const scheduleLiveChunkTranscription = (): void => {
         const bytesSinceLast = userPcmBytes - lastLiveTranscribeBytes;
-        if (bytesSinceLast < 16000 * 2 * 0.8) return;
+        if (bytesSinceLast < 16000 * 2 * 0.5) return;
 
         // If a timer is already counting down, don't keep cancelling it so it can fire regularly while user speaks
         if (liveTranscribeDebounceTimer !== null) {
-          if (bytesSinceLast >= 16000 * 2 * 2.2 && !liveTranscribeInFlight) {
+          if (bytesSinceLast >= 16000 * 2 * 1.6 && !liveTranscribeInFlight) {
             clearLiveTranscribeDebounce();
             void triggerLiveChunkTranscription();
           }
@@ -727,7 +727,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
         liveTranscribeDebounceTimer = setTimeout(() => {
           liveTranscribeDebounceTimer = null;
           void triggerLiveChunkTranscription();
-        }, 600);
+        }, 400);
       };
       const handleToolCall = (functionCalls: NonNullable<LiveServerMessage['toolCall']>['functionCalls']): void => {
         if (!geminiSession || !functionCalls?.length) return;
