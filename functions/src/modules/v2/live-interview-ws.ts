@@ -99,6 +99,8 @@ const ALLOWED_ORIGIN_PATTERNS = [
   'web.app',
   'localhost',
   '127.0.0.1',
+  'capacitor://',
+  'ionic://',
 ];
 
 const isAllowedOrigin = (origin?: string): boolean => {
