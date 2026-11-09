@@ -21,7 +21,6 @@ export { resetWeeklyDeltas } from "./scheduled/reset-weekly-deltas";
 // Callable functions (Unused / Dummy — not going to be used)
 // export { startInterview } from "./callable/start-interview";
 // export { completeInterview } from "./callable/complete-interview";
-// export { submitCodingSolution } from "./callable/submit-coding-solution";
 // export { saveProfileSettings } from "./callable/save-profile-settings";
 // export { refreshCareerProgress } from "./callable/refresh-career-progress";
 

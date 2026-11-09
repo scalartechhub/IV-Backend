@@ -1,59 +1,89 @@
-# Judge0 CE with cgroup v2-compatible image (official 1.13.x needs cgroup v1).
-# Host check: `docker info | grep -i cgroup` → Version: 2 on modern Linux.
+# Judge0 CE — private, resource-capped, cgroup v2-compatible.
 #
-# Start:
-#   cd judge0 && docker compose down --remove-orphans && docker compose up -d
-# Wait ~25s, then test:
-#   curl -s -X POST 'http://localhost:2358/submissions?base64_encoded=false&wait=true' \
-#     -H 'Content-Type: application/json' \
-#     -d '{"source_code":"print(42)","language_id":71}'
+# Security defaults:
+# - API published on 127.0.0.1 only (not 0.0.0.0)
+# - Postgres/Redis have no host ports
+# - Privileged + cgroup host remain required for isolate (do not remove)
+# - Optional AUTH_TOKEN when JUDGE0_ENABLE_AUTHENTICATION=true
 #
-# On cgroup v2 hosts, server/workers need privileged + cgroup: host + rw cgroup mount.
+# Local start:
+#   cp .env.example .env
+#   docker compose up -d
+#   ../scripts/judge0-health.ps1   # or judge0-health.sh
+#
+# Prod on an existing VM (₹0 extra only if that VM is already paid for):
+#   Set JUDGE0_BIND_HOST to 127.0.0.1 (API co-located) or a private VPC IP.
+#   Never publish 2358 on a public interface. Use firewall + auth token.
+#   See README.md in this folder.
+
 x-judge0-common: &judge0-common
-  # Community build with isolate cgroup v2 support (see judge0/judge0#543)
   image: mrkushalsm/judge0:latest
   privileged: true
-  # Share host cgroup namespace so isolate can create sandbox cgroups (cgroup v2)
   cgroup: host
   volumes:
     - /sys/fs/cgroup:/sys/fs/cgroup:rw
+  # Variable substitution reads judge0/.env automatically when present.
   environment: &judge0-env
     REDIS_HOST: redis
     REDIS_PORT: 6379
     POSTGRES_HOST: db
     POSTGRES_PORT: 5432
-    POSTGRES_DB: judge0
-    POSTGRES_USER: judge0
-    POSTGRES_PASSWORD: judge0
-    MAX_CPU_TIME_LIMIT: "15"
-    MAX_MEMORY_LIMIT: "512000"
+    POSTGRES_DB: ${POSTGRES_DB:-judge0}
+    POSTGRES_USER: ${POSTGRES_USER:-judge0}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-judge0}
+    MAX_CPU_TIME_LIMIT: ${JUDGE0_MAX_CPU_TIME_LIMIT:-10}
+    # Must be >= API request (256 MiB problems → 262144 KB). Keep in sync with judge0.client MAX_MEMORY_KB.
+    MAX_MEMORY_LIMIT: ${JUDGE0_MAX_MEMORY_LIMIT:-512000}
+    MAX_PROCESSES_AND_THREADS: ${JUDGE0_MAX_PROCESSES_AND_THREADS:-30}
+    MAX_FILE_SIZE: ${JUDGE0_MAX_FILE_SIZE:-1024}
+    # Judge0 workers script reads COUNT (not NUMBER_OF_WORKERS) for Resque pool size.
+    COUNT: ${JUDGE0_NUMBER_OF_WORKERS:-2}
+    NUMBER_OF_WORKERS: ${JUDGE0_NUMBER_OF_WORKERS:-2}
     ENABLE_WAIT_RESULT: "true"
+    ENABLE_CALLBACKS: "false"
+    ENABLE_AUTHENTICATION: ${JUDGE0_ENABLE_AUTHENTICATION:-false}
+    AUTH_TOKEN: ${JUDGE0_AUTH_TOKEN:-}
+  networks:
+    - judge0_internal
   restart: unless-stopped
+  # Do NOT set mem_limit/cpus on server/workers — Docker Desktop + isolate --cg
+  # hangs when the worker container itself is memory-capped.
 
 services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: judge0
-      POSTGRES_PASSWORD: judge0
-      POSTGRES_DB: judge0
+      POSTGRES_USER: ${POSTGRES_USER:-judge0}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-judge0}
+      POSTGRES_DB: ${POSTGRES_DB:-judge0}
     volumes:
       - judge0-db-data:/var/lib/postgresql/data
+    networks:
+      - judge0_internal
     restart: unless-stopped
+    mem_limit: 512m
+    cpus: 0.5
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U judge0 -d judge0"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 10
+    # No host ports — internal only
 
   redis:
     image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks:
+      - judge0_internal
     restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.25
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
+    # No host ports — internal only
 
   server:
     <<: *judge0-common
@@ -63,7 +93,18 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "2358:2358"
+      # Default: loopback only. Override JUDGE0_BIND_HOST for private NIC (never 0.0.0.0 in prod).
+      - "${JUDGE0_BIND_HOST:-127.0.0.1}:${JUDGE0_PORT:-2358}:2358"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://127.0.0.1:2358/about >/dev/null || exit 1",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
 
   workers:
     <<: *judge0-common
@@ -75,6 +116,13 @@ services:
         condition: service_healthy
       server:
         condition: service_started
+
+networks:
+  judge0_internal:
+    driver: bridge
+    internal: false
+    # internal:true would block image pulls / apt inside containers; keep bridge
+    # private by not publishing db/redis and binding API to loopback/private IP only.
 
 volumes:
   judge0-db-data:

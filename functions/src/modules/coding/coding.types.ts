@@ -20,12 +20,26 @@ export type CodingLanguageId =
 
 export type CodingDifficulty = "Easy" | "Medium" | "Hard";
 
+export type AssessmentType =
+  | "DSA"
+  | "SQL"
+  | "TESTING"
+  | "SCRIPTING"
+  | "CLOUD"
+  | "SECURITY"
+  | "NETWORKING"
+  | "SCENARIO";
+
+export type ExecutionMode = "JUDGE0" | "SQL_EVALUATOR" | "MANUAL_EVALUATION";
+
 export type SubmissionVerdict =
   | "accepted"
   | "wrong_answer"
   | "runtime_error"
   | "compile_error"
-  | "time_limit_exceeded";
+  | "time_limit_exceeded"
+  | "memory_limit_exceeded"
+  | "pending_review";
 
 export interface CodingTestCase {
   input: string;
@@ -41,15 +55,25 @@ export interface CodingExample {
 export interface CodingSolution {
   explanation: string;
   codeByLanguage: Partial<Record<CodingLanguageId, string>>;
+  /** Model answer for SQL / manual assessments. */
+  referenceAnswer?: string;
+  /** Measurable scoring criteria for manual / SQL review. */
+  evaluationCriteria?: string[];
 }
 
 export interface CodingProblemDoc {
   id: string;
   title: string;
   difficulty: CodingDifficulty;
+  /** Defaults to DSA for legacy problems missing this field. */
+  assessmentType?: AssessmentType;
+  /** Defaults to JUDGE0 for legacy problems missing this field. */
+  executionMode?: ExecutionMode;
+  roleDomain?: string;
   category: string;
   tags?: string[];
   acceptance: number;
+  estimatedTimeMinutes?: number;
   description: string;
   constraints?: string[];
   examples: CodingExample[];
@@ -58,8 +82,14 @@ export interface CodingProblemDoc {
   starterCode: Partial<Record<CodingLanguageId, string>>;
   publicTests: CodingTestCase[];
   supportedLanguages: CodingLanguageId[];
+  primaryLanguage?: string;
   timeLimitMs?: number;
   memoryLimitMb?: number;
+  /** SQL assessments only. */
+  databaseEngine?: string;
+  sqlSchema?: string;
+  sampleData?: string;
+  expectedQueryResult?: string;
   order?: number;
   isActive?: boolean;
 }
@@ -72,12 +102,17 @@ export interface CodingProblemSecretsDoc {
 export interface CodingTestResult {
   index: number;
   passed: boolean;
-  input: string;
-  expectedOutput: string;
+  /** Omitted for hidden tests on submit responses. */
+  input?: string;
+  /** Omitted for hidden tests on submit responses. */
+  expectedOutput?: string;
   actualOutput?: string;
   stderr?: string;
   runtimeMs?: number;
+  memoryKb?: number;
   status: SubmissionVerdict;
+  /** True when this case came from codingProblemSecrets (never sent to client as I/O). */
+  hidden?: boolean;
 }
 
 export interface CodingRunResult {
@@ -90,6 +125,16 @@ export interface CodingRunResult {
 export interface CodingSubmitResult extends CodingRunResult {
   xpEarned: number;
   solved: boolean;
+  submissionId: string;
+}
+
+export interface CodingLanguageInfo {
+  id: CodingLanguageId;
+  label: string;
+  monacoLanguage: string;
+  judge0Id: number;
+  fileExtension: string;
+  defaultTemplate: string;
 }
 
 export interface Judge0Submission {

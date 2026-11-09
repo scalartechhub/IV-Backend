@@ -49,6 +49,44 @@ export function getDefaultLiveModel(): string {
   return liveModel;
 }
 
+/**
+ * Model used only for candidate PCM transcription (submit repair / optional live captions).
+ * Kept separate from getDefaultModel() so a free-tier burn on the chat model does not
+ * blank captions while Gemini Live voice still works.
+ */
+export function getTranscriptionModel(): string {
+  const configured = (
+    firestoreConfigService.getGenAIConfig().transcriptionModel ||
+    process.env.GEMINI_STT_MODEL ||
+    ''
+  ).trim();
+  if (configured) return configured;
+  return 'gemini-3.8-flash';
+}
+
+/** Primary + fallbacks so one model's free-tier daily cap does not blank Submit. */
+export function getTranscriptionModels(): string[] {
+  const primary = getTranscriptionModel();
+  const fromEnv = (process.env.GEMINI_STT_FALLBACK_MODELS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const defaults = [
+    'gemini-3.8-flash',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-3.6-flash',
+  ];
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const model of [primary, ...fromEnv, ...defaults]) {
+    if (!model || seen.has(model)) continue;
+    seen.add(model);
+    ordered.push(model);
+  }
+  return ordered;
+}
+
 export const RESUME_GEMINI_MODEL = 'RESUME_GEMINI_MODEL';
 
 const supportsThinkingConfig = (model: string): boolean =>
@@ -341,48 +379,78 @@ const pcm16ToWav = (pcm: Buffer, sampleRate: number): Buffer => {
  * Transcribe the candidate's mic audio. Live inputTranscription often returns only a
  * fragment (or nothing) even when the model understood the audio.
  */
+const isQuotaError = (err: unknown): boolean => {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return (
+    msg.includes('429') ||
+    /RESOURCE_EXHAUSTED/i.test(msg) ||
+    /exceeded your current quota/i.test(msg)
+  );
+};
+
 export async function transcribeInterviewAudio(
   pcm16le: Buffer,
   sampleRate = 16000,
   timeoutMs = 4500,
 ): Promise<string> {
   if (pcm16le.length < sampleRate * 2 * 0.35) return '';
-  const model = getDefaultModel();
-  try {
-    const fetchPromise = getClient().models.generateContent({
-      model,
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              inlineData: {
-                mimeType: 'audio/wav',
-                data: pcm16ToWav(pcm16le, sampleRate).toString('base64'),
+  const models = getTranscriptionModels();
+  const wavBase64 = pcm16ToWav(pcm16le, sampleRate).toString('base64');
+  let lastError: unknown;
+
+  for (const model of models) {
+    try {
+      const fetchPromise = getClient().models.generateContent({
+        model,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: 'audio/wav',
+                  data: wavBase64,
+                },
               },
-            },
-            {
-              text: TRANSCRIBE_ANSWER_PROMPT,
-            },
-          ],
+              {
+                text: TRANSCRIBE_ANSWER_PROMPT,
+              },
+            ],
+          },
+        ],
+        config: {
+          temperature: 0,
+          maxOutputTokens: 1024,
+          ...(supportsThinkingConfig(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
         },
-      ],
-      config: {
-        temperature: 0,
-        maxOutputTokens: 1024,
-        ...(supportsThinkingConfig(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
-      },
-    });
+      });
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('transcribeInterviewAudio timeout')), timeoutMs),
-    );
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('transcribeInterviewAudio timeout')), timeoutMs),
+      );
 
-    const result = await Promise.race([fetchPromise, timeoutPromise]);
-    return (result.text ?? '')
-      .replace(/^["'`]+|["'`]+$/g, '')
-      .trim();
-  } catch {
-    return '';
+      const result = await Promise.race([fetchPromise, timeoutPromise]);
+      const text = (result.text ?? '')
+        .replace(/^["'`]+|["'`]+$/g, '')
+        .trim();
+      if (text) {
+        return text;
+      }
+      // Empty transcript from this model — try the next fallback.
+      lastError = new Error(`transcribeInterviewAudio empty model=${model}`);
+      continue;
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err ?? '');
+      // Dead or quota-capped model: try the next one. A 404 used to abort the
+      // whole list, so Submit returned "" and the app said "we didn't catch that".
+      if (isQuotaError(err)) continue;
+      if (msg.includes('timeout')) continue;
+      if (msg.includes('404') || /NOT_FOUND/i.test(msg) || /no longer available/i.test(msg)) continue;
+      break;
+    }
   }
+
+  if (lastError instanceof Error) throw lastError;
+  throw new Error('transcribeInterviewAudio failed');
 }

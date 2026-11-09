@@ -7,14 +7,12 @@ import {
   achievementCatalogConverter,
   applicationConverter,
   careerProgressConverter,
-  codingProblemConverter,
   codingSubmissionConverter,
   conversationTurnConverter,
   interviewConverter,
   jobListingConverter,
   jobMatchConverter,
   notificationConverter,
-  problemProgressConverter,
   reportConverter,
   resumeConverter,
   userAchievementConverter,
@@ -159,26 +157,6 @@ export function careerProgressRef(db: Firestore, uid: string) {
     .collection('careerProgress')
     .doc('current')
     .withConverter(careerProgressConverter);
-}
-
-export function codingProblemRef(db: Firestore, problemId: string) {
-  return db
-    .collection('codingProblems')
-    .doc(problemId)
-    .withConverter(codingProblemConverter);
-}
-
-export function problemProgressRef(
-  db: Firestore,
-  uid: string,
-  problemId: string,
-) {
-  return db
-    .collection('users')
-    .doc(uid)
-    .collection('problemProgress')
-    .doc(problemId)
-    .withConverter(problemProgressConverter);
 }
 
 export function jobListingsCol(db: Firestore) {

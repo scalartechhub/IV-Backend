@@ -5,6 +5,8 @@ export interface GenAIConfig {
   apiKey?: string;
   model?: string;
   liveModel?: string;
+  /** Dedicated model for PCM→text STT (live captions). Keep off the main chat model so quota exhaustion there does not blank Your Answer. */
+  transcriptionModel?: string;
   fallbackModels?: string[];
   voiceName?: string;
   timeoutMs?: number;
@@ -41,6 +43,8 @@ export interface GroqConfig {
 
 export interface Judge0Config {
   url?: string;
+  /** Optional Judge0 AUTH_TOKEN; sent as X-Auth-Token by judge0.client. */
+  authToken?: string;
 }
 
 export interface FirebaseClientConfig {
@@ -223,6 +227,11 @@ class FirestoreConfigService {
         apiKey: genaiDoc.apiKey || genaiDoc.GEMINI_API_KEY || aiDoc.geminiApiKey || "",
         model: genaiDoc.model || genaiDoc.GEMINI_MODEL || "gemini-3.6-flash",
         liveModel: genaiDoc.liveModel || genaiDoc.GEMINI_LIVE_MODEL || "gemini-2.5-flash-native-audio-preview-12-2025",
+        transcriptionModel:
+          genaiDoc.transcriptionModel ||
+          genaiDoc.GEMINI_STT_MODEL ||
+          process.env.GEMINI_STT_MODEL ||
+          "gemini-2.5-flash",
         fallbackModels: parseFallbackModels(genaiDoc.fallbackModels || genaiDoc.GEMINI_FALLBACK_MODELS),
         voiceName: genaiDoc.voiceName || genaiDoc.GEMINI_VOICE_NAME || "Charon",
         timeoutMs: genaiDoc.timeoutMs ? Number(genaiDoc.timeoutMs) : 120000,
@@ -248,10 +257,16 @@ class FirestoreConfigService {
         model: groqDoc.model || groqDoc.GROQ_MODEL || "llama-3.3-70b-versatile",
       };
 
-      // Parse Judge0 Config
+      // Parse Judge0 Config — no public IP fallback (see judge0/README.md).
       const judge0Doc = docsData["judge0"] || {};
       const judge0Config: Judge0Config = {
-        url: judge0Doc.url || judge0Doc.JUDGE0_URL || "http://34.180.31.202:2358/",
+        url: judge0Doc.url || judge0Doc.JUDGE0_URL || process.env.JUDGE0_URL || "",
+        authToken:
+          judge0Doc.authToken ||
+          judge0Doc.AUTH_TOKEN ||
+          judge0Doc.JUDGE0_AUTH_TOKEN ||
+          process.env.JUDGE0_AUTH_TOKEN ||
+          "",
       };
 
       // Parse Firebase Client Config
@@ -295,9 +310,9 @@ class FirestoreConfigService {
       // Parse OSM Config
       const osmDoc = docsData["osm"] || {};
       const osmConfig: OSMConfig = {
-        overpassUrl: osmDoc.overpassUrl || osmDoc.OSM_OVERPASS_URL || "https://overpass-api.de/api/interpreter",
-        overpassFallbackUrl: osmDoc.overpassFallbackUrl || osmDoc.OSM_OVERPASS_FALLBACK_URL || "https://overpass.kumi.systems/api/interpreter",
-        timeoutMs: osmDoc.timeoutMs ? Number(osmDoc.timeoutMs) : 25000,
+        overpassUrl: osmDoc.overpassUrl || osmDoc.OSM_OVERPASS_URL || "https://overpass.openstreetmap.fr/api/interpreter",
+        overpassFallbackUrl: osmDoc.overpassFallbackUrl || osmDoc.OSM_OVERPASS_FALLBACK_URL || "https://overpass-api.de/api/interpreter",
+        timeoutMs: osmDoc.timeoutMs ? Number(osmDoc.timeoutMs) : 10000,
       };
 
       this.configCache = {
@@ -358,6 +373,7 @@ class FirestoreConfigService {
     if (groq?.model) process.env.GROQ_MODEL = groq.model;
 
     if (judge0?.url) process.env.JUDGE0_URL = judge0.url;
+    if (judge0?.authToken) process.env.JUDGE0_AUTH_TOKEN = judge0.authToken;
 
     if (firebase?.apiKey) {
       process.env.FIREBASE_API_KEY = firebase.apiKey;

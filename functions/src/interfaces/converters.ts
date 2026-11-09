@@ -21,10 +21,6 @@ import type {
   JobMatchDoc,
   ApplicationDoc,
 } from './job.interface';
-import type {
-  CodingProblemDoc,
-  ProblemProgressDoc,
-} from './coding-problem.interface';
 import type { BookmarkDoc } from './bookmark.interface';
 import type { FeedbackDoc } from './feedback.interface';
 import type { AnalyticsEventDoc } from './analytics-event.interface';
@@ -61,8 +57,6 @@ export const notificationConverter = identityConverter<NotificationDoc>();
 export const jobListingConverter = identityConverter<JobListingDoc>();
 export const jobMatchConverter = identityConverter<JobMatchDoc>();
 export const applicationConverter = identityConverter<ApplicationDoc>();
-export const codingProblemConverter = identityConverter<CodingProblemDoc>();
-export const problemProgressConverter = identityConverter<ProblemProgressDoc>();
 export const bookmarkConverter = identityConverter<BookmarkDoc>();
 export const feedbackConverter = identityConverter<FeedbackDoc>();
 export const analyticsEventConverter = identityConverter<AnalyticsEventDoc>();

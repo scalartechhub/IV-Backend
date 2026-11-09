@@ -14,6 +14,21 @@ export const sanitizeLiveTranscript = (text: string): string =>
     .replace(/\s+/g, " ")
     .trim();
 
+/**
+ * Light sanitize for STT model output before Latin-English filtering.
+ * Do NOT strip Indic here — that used to erase whole answers into "" before
+ * isLatinEnglishCaption could run, so Your Answer stayed blank on device.
+ */
+export const sanitizeSttCaption = (text: string): string =>
+  text
+    .replace(/<ctrl\d+>/gi, " ")
+    .replace(/<\/?(?:noise|inaudible|unk|unknown|silence|other)\s*\/?>/gi, " ")
+    .replace(/\[(?:noise|inaudible|unk|unknown|silence|other)\]/gi, " ")
+    .replace(/\((?:noise|inaudible|unk|unknown|silence|other)\)/gi, " ")
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
 export const containsLiveTranscriptArtifacts = (text: string): boolean =>
   /<ctrl\d+>/i.test(text) ||
   /<\/?(?:noise|inaudible|unk|unknown|silence|other)\s*\/?>/i.test(text);

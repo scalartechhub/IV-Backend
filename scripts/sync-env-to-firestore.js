@@ -187,6 +187,7 @@ async function syncToFirestore() {
     },
     judge0: {
       url: envValues.JUDGE0_URL,
+      authToken: envValues.JUDGE0_AUTH_TOKEN || "",
     },
     firebase: {
       apiKey: envValues.FB_API_KEY || envValues.FIREBASE_API_KEY,

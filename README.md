@@ -91,29 +91,32 @@ Open `bruno/AI Interview Backend` in Bruno. Use the **local** environment.
 
 ## Coding platform (Judge0)
 
-Local code execution uses Judge0 in Docker. Your host is likely **cgroup v2** (Ubuntu 22+/modern Linux); the compose file uses a cgroup-v2-compatible image plus **workers** (required — API alone only queues jobs).
+Local/prod self-hosted Judge0 CE. Full security, cost, and deploy notes: **[judge0/README.md](./judge0/README.md)**.
 
 ```bash
-# 1. Start Judge0 (from repo root)
-cd judge0 && docker compose down --remove-orphans && docker compose up -d
-# Wait ~25s, verify:
-curl -s -X POST 'http://localhost:2358/submissions?base64_encoded=false&wait=true' \
-  -H 'Content-Type: application/json' \
-  -d '{"source_code":"print(42)","language_id":71}'
-# Expect status.description = "Accepted"
+# 1. Start Judge0 (loopback only — ₹0 on your machine)
+cd judge0 && cp .env.example .env && docker compose up -d
+# Wait ~30s, verify:
+./scripts/judge0-health.sh          # Windows: .\scripts\judge0-health.ps1
 
-# 2. Seed Firestore problems (requires firebase-service-account.json)
-npm run seed:coding
-
-# 3. Start API (set JUDGE0_URL=http://localhost:2358 in .env)
+# 2. Start API (JUDGE0_URL=http://127.0.0.1:2358/ in .env)
 npm run dev
 ```
 
+Problems are **AI-generated from the candidate profile** (`POST /v2/coding/generate`), not seeded statically.
+
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/coding/run` | Bearer | Run code against public tests or custom input |
-| POST | `/api/coding/submit` | Bearer | Submit against public + hidden tests |
+| GET | `/api/v2/coding/languages` | Bearer | Supported languages + Judge0 IDs + templates |
+| GET | `/api/v2/coding/questions` | Bearer | List AI problems for the signed-in user |
+| GET | `/api/v2/coding/questions/:id` | Bearer | One problem (no hidden tests) |
+| POST | `/api/v2/coding/generate` | Bearer | Generate problem from profile + full test suite |
+| GET | `/api/v2/coding/submissions/:id` | Bearer | Owner submission metadata (no source body) |
+| POST | `/api/v2/coding/run` | Bearer | Run code against public tests or custom input |
+| POST | `/api/v2/coding/submit` | Bearer | Submit against public + hidden tests (sanitized I/O) |
 
-Firestore collections: `codingProblems`, `codingProblemSecrets`, `users/{uid}/codingProgress`, `users/{uid}/codingSubmissions`.
+Firestore: `users/{uid}/generatedCodingProblems`, `users/{uid}/generatedCodingProblemSecrets`, `users/{uid}/codingProgress`, `users/{uid}/codingSubmissions`, `users/{uid}/codingIdempotency`.
 
-**Troubleshooting:** If Run fails with poll timeout, ensure `workers` is up (`docker compose ps`). If you see `/sys/fs/cgroup/memory` errors on official `judge0/judge0`, stay on the cgroup-v2 image in `judge0/docker-compose.yml` (or boot the host with cgroup v1).
+Config: `JUDGE0_URL`, optional `JUDGE0_AUTH_TOKEN` (synced to Firestore `config/judge0`).
+
+**Troubleshooting:** Poll timeout → ensure `workers` is up (`docker compose -f judge0/docker-compose.yml ps`). cgroup errors on official images → keep the cgroup-v2 image in `judge0/docker-compose.yml`.

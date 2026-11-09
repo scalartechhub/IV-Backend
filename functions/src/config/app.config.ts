@@ -46,7 +46,23 @@ export const appConfig = {
     return firestoreConfigService.getAppConfigDoc().corsOrigin;
   },
   get judge0Url(): string {
-    return firestoreConfigService.getJudge0Config().url || "http://34.180.31.202:2358/";
+    const configured =
+      firestoreConfigService.getJudge0Config().url || process.env.JUDGE0_URL || "";
+    if (configured.trim()) {
+      return configured.trim();
+    }
+    // Dev-only loopback default — never fall back to a public Judge0 IP.
+    if (this.isDevelopment) {
+      return "http://127.0.0.1:2358/";
+    }
+    return "";
+  },
+  get judge0AuthToken(): string | undefined {
+    const token =
+      firestoreConfigService.getJudge0Config().authToken ||
+      process.env.JUDGE0_AUTH_TOKEN ||
+      "";
+    return token.trim() || undefined;
   },
   get teamsWebhookUrl(): string | undefined {
     return firestoreConfigService.getDiscordConfig().webhookUrl;
@@ -55,10 +71,10 @@ export const appConfig = {
     return false;
   },
   get osmOverpassUrl(): string | undefined {
-    return firestoreConfigService.getOSMConfig().overpassUrl || "https://overpass-api.de/api/interpreter";
+    return firestoreConfigService.getOSMConfig().overpassUrl || "https://overpass.openstreetmap.fr/api/interpreter";
   },
   get osmOverpassFallbackUrl(): string | undefined {
-    return firestoreConfigService.getOSMConfig().overpassFallbackUrl || "https://overpass.kumi.systems/api/interpreter";
+    return firestoreConfigService.getOSMConfig().overpassFallbackUrl || "https://overpass-api.de/api/interpreter";
   },
   get frontendUrl(): string | undefined {
     return firestoreConfigService.getAppConfigDoc().frontendUrl;

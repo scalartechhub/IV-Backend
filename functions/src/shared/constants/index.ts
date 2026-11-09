@@ -6,8 +6,6 @@ export const COLLECTIONS = {
   PLANS: "plans",
   PAYMENTS: "payments",
   FAQS: "faqs",
-  CODING_PROBLEMS: "codingProblems",
-  CODING_PROBLEM_SECRETS: "codingProblemSecrets",
   INTERVIEW_DOMAIN: "interview_domain",
   APP_METADATA: "appMetadata",
   SUBSCRIPTIONS: "subscriptions",
@@ -17,6 +15,16 @@ export const COLLECTIONS = {
 export const CODING_SUBCOLLECTIONS = {
   PROGRESS: "codingProgress",
   SUBMISSIONS: "codingSubmissions",
+  IDEMPOTENCY: "codingIdempotency",
+  /** AI-generated problems scoped to the candidate (Admin SDK only). */
+  GENERATED_PROBLEMS: "generatedCodingProblems",
+  GENERATED_PROBLEM_SECRETS: "generatedCodingProblemSecrets",
+} as const;
+
+/** Per-uid in-process coding execution concurrency (per Cloud Function instance). */
+export const CODING_EXECUTION = {
+  MAX_CONCURRENT_PER_UID: 1,
+  IDEMPOTENCY_KEY_MAX_LEN: 128,
 } as const;
 
 /** Chat module Firestore collection names */

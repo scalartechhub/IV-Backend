@@ -6,7 +6,7 @@
   "main": "lib/index.js",
   "scripts": {
     "build": "tsc",
-    "test": "node --require ts-node/register --test src/modules/v2/ai-turn.test.ts",
+    "test": "node --require ts-node/register --test src/modules/v2/ai-turn.test.ts src/modules/coding/coding.role-classifier.test.ts",
     "dev": "node -r ts-node/register src/server.ts",
     "dev:dev": "node -e \"process.env.APP_ENV='dev'; require('ts-node/register'); require('./src/server.ts');\"",
     "dev:prod": "node -e \"process.env.APP_ENV='production'; require('ts-node/register'); require('./src/server.ts');\"",

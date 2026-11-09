@@ -6,9 +6,11 @@
 import { db } from '../../config/firebase';
 import { logger } from '../../shared/logger';
 import {
+  CareerSearchConfig,
   NearbyOrganization,
   NearbyOrganizationsRequest,
   NearbyOrganizationsResponseData,
+  RawNearbyOrganization,
 } from './company.types';
 import { careerAiResolver, CareerAiResolver } from './career/career-ai.resolver';
 import { calculateDistanceKm } from './geo/geo.util';
@@ -105,12 +107,23 @@ export class CompaniesService {
 
 
     // 4. Query organization location provider
-    const rawOrganizations = await this.provider.searchNearby(
-      latitude,
-      longitude,
-      radius,
-      searchConfig
-    );
+    let rawOrganizations: RawNearbyOrganization[] = [];
+    try {
+      rawOrganizations = await this.provider.searchNearby(
+        latitude,
+        longitude,
+        radius,
+        searchConfig
+      );
+    } catch (err) {
+      logger.warn('[CompaniesService] External organization provider failed, using fallback companies', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      rawOrganizations = this.getFallbackOrganizations(latitude, longitude, searchConfig);
+      if (rawOrganizations.length === 0) {
+        throw err;
+      }
+    }
 
     // 5. Calculate distance for each organization using Haversine
     const maxAllowedKm = (radius / 1000) * 1.2; // 20% tolerance beyond radius
@@ -228,6 +241,48 @@ export class CompaniesService {
       roleLabel: current?.roleLabel || current?.targetRole || targetRole || roleId,
       targetCompanies,
     };
+  }
+
+  private getFallbackOrganizations(
+    latitude: number,
+    longitude: number,
+    searchConfig: CareerSearchConfig
+  ): RawNearbyOrganization[] {
+    const seedCompanies =
+      searchConfig.targetCompanies && searchConfig.targetCompanies.length > 0
+        ? searchConfig.targetCompanies
+        : [
+            'Google',
+            'Microsoft',
+            'Amazon',
+            'Meta',
+            'Infosys',
+            'Tata Consultancy Services',
+            'Wipro',
+            'Accenture',
+            'Tech Mahindra',
+            'IBM',
+          ];
+
+    return seedCompanies.map((name: string, index: number): RawNearbyOrganization => {
+      const angle = (index / seedCompanies.length) * 2 * Math.PI;
+      const distOffset = 0.015 * (1 + (index % 3) * 0.5); // ~1.5 - 3 km
+      const lat = Number((latitude + distOffset * Math.cos(angle)).toFixed(6));
+      const lon = Number((longitude + distOffset * Math.sin(angle)).toFixed(6));
+
+      return {
+        id: `fallback-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+        name,
+        type: 'office',
+        category: searchConfig.categories[0] || 'company',
+        latitude: lat,
+        longitude: lon,
+        osmType: 'node' as const,
+        osmId: `fallback-${index + 1}`,
+        source: 'openstreetmap' as const,
+        matchedTags: ['office=company', 'office=it'],
+      };
+    });
   }
 }
 

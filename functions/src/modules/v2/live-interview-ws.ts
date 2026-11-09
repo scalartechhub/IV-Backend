@@ -71,8 +71,11 @@ import {
   containsLiveTranscriptArtifacts,
   estimateSpeechSec,
   isLatinEnglishCaption,
+  mergeSlidingWindowCaption,
+  preferRicherCaption,
   resolveAssistantTranscript,
   sanitizeLiveTranscript,
+  sanitizeSttCaption,
 } from '../../shared/utils/live-transcript';
 
 const V2_LIVE_WS_PATHS = new Set([
@@ -414,10 +417,9 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
         return;
       }
 
-      logger.info('[v2-live-interview] Connection authorized & starting session', {
-        interviewId,
-        uid,
-      });
+      logger.info(
+        `[v2-live-interview] WEBSOCKET_CONNECTED interviewId=${interviewId} uid=${uid}`,
+      );
 
       const started = await ensureInterviewLiveStarted(interviewId);
       let interview = started.interview;
@@ -660,6 +662,8 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       }
 
       let aiTranscriptBuffer = '';
+      let lastOutputTranscriptLogChars = 0;
+      let aiAudioChunksRelayed = 0;
       /** PCM16 16 kHz audio for the open candidate turn, transcribed when the client sent no caption. */
       let userPcmChunks: Buffer[] = [];
       let userPcmBytes = 0;
@@ -667,6 +671,63 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       let liveTranscribeInFlight = false;
       let lastLiveTranscribeBytes = 0;
       let liveTranscribeDebounceTimer: NodeJS.Timeout | null = null;
+      /** Temporary pause after 429 — Free Tier RPM/day caps burn fast with live windows. */
+      let liveSttCooldownUntilMs = 0;
+      let liveSttQuotaNotified = false;
+      /**
+       * Live sliding-window STT is OFF by default.
+       * It burned free-tier daily quota and then broke Submit STT. Enable only with
+       * LIVE_STT_ENABLED=true on a billed Gemini key.
+       */
+      const LIVE_STT_ENABLED = process.env.LIVE_STT_ENABLED === 'true';
+      /** ~3s sliding window — full-answer STT still runs on Submit. */
+      const LIVE_STT_WINDOW_BYTES = 16000 * 2 * 3.0;
+      /** First live caption ASAP so Your Answer is not blank for the whole turn. */
+      const LIVE_STT_FIRST_BYTES = 16000 * 2 * 1.5;
+      /**
+       * Later windows every ~12s. Free Tier RPM is 5; leave headroom for Submit STT.
+       */
+      const LIVE_STT_MIN_NEW_BYTES = 16000 * 2 * 12.0;
+      const LIVE_STT_FORCE_NEW_BYTES = 16000 * 2 * 16.0;
+      const LIVE_STT_MIN_PCM_BYTES = 16000 * 2 * 0.5;
+      const LIVE_STT_DEBOUNCE_MS = 250;
+      const LIVE_STT_TIMEOUT_MS = 7000;
+
+      const isQuotaExhaustedError = (err: unknown): boolean => {
+        const msg = err instanceof Error ? err.message : String(err ?? '');
+        return (
+          msg.includes('429') ||
+          /RESOURCE_EXHAUSTED/i.test(msg) ||
+          /exceeded your current quota/i.test(msg) ||
+          /quota.*free tier/i.test(msg)
+        );
+      };
+
+      const parseRetryDelayMs = (err: unknown): number => {
+        const msg = err instanceof Error ? err.message : String(err ?? '');
+        const retryIn = msg.match(/Please retry in ([0-9.]+)s/i);
+        if (retryIn) {
+          const sec = Number(retryIn[1]);
+          if (Number.isFinite(sec) && sec > 0) return Math.min(120_000, Math.ceil(sec * 1000) + 500);
+        }
+        const retryDelay = msg.match(/"retryDelay"\s*:\s*"(\d+)s"/i);
+        if (retryDelay) {
+          const sec = Number(retryDelay[1]);
+          if (Number.isFinite(sec) && sec > 0) return Math.min(120_000, sec * 1000 + 500);
+        }
+        return 20_000;
+      };
+
+      const notifySttUnavailable = (reason: string): void => {
+        if (liveSttQuotaNotified || closed) return;
+        liveSttQuotaNotified = true;
+        sendJson(clientSocket, {
+          type: 'stt_unavailable',
+          reason,
+          message:
+            'Live transcription paused briefly (API quota). Keep speaking — text will catch up, and Submit still hears your answer.',
+        });
+      };
 
       clearLiveTranscribeDebounce = (): void => {
         if (liveTranscribeDebounceTimer) {
@@ -676,48 +737,112 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       };
 
       const triggerLiveChunkTranscription = async (): Promise<void> => {
+        if (!LIVE_STT_ENABLED) return;
         if (!userTurnOpen || liveTranscribeInFlight || closed) return;
+        if (Date.now() < liveSttCooldownUntilMs) return;
         const bytesSinceLast = userPcmBytes - lastLiveTranscribeBytes;
-        // ~0.5s of new audio — snappier live captions on mobile (no on-device Web Speech).
-        if (bytesSinceLast < 16000 * 2 * 0.5) return;
+        const minNewBytes =
+          lastLiveTranscribeBytes === 0 ? LIVE_STT_FIRST_BYTES : LIVE_STT_MIN_NEW_BYTES;
+        if (bytesSinceLast < minNewBytes) return;
 
         const pcmSnapshot = userPcmChunks.length ? Buffer.concat(userPcmChunks) : Buffer.alloc(0);
-        if (pcmSnapshot.length < 16000 * 2 * 0.35) return;
+        if (pcmSnapshot.length < LIVE_STT_MIN_PCM_BYTES) return;
 
+        // Prefer a longer window after the first tick so captions cover more of the answer.
+        const windowBytes =
+          lastLiveTranscribeBytes === 0 ? LIVE_STT_WINDOW_BYTES : Math.max(LIVE_STT_WINDOW_BYTES, LIVE_STT_MIN_NEW_BYTES);
+        const windowPcm =
+          pcmSnapshot.length <= windowBytes
+            ? pcmSnapshot
+            : pcmSnapshot.subarray(pcmSnapshot.length - windowBytes);
+
+        const bytesAtStart = userPcmBytes;
         liveTranscribeInFlight = true;
-        lastLiveTranscribeBytes = userPcmBytes;
 
         try {
-          const timeoutMs = 8000;
-          const rawTranscript = await transcribeInterviewAudio(pcmSnapshot, 16000, timeoutMs);
-          const transcript = sanitizeLiveTranscript(rawTranscript);
-          if (transcript && userTurnOpen && !closed) {
-            pendingCandidateText = transcript;
-            sendJson(clientSocket, {
-              type: 'transcript',
-              role: 'user',
-              text: transcript,
-              final: false,
-              live: true,
-            });
+          const rawTranscript = await transcribeInterviewAudio(windowPcm, 16000, LIVE_STT_TIMEOUT_MS);
+          // Light sanitize first, then strip Indic — keeps any Latin words that survive.
+          const sttText = sanitizeSttCaption(rawTranscript);
+          const windowText = sanitizeLiveTranscript(sttText);
+          lastLiveTranscribeBytes = bytesAtStart;
+
+          if (!sttText) {
             logger.info(
-              `[v2-live-interview] 🎙️ Live Chunk Transcript interviewId=${interviewId}: "${transcript}"`,
+              `[v2-live-interview] live STT empty interviewId=${interviewId} windowBytes=${windowPcm.length} rawChars=${(rawTranscript ?? '').length}`,
             );
+          } else if (!windowText) {
+            logger.info(
+              `[v2-live-interview] live STT non-Latin stripped interviewId=${interviewId} rawChars=${sttText.length}`,
+            );
+          }
+
+          if (windowText && isLatinEnglishCaption(windowText) && userTurnOpen && !closed) {
+            const merged = mergeSlidingWindowCaption(pendingCandidateText, windowText);
+            const next = preferRicherCaption(merged, pendingCandidateText);
+            if (next && next !== pendingCandidateText) {
+              pendingCandidateText = next;
+              sendJson(clientSocket, {
+                type: 'transcript',
+                role: 'user',
+                text: next,
+                final: false,
+                live: true,
+              });
+              logger.info(
+                `[v2-live-interview] INPUT_TRANSCRIPTION_RECEIVED interviewId=${interviewId} chars=${next.length} live=true windowSec=${(windowPcm.length / (16000 * 2)).toFixed(1)}`,
+              );
+            } else if (pendingCandidateText) {
+              // Still push the committed caption so a late-joining / missed client paint recovers.
+              sendJson(clientSocket, {
+                type: 'transcript',
+                role: 'user',
+                text: pendingCandidateText,
+                final: false,
+                live: true,
+              });
+              logger.info(
+                `[v2-live-interview] INPUT_TRANSCRIPTION_RECEIVED interviewId=${interviewId} keptPrior=true chars=${pendingCandidateText.length}`,
+              );
+            }
           }
         } catch (err) {
           logger.warn(`[v2-live-interview] live chunk transcription error interviewId=${interviewId}`, err);
+          if (isQuotaExhaustedError(err)) {
+            const cooldownMs = parseRetryDelayMs(err);
+            liveSttCooldownUntilMs = Date.now() + cooldownMs;
+            lastLiveTranscribeBytes = userPcmBytes;
+            clearLiveTranscribeDebounce();
+            notifySttUnavailable('quota');
+            logger.warn(
+              `[v2-live-interview] live STT cooldown ${cooldownMs}ms interviewId=${interviewId}`,
+            );
+          }
         } finally {
           liveTranscribeInFlight = false;
+          const nextMin =
+            lastLiveTranscribeBytes === 0 ? LIVE_STT_FIRST_BYTES : LIVE_STT_MIN_NEW_BYTES;
+          if (
+            Date.now() >= liveSttCooldownUntilMs &&
+            userTurnOpen &&
+            !closed &&
+            userPcmBytes - lastLiveTranscribeBytes >= nextMin
+          ) {
+            scheduleLiveChunkTranscription();
+          }
         }
       };
 
       const scheduleLiveChunkTranscription = (): void => {
+        if (!LIVE_STT_ENABLED) return;
+        if (Date.now() < liveSttCooldownUntilMs) return;
         const bytesSinceLast = userPcmBytes - lastLiveTranscribeBytes;
-        if (bytesSinceLast < 16000 * 2 * 0.5) return;
+        const minNewBytes =
+          lastLiveTranscribeBytes === 0 ? LIVE_STT_FIRST_BYTES : LIVE_STT_MIN_NEW_BYTES;
+        if (bytesSinceLast < minNewBytes) return;
+        if (liveTranscribeInFlight) return;
 
-        // If a timer is already counting down, don't keep cancelling it so it can fire regularly while user speaks
         if (liveTranscribeDebounceTimer !== null) {
-          if (bytesSinceLast >= 16000 * 2 * 1.6 && !liveTranscribeInFlight) {
+          if (bytesSinceLast >= LIVE_STT_FORCE_NEW_BYTES) {
             clearLiveTranscribeDebounce();
             void triggerLiveChunkTranscription();
           }
@@ -727,7 +852,7 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
         liveTranscribeDebounceTimer = setTimeout(() => {
           liveTranscribeDebounceTimer = null;
           void triggerLiveChunkTranscription();
-        }, 400);
+        }, LIVE_STT_DEBOUNCE_MS);
       };
       const handleToolCall = (functionCalls: NonNullable<LiveServerMessage['toolCall']>['functionCalls']): void => {
         if (!geminiSession || !functionCalls?.length) return;
@@ -834,6 +959,12 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
                 final: false,
                 turnId: currentSpeechTurn(),
               });
+              if (text.length - lastOutputTranscriptLogChars >= 40 || text.length < 40) {
+                lastOutputTranscriptLogChars = text.length;
+                logger.info(
+                  `[v2-live-interview] OUTPUT_TRANSCRIPTION_RECEIVED interviewId=${interviewId} chars=${text.length}`,
+                );
+              }
             }
           }
         }
@@ -848,6 +979,12 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
           }
           clearAiResponseWatchdog();
           onFirstAiSignal();
+          aiAudioChunksRelayed += 1;
+          if (aiAudioChunksRelayed === 1 || aiAudioChunksRelayed % 20 === 0) {
+            logger.info(
+              `[v2-live-interview] AI_AUDIO_RELAYED interviewId=${interviewId} chunks=${aiAudioChunksRelayed}`,
+            );
+          }
           sendJson(clientSocket, {
             type: 'audio',
             data,
@@ -955,6 +1092,8 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
           }
           aiTranscriptBuffer = '';
           closeSpeechTurn();
+          lastOutputTranscriptLogChars = 0;
+          aiAudioChunksRelayed = 0;
           sendJson(clientSocket, { type: 'turnComplete', turnId: speechTurn });
         }
       };
@@ -1183,11 +1322,14 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
       const respondToCandidateAnswer = async (clientCaption: string, pcm: Buffer): Promise<void> => {
         let captionText = clientCaption;
         const speechSec = pcm.length > 0 ? estimateSpeechSec(pcm) : 0;
+        // Wall-clock PCM duration — estimateSpeechSec can under-count quiet phone mics.
+        const byteSec = pcm.length > 0 ? pcm.length / (16000 * 2) : 0;
+        const hasUsableAudio = speechSec >= 0.35 || byteSec >= 1.0;
         // Near-silence with no caption was being transcribed into a made-up answer, which
         // then collided with the interviewer's in-flight turn and produced an empty reply.
-        if (!captionText.trim() && speechSec < 0.4) {
+        if (!captionText.trim() && !hasUsableAudio) {
           logger.warn(
-            `[v2-live-interview] ignored silent answer interviewId=${interviewId} speechSec=${speechSec.toFixed(2)}`,
+            `[v2-live-interview] ignored silent answer interviewId=${interviewId} speechSec=${speechSec.toFixed(2)} byteSec=${byteSec.toFixed(2)} pcmBytes=${pcm.length}`,
           );
           awaitingAiResponse = false;
           if (firstAiSignalReceived) {
@@ -1197,16 +1339,49 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
           return;
         }
         clearKickoffRetry();
-        if (pcm.length > 0 && speechSec >= 0.4 && captionLooksIncomplete(clientCaption, speechSec)) {
+        if (
+          pcm.length > 0 &&
+          hasUsableAudio &&
+          captionLooksIncomplete(clientCaption, Math.max(speechSec, byteSec * 0.5))
+        ) {
           let heard = '';
           try {
-            const timeoutMs = Math.min(12_000, 4_500 + speechSec * 100);
-            heard = sanitizeLiveTranscript(await transcribeInterviewAudio(pcm, 16000, timeoutMs));
+            // Cap final STT to last ~45s — long answers used to exceed the timeout and
+            // come back as "" even when the mic clearly recorded speech.
+            const MAX_FINAL_STT_BYTES = 16000 * 2 * 45;
+            const sttPcm =
+              pcm.length <= MAX_FINAL_STT_BYTES
+                ? pcm
+                : pcm.subarray(pcm.length - MAX_FINAL_STT_BYTES);
+            const sttSec = sttPcm.length / (16000 * 2);
+            const timeoutMs = Math.min(20_000, 6_000 + sttSec * 250);
+            const raw = await transcribeInterviewAudio(sttPcm, 16000, timeoutMs);
+            const sttText = sanitizeSttCaption(raw);
+            heard = sanitizeLiveTranscript(sttText);
+            if (sttText && !heard) {
+              logger.warn(
+                `[v2-live-interview] final STT non-Latin stripped interviewId=${interviewId} chars=${sttText.length}`,
+              );
+            } else if (heard && !isLatinEnglishCaption(heard)) {
+              logger.warn(
+                `[v2-live-interview] final STT rejected interviewId=${interviewId} chars=${heard.length}`,
+              );
+              heard = '';
+            }
           } catch (error) {
             logger.warn(`[v2-live-interview] answer transcription failed interviewId=${interviewId}`, error);
+            if (isQuotaExhaustedError(error)) {
+              liveSttCooldownUntilMs = Date.now() + parseRetryDelayMs(error);
+              notifySttUnavailable('quota');
+            }
           }
           const wordCount = (text: string): number => text.split(/\s+/).filter(Boolean).length;
-          if (heard && isLatinEnglishCaption(heard) && wordCount(heard) > wordCount(clientCaption)) {
+          // Empty client caption: accept any usable Latin STT. Otherwise require richer text.
+          const shouldUseHeard =
+            !!heard &&
+            isLatinEnglishCaption(heard) &&
+            (!clientCaption.trim() || wordCount(heard) > wordCount(clientCaption));
+          if (shouldUseHeard) {
             captionText = heard;
             sendJson(clientSocket, {
               type: 'transcript',
@@ -1222,9 +1397,25 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
             }
           }
           logger.info(
-            `[v2-live-interview] caption check interviewId=${interviewId} speechSec=${speechSec.toFixed(1)} client="${clientCaption}" heard="${heard}" used=${captionText === clientCaption ? 'client' : 'audio'}`,
+            `[v2-live-interview] caption check interviewId=${interviewId} speechSec=${speechSec.toFixed(1)} byteSec=${byteSec.toFixed(1)} client="${clientCaption}" heard="${heard}" used=${captionText === clientCaption ? 'client' : 'audio'}`,
           );
         }
+
+        // APK Submit-only path: never advance the interviewer on an empty caption after
+        // we had usable PCM — ask the candidate to answer again instead.
+        if (!captionText.trim() && hasUsableAudio) {
+          logger.warn(
+            `[v2-live-interview] empty caption after STT interviewId=${interviewId} speechSec=${speechSec.toFixed(2)} byteSec=${byteSec.toFixed(2)}`,
+          );
+          notifySttUnavailable('empty_after_stt');
+          awaitingAiResponse = false;
+          if (firstAiSignalReceived) {
+            awaitingCandidateAnswer = true;
+            sendJson(clientSocket, { type: 'listen_again' });
+          }
+          return;
+        }
+
         if (closed || !geminiSession) return;
 
         const { lastQuestion, recent } = resolveDirectorContext(
@@ -1272,6 +1463,14 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
         }
 
         if (message.type === 'activityStart') {
+          // Idempotent: a second activityStart must NOT wipe PCM already buffered for STT.
+          // Mobile often races first audio frames ahead of / duplicates activityStart.
+          if (userTurnOpen) {
+            logger.info(
+              `[v2-live-interview] activityStart ignored (turn already open) interviewId=${interviewId} pcmBytes=${userPcmBytes}`,
+            );
+            return;
+          }
           clearLiveTranscribeDebounce();
           pendingCandidateText = '';
           receivedUserAudioThisTurn = false;
@@ -1321,6 +1520,11 @@ export const setupV2LiveInterviewWebSocket = (server: Server): void => {
             if (userPcmBytes + chunk.length <= MAX_USER_PCM_BYTES) {
               userPcmChunks.push(chunk);
               userPcmBytes += chunk.length;
+            }
+            if (userAudioChunksCount === 1 || userAudioChunksCount % 25 === 0) {
+              logger.info(
+                `[v2-live-interview] AUDIO_SENT_TO_BACKEND interviewId=${interviewId} chunks=${userAudioChunksCount} bytes=${userAudioBytesTotal}`,
+              );
             }
             scheduleLiveChunkTranscription();
           }
