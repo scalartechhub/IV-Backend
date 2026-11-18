@@ -1,0 +1,35 @@
+meta {
+  name: Send Weekly Report (test@mailinator.com)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v2/admin/weekly-reports/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "email": "test@mailinator.com",
+    "dryRun": false,
+    "force": true
+  }
+}
+
+tests {
+  test("status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("email dispatched or simulated successfully", function() {
+    const body = res.getBody();
+    expect(body.success).to.be.true;
+    expect(body.data).to.be.an('object');
+  });
+}

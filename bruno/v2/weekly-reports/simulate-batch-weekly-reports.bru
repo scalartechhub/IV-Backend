@@ -1,0 +1,34 @@
+meta {
+  name: Simulate Batch Weekly Reports
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/v2/admin/weekly-reports/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "dryRun": true,
+    "limit": 50
+  }
+}
+
+tests {
+  test("status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("dry run stats returned", function() {
+    const body = res.getBody();
+    expect(body.success).to.be.true;
+    expect(body.data.dryRun).to.be.true;
+  });
+}

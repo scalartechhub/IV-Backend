@@ -1,0 +1,21 @@
+meta {
+  name: Preview Weekly Report HTML (test@mailinator.com)
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v2/admin/weekly-reports/preview/test@mailinator.com?format=html
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+}

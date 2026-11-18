@@ -1,0 +1,34 @@
+info:
+  name: Send Weekly Report (test@mailinator.com)
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/admin/weekly-reports/send"
+  auth:
+    type: bearer
+    token: "{{token}}"
+  body:
+    type: json
+    data: |-
+      {
+        "email": "test@mailinator.com",
+        "dryRun": false,
+        "force": true
+      }
+
+runtime:
+  variables:
+    - name: baseUrl
+      value: http://localhost:5000/api
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Dispatches the weekly interview, learning roadmap, and activity progress report email to test@mailinator.com.
+  Pass dryRun: true to simulate without sending.
