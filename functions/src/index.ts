@@ -12,6 +12,7 @@ export { onUserDeleted } from "./triggers/on-user-deleted";
 export { checkExpiredSubscriptions } from "./scheduled/check-expired-subscriptions";
 export { computeCareerProgress } from "./scheduled/compute-career-progress";
 export { resetWeeklyDeltas } from "./scheduled/reset-weekly-deltas";
+export { sendWeeklyProgressReports } from "./scheduled/send-weekly-progress-reports";
 
 // ============================================================================
 // DUMMY / UNUSED FUNCTIONS (COMMENTED OUT — NOT IN ACTIVE USE)

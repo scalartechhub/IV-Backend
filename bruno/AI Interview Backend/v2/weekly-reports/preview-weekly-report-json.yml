@@ -1,0 +1,25 @@
+info:
+  name: Preview Weekly Report JSON (test@mailinator.com)
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{baseUrl}}/v2/admin/weekly-reports/preview/test@mailinator.com"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  variables:
+    - name: baseUrl
+      value: http://localhost:5000/api
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Generates and previews the full weekly progress report data, metrics, strengths, roadmap status, and email text for test@mailinator.com.

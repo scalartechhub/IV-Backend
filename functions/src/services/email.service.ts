@@ -20,7 +20,7 @@ export interface CandidateInviteEmailParams {
   expiresAt?: string; // human-readable
 }
 
-interface EmailPayload {
+export interface EmailPayload {
   to: string;
   subject: string;
   text?: string;
@@ -56,7 +56,16 @@ function getTransporter(): { transport: Transporter | null; fromEmail: string } 
 
   cachedFromEmail = from;
 
-  if (!user || !pass) {
+  const isDummy =
+    !user ||
+    !pass ||
+    user === 'your-email@gmail.com' ||
+    user.includes('your-email') ||
+    user.includes('example.com') ||
+    pass === 'your-app-password' ||
+    pass.startsWith('your-');
+
+  if (isDummy) {
     return { transport: null, fromEmail: cachedFromEmail };
   }
 
@@ -91,7 +100,7 @@ function getTransporter(): { transport: Transporter | null; fromEmail: string } 
 
 // ─── Core Send ─────────────────────────────────────────────────────────────────
 
-async function sendEmail(payload: EmailPayload): Promise<string | undefined> {
+export async function sendEmail(payload: EmailPayload): Promise<string | undefined> {
   const { transport, fromEmail } = getTransporter();
 
   // If SMTP is not yet configured, log email to console and simulate success
